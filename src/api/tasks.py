@@ -257,11 +257,40 @@ async def task_detail(task_id: str):
         }
 
 
+@router.post("/api/tasks/{task_id}/cancel")
+async def cancel_task(task_id: str, actor: str = "anonymous"):
+    """手工中断任务：排队中→直接出队；生产中→取消执行协程（幂等可重试）。
+
+    注意：中断只停止本侧流水线与流式读取；Nanobot 侧 Agent 若已开始生成，
+    其当轮推理会继续到自然结束（MCP 配额仍在兜底）。已产生的产物与
+    node_events 保留，重试时已完成节点跳过。
+    """
+    try:
+        tid = uuid.UUID(task_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid task_id")
+    async with SessionLocal() as session:
+        task = (await session.execute(select(Task).where(Task.id == tid))).scalars().first()
+        if not task:
+            raise HTTPException(status_code=404, detail="task not found")
+        if task.status not in ("draft", "processing"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"只有排队中/生产中的任务可以中断，当前状态: {task.status}")
+        query = task.query
+    how = await scheduler.cancel(tid)
+    if how == "not_found":
+        # 不在调度器内（如刚重启未恢复）：直接落库
+        await scheduler._mark_status(tid, "cancelled")
+    await log_action(actor, "cancel", f"手工中断任务：{query[:50]}", task_id=tid)
+    return {"ok": True, "task_id": task_id, "cancelled_via": how}
+
+
 @router.post("/api/tasks/{task_id}/retry")
 async def retry_task(task_id: str, actor: str = "anonymous"):
-    """重试失败/被驳回的任务。
+    """重试失败/被驳回/被中断的任务。
 
-    失败任务：幂等续跑（已完成节点跳过）。
+    失败/中断任务：幂等续跑（已完成节点跳过）。
     驳回任务：先清理上一轮内容产物，再全链重跑——流水线会把历史驳回理由
     注入草稿生成提示词（见 services/regen.py 与 orchestrator.run_pipeline）。
     """
@@ -273,10 +302,10 @@ async def retry_task(task_id: str, actor: str = "anonymous"):
         task = (await session.execute(select(Task).where(Task.id == tid))).scalars().first()
         if not task:
             raise HTTPException(status_code=404, detail="task not found")
-        if task.status not in ("failed", "rejected"):
+        if task.status not in ("failed", "rejected", "cancelled"):
             raise HTTPException(
                 status_code=400,
-                detail=f"only failed/rejected tasks can be retried, current status: {task.status}")
+                detail=f"only failed/rejected/cancelled tasks can be retried, current status: {task.status}")
         was_rejected = task.status == "rejected"
         mark_count = 0
         if was_rejected:

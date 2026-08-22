@@ -1,12 +1,9 @@
-"""task_id 级工具配额：MCP 进程内计数，超限抛错。
+"""task_id 级工具配额申请（经后端权威判定，见 src/gateway/tool_ledger.py）。
 
-LLM 不自律是常态，花钱的口子必须在工具侧焊死：
-- 生图 ¥0.2/张：默认每任务 ≤8 张（6 张交付 + 2 张去重重生余量）
-- 网页搜索：默认每任务 ≤3 次
-- OCR：默认每任务 ≤8 张
-上限经 src.config.settings 读取，与后端共用同一份 .env。
+后端不可达时放行（fail-open）：后端挂了整条流水线本来就停了，
+不能让配额检查反过来阻塞工具调用；调用会照常记账（回调失败仅打印）。
 """
-import threading
+import httpx
 
 from src.config import settings
 
@@ -15,35 +12,22 @@ class QuotaExceededError(RuntimeError):
     pass
 
 
-class _TaskQuotas:
-    def __init__(self):
-        self._lock = threading.Lock()
-        self._used: dict[str, dict[str, int]] = {}
-
-    def _task(self, task_id: str) -> dict:
-        return self._used.setdefault(str(task_id), {})
-
-    def check_and_consume(self, task_id: str, kind: str, n: int = 1) -> None:
-        """占用 n 个配额，超限抛 QuotaExceededError（Agent 会看到错误并收敛）。"""
-        limit = {
-            "image": settings.mcp_max_images_per_task,
-            "web_search": settings.mcp_max_web_searches_per_task,
-            "image_search": settings.mcp_max_image_searches_per_task,
-            "ocr": settings.mcp_max_ocr_per_task,
-        }[kind]
-        with self._lock:
-            t = self._task(task_id)
-            used = t.get(kind, 0)
-            if used + n > limit:
-                raise QuotaExceededError(
-                    f"任务 {task_id} 的 {kind} 配额已用尽（上限 {limit}，已用 {used}）。"
-                    f"请停止继续调用该工具，用现有结果继续完成任务。")
-            t[kind] = used + n
-
-    def release(self, task_id: str) -> None:
-        """任务结束后清掉计数（后端可经管理端触发；进程内自动过期策略后续再加）。"""
-        with self._lock:
-            self._used.pop(str(task_id), None)
-
-
-quotas = _TaskQuotas()
+async def check_and_consume(task_id: str, kind: str, n: int = 1) -> None:
+    """向后端申请 n 个配额，超限抛 QuotaExceededError（Agent 会看到并收敛）。"""
+    url = f"{settings.mcp_callback_base_url}/api/internal/quota_acquire"
+    payload = {"task_id": str(task_id), "kind": kind, "n": n}
+    headers = {"X-Internal-Token": settings.internal_callback_token}
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.post(url, json=payload, headers=headers)
+            if resp.status_code >= 400:
+                print(f"[mcp-quota] 后端拒绝({resp.status_code}): {resp.text[:120]}", flush=True)
+                return  # fail-open：非 200 视为配额服务异常，放行
+            r = resp.json()
+    except Exception as e:  # noqa: BLE001
+        print(f"[mcp-quota] 后端不可达，放行: {type(e).__name__}: {e}", flush=True)
+        return
+    if not r.get("allowed"):
+        raise QuotaExceededError(
+            f"任务 {task_id} 的 {kind} 配额已用尽（上限 {r.get('limit')}，"
+            f"已用 {r.get('used')}）。请停止继续调用该工具，用现有结果继续完成任务。")

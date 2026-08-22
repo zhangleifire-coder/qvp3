@@ -57,3 +57,95 @@ async def test_priority_queue_orders_urgent_first_fifo_within_level():
         order.append(tid)
     # urgent 最先；scheduled 最后；两个 normal 按入队顺序
     assert order == ["t-urgent", "t-normal-1", "t-normal-2", "t-sched"]
+
+
+@pytest.mark.asyncio
+async def test_cancel_running_task_marks_cancelled(monkeypatch):
+    """手工中断执行中的任务：协程被取消，任务标记 cancelled（不算 failed）。"""
+    from src.stream.limiter import AdaptiveLimiter
+    sch = TaskScheduler()
+    sch.limiter = AdaptiveLimiter(min_c=1, max_c=1, initial=1)  # 单 worker，确定性
+    started = asyncio.Event()
+    cancel_seen = asyncio.Event()
+
+    async def fake_process(task_id, kind="pipeline"):
+        started.set()
+        try:
+            await asyncio.sleep(30)   # 模拟长跑的 agent_production
+        except asyncio.CancelledError:
+            cancel_seen.set()
+            raise
+
+    async def noop_mark(task_id, status):
+        sch._marked = (task_id, status)
+
+    async def noop_recover():
+        return None
+
+    monkeypatch.setattr(sch, "_process", fake_process)
+    monkeypatch.setattr(sch, "_mark_status", noop_mark)
+    monkeypatch.setattr(sch, "_recover_pending", noop_recover)
+    await sch.start()
+
+    from src.stream.bus import bus
+    events = []
+    q = bus.subscribe()
+    try:
+        await sch.enqueue("t-run", "跑着")
+        await asyncio.wait_for(started.wait(), timeout=2)
+        assert await sch.cancel("t-run") == "running"
+        await asyncio.wait_for(cancel_seen.wait(), timeout=2)
+        await asyncio.sleep(0.05)
+        assert sch._meta["t-run"]["status"] == "cancelled"
+        assert sch._marked == ("t-run", "cancelled")
+        while not q.empty():
+            events.append(q.get_nowait()["type"])
+        assert "task_cancelled" in events
+        assert "task_failed" not in events
+    finally:
+        bus.unsubscribe(q)
+        await sch.stop()
+
+
+@pytest.mark.asyncio
+async def test_cancel_queued_task_skips_execution(monkeypatch):
+    """排队中被中断：出队即丢弃，不执行 _process。"""
+    from src.stream.limiter import AdaptiveLimiter
+    sch = TaskScheduler()
+    # 强制单 worker 单并发：不受 .env 并发配置影响，保证第二个任务停在排队态
+    sch.limiter = AdaptiveLimiter(min_c=1, max_c=1, initial=1)
+    executed = []
+
+    async def fake_process(task_id, kind="pipeline"):
+        executed.append(task_id)
+
+    async def noop_mark(task_id, status):
+        pass
+
+    async def noop_recover():
+        return None
+
+    monkeypatch.setattr(sch, "_mark_status", noop_mark)
+    monkeypatch.setattr(sch, "_recover_pending", noop_recover)
+    # 占住唯一并发位，让后续任务停在排队态
+    gate = asyncio.Event()
+
+    async def gated(task_id, kind="pipeline"):
+        await gate.wait()
+        executed.append(task_id)
+
+    monkeypatch.setattr(sch, "_process", gated)
+    await sch.start()
+    try:
+        await sch.enqueue("t-block", "占位")
+        await sch.enqueue("t-queued", "排队")
+        await asyncio.sleep(0.05)
+        assert sch._meta["t-queued"]["status"] == "queued"
+        assert await sch.cancel("t-queued") == "queued"
+        gate.set()                            # 放行占位任务
+        await asyncio.sleep(0.1)
+        assert "t-queued" not in executed     # 从未执行
+        assert sch._meta["t-queued"]["status"] == "cancelled"
+        assert sch._meta["t-block"]["status"] == "done"
+    finally:
+        await sch.stop()

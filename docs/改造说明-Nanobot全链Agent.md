@@ -85,11 +85,19 @@ code/
 |---|---|
 | Nanobot 进程崩溃 | 前置 health 检查 + 读超时 1800s + 节点失败 → 任务 failed → 幂等重试；`AGENT_PIPELINE_ENABLED=false` 秒级回退 13 节点直连 |
 | Agent 输出不合格 | JSON 契约严格校验 + 同 session 纠错一次 + 两次失败节点失败重跑 |
-| Agent 失控烧钱 | **MCP 工具内 task_id 硬配额**（不信任 LLM 自律）：生图≤8 张(¥0.2/张)、网页搜索≤3、OCR≤8；超限工具直接报错 |
+| Agent 失控烧钱 | **MCP 工具配额（后端权威）**：agent_production 每次开始时 reset，工具调用前 MCP 经 `POST /api/internal/quota_acquire` 向后端申请（生图≤8 张/搜索≤3/OCR≤8）；中断/失败后续跑自动恢复全额预算（2026-08-23 修复：原 MCP 进程内存计数不释放，被中断任务续跑时配额被锁死） |
 | 成本记账漂移 | 工具每次调用 HTTP 回调后端台账；文本 usage 缺失按字符估算；node_events/成本明细页口径不变 |
 | 任务半截状态 | 产物落库为一次原子提交；图片本地化在落库前完成，失败即节点失败不留半截产物 |
-| 调度崩溃恢复 | scheduler `_recover_pending` 不变（draft/processing 重置重入队；有驳回标记走 partial_regen 直连路径） |
+| 长任务人工止损 | `POST /api/tasks/{id}/cancel`：排队中→出队；生产中→取消执行协程（CancelledError 不经过 execute_node 的异常处理，节点事件自动回滚）；任务转 `cancelled`，重试幂等续跑。注意：Nanobot 侧 Agent 当轮推理会跑完（配额兜底） |
+| 调度崩溃恢复 | scheduler `_recover_pending` 不变（draft/processing 重置重入队；cancelled 不自动重跑，可手动重试） |
 | 长连接断连 | 后端↔Nanobot 流式 SSE 保活；后端↔前端 SSE 原样保留 |
+
+### 实时监控（2026-08-23 增强）
+
+- 进行中任务按**业务阶段条**展示（8 节点 chips：完成/进行中/待做）
+- Agent 子阶段实时可见：`agent_tool` 事件（检索证据 / 搜索实景参考图 / **生成配图 P3/6**（逐张）/ OCR 图文自检）
+- **流式输出框**：Agent 生成内容实时滚动展示，带字符数与 token 估算（约 字符/1.7）
+- 每任务卡「✕ 中断任务」按钮（确认后 cancel；任务中心也可对 cancelled 任务「继续生产」）
 
 ## 五、本地运行（Windows / Git Bash）
 

@@ -16,6 +16,7 @@ window.STATUS = {
   approved:   { label: '已通过', cls: 'tag-green' },
   rejected:   { label: '已驳回', cls: 'tag-red' },
   failed:     { label: '失败',   cls: 'tag-red' },
+  cancelled:  { label: '已中断', cls: 'tag-gray' },
 };
 window.MODE = {
   general: { label: '通用', desc: '通用科普/教程，纯文生图' },

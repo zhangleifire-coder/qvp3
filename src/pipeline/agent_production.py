@@ -276,6 +276,11 @@ async def node_agent_production(input_data: dict) -> dict:
             f"Nanobot 不可达（{settings.nanobot_base_url}），"
             f"请启动 Nanobot 或设 AGENT_PIPELINE_ENABLED=false 回退直连路径")
 
+    # 新一轮生产：重置该任务的 MCP 工具配额（中断/失败后续跑重新获得全额预算；
+    # 配额权威在后端，MCP 进程重启/残留状态都不会把配额锁死）
+    from src.gateway.tool_ledger import task_quotas
+    await task_quotas.reset(tid)
+
     session_id = f"qvp-task-{tid}-{uuid.uuid4().hex[:8]}"
     user_msg = _compose_message(tid, query, mode, draft_tpl, pages_tpl,
                                 image_tpl, feedbacks)
@@ -285,15 +290,20 @@ async def node_agent_production(input_data: dict) -> dict:
     last_emit_len = 0
 
     def _on_delta(piece: str, total: str):
+        # 流式过程按 300 字节流上报监控：字符数 + token 估算 + 输出尾部
+        # （token=字符/1.7 与 nanobot_client 的成本估算口径一致）
         nonlocal last_emit_len
-        if len(total) - last_emit_len >= 400:  # 节流：过程文本按 400 字批量上监控
+        if len(total) - last_emit_len >= 300:
             last_emit_len = len(total)
             import asyncio as _a
             try:
                 loop = _a.get_running_loop()
                 loop.create_task(bus.publish(
-                    "agent_progress", {"chars": len(total),
-                                       "preview": total[-200:]}, task_id=tid))
+                    "agent_progress", {
+                        "chars": len(total),
+                        "tokens_est": int(len(total) / 1.7),
+                        "preview": total[-400:],
+                    }, task_id=tid))
             except RuntimeError:
                 pass
 

@@ -19,7 +19,7 @@ from src.gateway.prompt_versions import get_image_prompt
 from src.gateway.web_search import web_search as _web_search_impl
 
 from .cost_report import report_usage
-from .quotas import quotas
+from .quotas import check_and_consume
 
 mcp = FastMCP("qvp-tools")
 
@@ -58,7 +58,7 @@ async def web_search(query: str, task_id: str, count: int = 6) -> dict:
 
     每任务配额有限（默认 3 次），请在检索词精准的前提下少用。
     """
-    quotas.check_and_consume(task_id, "web_search")
+    await check_and_consume(task_id, "web_search")
     results = await _web_search_impl(query, count=count)
     cost = settings.doubao_search_cost_per_call
     await report_usage(task_id, "web_search", cost, {"query": query, "count": len(results)})
@@ -68,7 +68,7 @@ async def web_search(query: str, task_id: str, count: int = 6) -> dict:
 @mcp.tool
 async def image_search(query: str, task_id: str, count: int = 6) -> dict:
     """搜索网络实景图/实物图（compare/single 模式用作图生图参考图）。"""
-    quotas.check_and_consume(task_id, "image_search")
+    await check_and_consume(task_id, "image_search")
     results = await _search_image_impl(query, count=count)
     cost = settings.openserp_cost_per_call
     await report_usage(task_id, "image_search", cost, {"query": query, "count": len(results)})
@@ -81,7 +81,7 @@ async def ocr_image(image_url: str, task_id: str) -> dict:
 
     image_url 传 generate_images 返回的本地路径（/static/generated/...）即可。
     """
-    quotas.check_and_consume(task_id, "ocr")
+    await check_and_consume(task_id, "ocr")
     if settings.mock_image_gen:
         # mock 生图是占位 SVG，视觉模型打不开（实测 400）；直接返回占位文本
         return {"raw_text": "[mock] 开发模式模拟生图，无真实文字",
@@ -108,7 +108,7 @@ async def generate_images(task_id: str, pages: list[str], mode: str = "general",
     pages = [str(p or "").strip() for p in (pages or [])]
     if not pages:
         raise ValueError("pages 不能为空：请传入 6 页分页文案")
-    quotas.check_and_consume(task_id, "image", n=len(pages))
+    await check_and_consume(task_id, "image", n=len(pages))
 
     reference_urls = [u for u in (reference_urls or []) if u]
     seen_hashes: set[str] = set()
@@ -120,9 +120,12 @@ async def generate_images(task_id: str, pages: list[str], mode: str = "general",
         origin_url = r["image_url"]
         data, ctype = await fetch_image_bytes(origin_url)
         content_hash = hashlib.md5(data).hexdigest()
+        # 逐张进度回调（监控页展示「生成配图 P3/6」，不进成本台账）
+        await report_usage(task_id, "image_gen_progress", 0,
+                           {"page": i, "total": len(pages)})
         # 内容级去重：与同任务已出图重复 → 换构图重生一次（配额已含余量）
         if content_hash in seen_hashes and not settings.mock_image_gen:
-            quotas.check_and_consume(task_id, "image")
+            await check_and_consume(task_id, "image")
             extra_gen += 1
             r = await generate_image(
                 prompt + "（请换一种与之前不同的构图和视角）",

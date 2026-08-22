@@ -7,6 +7,7 @@ const MonitorView = {
       counts: {}, limiter: {}, tasks: [], events: [],
       connected: false, es: null, nodes: [],
       debugOn: false, showPw: false, pw: '', pwError: '', pwLoading: false,
+      cancelling: '',   // 正在中断的 task_id（按钮防抖）
     };
   },
   computed: {
@@ -17,9 +18,9 @@ const MonitorView = {
       return this.tasks.filter(t => t.status === 'processing' || t.status === 'queued')
         .sort((a, b) => (a.status === 'processing' ? -1 : 1));
     },
-    // debug 模式：展示全部会话（含完成/失败），生产中排前
+    // debug 模式：展示全部会话（含完成/失败/中断），生产中排前
     debugTasks() {
-      const rank = { processing: 0, queued: 1, failed: 2, done: 3 };
+      const rank = { processing: 0, queued: 1, failed: 2, cancelled: 3, done: 4 };
       return [...this.tasks].sort((a, b) => (rank[a.status] ?? 9) - (rank[b.status] ?? 9));
     },
     shownTasks() { return this.debugOn ? this.debugTasks : this.activeTasks; },
@@ -32,20 +33,55 @@ const MonitorView = {
       return 'todo';
     },
     statusText(s) {
-      return { queued: '排队中', processing: '生产中', done: '已完成', failed: '失败' }[s] || s;
+      return { queued: '排队中', processing: '生产中', done: '已完成', failed: '失败',
+               cancelled: '已中断' }[s] || s;
     },
     statusCls(s) {
-      return { queued: 'tag-gray', processing: 'tag-blue', done: 'tag-green', failed: 'tag-red' }[s] || 'tag-gray';
+      return { queued: 'tag-gray', processing: 'tag-blue', done: 'tag-green',
+               failed: 'tag-red', cancelled: 'tag-yellow' }[s] || 'tag-gray';
+    },
+    queryOf(id) {
+      const t = this.tasks.find(x => x.id === id);
+      return t ? t.query : '';
+    },
+    // 业务阶段文案：节点 + Agent 子阶段（工具调用/流式输出）
+    stageText(t) {
+      if (t.status === 'queued') return '等待调度';
+      if (t.status !== 'processing') return '';
+      const node = t.current_node ? this.nodeLabel(t.current_node) : '';
+      if (t.current_node === 'agent_production') {
+        if (t.stage_hint) return `${node} · ${t.stage_hint}`;
+        if (t.stream) return `${node} · 流式创作中（约 ${t.stream.tokens || 0} token）`;
+        return node + ' · 启动中…';
+      }
+      return node || '启动中…';
     },
     eventText(e) {
       const label = e.node ? this.nodeLabel(e.node) : '';
+      const q = e.task_id ? this.queryOf(e.task_id) : '';
+      const who = q ? `「${q.slice(0, 12)}${q.length > 12 ? '…' : ''}」` : '';
       const map = {
         task_enqueued: '入队', task_started: '开始生产', task_finished: '生产完成',
-        task_failed: '失败', node_started: '节点开始', node_finished: '节点完成',
-        node_failed: '节点失败', rate_limit: '触发限流', concurrency: '并发调整',
-        maintenance: '检修切换',
+        task_failed: '失败', task_cancelled: '人工中断', node_started: '节点开始',
+        node_finished: '节点完成', node_failed: '节点失败', rate_limit: '触发限流',
+        concurrency: '并发调整', maintenance: '检修切换',
+        agent_progress: e.tokens_est ? `流式输出 +${e.chars || 0}字（累计约 ${e.tokens_est} token）`
+                                     : 'Agent 启动',
+        agent_tool: `工具 · ${e.tool || ''}` + (e.page ? ` P${e.page}/${e.total || '?'}` : ''),
       };
-      return `${map[e.type] || e.type}${label ? ' · ' + label : ''}${e.msg ? ' · ' + e.msg : ''}`;
+      const detail = map[e.type] || e.type;
+      return `${who}${detail}${label ? ' · ' + label : ''}${e.msg ? ' · ' + e.msg : ''}`;
+    },
+    async cancelTask(t) {
+      if (this.cancelling) return;
+      const stage = this.stageText(t);
+      if (!confirm(`确定中断该任务？\n\n「${t.query}」\n当前阶段：${stage || t.status}\n\n已产生的产物会保留，中断后可在任务中心重试（已完成节点跳过）。`)) return;
+      this.cancelling = t.id;
+      try {
+        await api.post(`/api/tasks/${t.id}/cancel?actor=` + encodeURIComponent((getUser() || {}).name || 'anonymous'));
+        this.loadSnapshot();
+      } catch (e) { alert('中断失败：' + e.message); }
+      finally { this.cancelling = ''; }
     },
     // ---------- debug 开关 ----------
     askDebug() {
@@ -113,6 +149,19 @@ const MonitorView = {
         this.counts = d.counts; this.limiter = d.limiter; this.tasks = d.tasks || [];
       } catch (e) { /* 静默，等 SSE */ }
     },
+    applyAgentEvent(d) {
+      // Agent 流式/工具事件：直接更新本地任务对象（高频，不重拉快照）
+      const t = this.tasks.find(x => x.id === d.task_id);
+      if (!t) { this.loadSnapshot(); return; }
+      if (d.type === 'agent_progress' && d.chars) {
+        t.stream = { chars: d.chars, tokens: d.tokens_est || 0, tail: d.preview || '' };
+      } else if (d.type === 'agent_tool') {
+        const m = { web_search: '检索证据', image_search: '搜索实景参考图',
+                    image_gen_progress: `生成配图 P${d.page}/${d.total || '?'}`,
+                    image_gen: '配图生成完成', ocr: 'OCR 图文自检' };
+        t.stage_hint = m[d.tool] || `调用工具 ${d.tool || ''}`;
+      }
+    },
     connect() {
       this.es = new EventSource('/api/stream/events');
       this.es.onopen = () => { this.connected = true; };
@@ -120,11 +169,21 @@ const MonitorView = {
       this.es.onmessage = (ev) => {
         try {
           const d = JSON.parse(ev.data);
-          if (!d.type || d.type === 'ping') return;
-          if (d.type === 'snapshot') { this.loadSnapshot(); return; }
+          if (!d.type || d.type === 'ping' || d.type === 'snapshot') {
+            if (d.type === 'snapshot') this.loadSnapshot();
+            return;
+          }
+          // 流式输出事件按 1500 字里程碑进事件流（避免刷屏），流式框实时更新
+          if (d.type === 'agent_progress') {
+            this.applyAgentEvent(d);
+            if ((d.chars || 0) % 1500 >= 300) return;
+          } else if (d.type === 'agent_tool') {
+            this.applyAgentEvent(d);
+          } else if (d.type.startsWith('task_') || d.type.startsWith('node_')) {
+            this.loadSnapshot();
+          }
           this.events.unshift({ ts: new Date().toLocaleTimeString('zh-CN', { hour12: false }), ...d });
           if (this.events.length > 100) this.events.pop();
-          if (d.type.startsWith('task_') || d.type.startsWith('node_')) this.loadSnapshot();
         } catch (e) { /* 非 JSON 帧忽略 */ }
       };
     },
@@ -165,11 +224,25 @@ const MonitorView = {
         <div class="monitor-task-head">
           <b>{{ t.query }}</b>
           <span class="tag" :class="statusCls(t.status)">{{ statusText(t.status) }}</span>
-          <span v-if="t.current_node" class="muted">当前：{{ nodeLabel(t.current_node) }}</span>
+          <span v-if="stageText(t)" class="tag tag-blue" style="white-space:nowrap">{{ stageText(t) }}</span>
           <span v-if="debugOn && t.model" class="muted">模型：{{ t.model }}</span>
+          <button v-if="t.status === 'processing' || t.status === 'queued'"
+                  class="btn btn-danger btn-sm" style="margin-left:auto;white-space:nowrap"
+                  :disabled="cancelling === t.id"
+                  @click="cancelTask(t)">{{ cancelling === t.id ? '中断中…' : '✕ 中断任务' }}</button>
         </div>
         <div class="mini-steps">
           <span v-for="n in nodes" :key="n.name" class="mini-step" :class="nodeState(t, n.name)" :title="n.label"></span>
+        </div>
+        <div v-if="t.status === 'processing'" class="stage-row">
+          <span class="muted" style="font-size:12.5px">阶段：</span>
+          <span v-for="n in nodes" :key="'s'+n.name" class="stage-chip" :class="nodeState(t, n.name)">{{ n.label }}</span>
+        </div>
+        <div v-if="t.stream && t.status === 'processing'" class="stream-box">
+          <div class="stream-head">
+            <span class="live-dot"></span> 流式输出 · {{ t.stream.chars }} 字 · 约 {{ t.stream.tokens }} token
+          </div>
+          <pre class="stream-text">{{ t.stream.tail || '等待模型输出…' }}</pre>
         </div>
         <template v-if="debugOn">
           <div v-if="t.error" class="form-error" style="margin-top:8px">错误：{{ t.error }}</div>

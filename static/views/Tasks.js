@@ -29,10 +29,13 @@ const TasksView = {
       return this.detailTask ? (this.live[this.detailTask.id] || null) : null;
     },
     canRetry() {
-      return this.detailTask && ['failed', 'rejected'].includes(this.detailTask.status);
+      return this.detailTask && ['failed', 'rejected', 'cancelled'].includes(this.detailTask.status);
     },
     retryLabel() {
       if (!this.detailTask) return '';
+      if (this.detailTask.status === 'cancelled') {
+        return '↻ 继续生产该任务（已完成节点跳过）';
+      }
       if (this.detailTask.status === 'rejected') {
         const n = ((this.detail && this.detail.reject_marks) || []).length;
         return n ? `↻ 定点重生成 ${n} 项（其余内容保留）` : '↻ 按驳回意见重新生产（全链重跑）';

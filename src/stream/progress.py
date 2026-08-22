@@ -56,10 +56,28 @@ def _done_msg(node: str, data: dict) -> str:
     return "完成"
 
 
+def _tool_stage_text(data: dict) -> str:
+    """Agent 工具调用 → 可读阶段文案（监控页展示当前创作子阶段）。"""
+    tool = data.get("tool", "")
+    page, total = data.get("page"), data.get("total")
+    if tool == "web_search":
+        return f"检索证据（{data.get('count', '')} 条结果）".replace("（）", "")
+    if tool == "image_search":
+        return "搜索实景参考图"
+    if tool == "image_gen_progress":
+        return f"生成配图 P{page}/{total}"
+    if tool == "image_gen":
+        return f"配图生成完成（共 {data.get('pages', total or '')} 张）".replace("（）", "")
+    if tool == "ocr":
+        return "OCR 图文自检"
+    return f"调用工具 {tool}"
+
+
 class ProgressTracker:
     def __init__(self):
         self.tasks: dict[str, dict] = {}
-        self.counts = {"queued": 0, "processing": 0, "done": 0, "failed": 0}
+        self.counts = {"queued": 0, "processing": 0, "done": 0, "failed": 0,
+                       "cancelled": 0}
         self.log: list[str] = []
         self._q: asyncio.Queue | None = None
         self._consumer: asyncio.Task | None = None
@@ -112,6 +130,11 @@ class ProgressTracker:
             t["error"] = data.get("error", "")
             self.counts["processing"] = max(0, self.counts["processing"] - 1)
             self.counts["failed"] += 1
+        elif etype == "task_cancelled" and t:
+            t["status"] = "cancelled"
+            t["error"] = ""
+            self.counts["processing"] = max(0, self.counts["processing"] - 1)
+            self.counts["queued"] = max(0, self.counts["queued"] - 1)
         elif etype == "node_started" and t:
             t["current_node"] = data.get("node", "")
         elif etype == "node_finished" and t:
@@ -133,6 +156,8 @@ class ProgressTracker:
                 t["model"] = data.get("model", "")
                 if data.get("image_urls"):
                     t["imgs"] = data["image_urls"]
+                t.pop("stream", None)      # 创作完成：收起流式输出框
+                t.pop("stage_hint", None)
             elif node == "asset_gen" and data.get("image_urls"):
                 t["imgs"] = data["image_urls"]
             elif node == "risk_classify" and data.get("level"):
@@ -152,15 +177,30 @@ class ProgressTracker:
                 "trace": data.get("traceback", ""),
             })
         elif etype == "agent_progress" and t:
-            # Nanobot 创作 Agent 过程事件（连接/纠错/流式进度），进 debug 不进全局日志
-            msg = data.get("message") or (
-                f"生成中… 已输出 {data.get('chars', 0)} 字")
+            # Nanobot 创作 Agent 流式输出：保留最新流状态（监控页流式框），
+            # debug 只在开始/每千字记一条，避免刷屏
+            t["stream"] = {"chars": data.get("chars", 0),
+                           "tokens": data.get("tokens_est", 0),
+                           "tail": data.get("preview", "")}
+            chars = data.get("chars", 0)
+            if chars and (chars - t.get("_stream_logged", 0)) >= 1000:
+                t["_stream_logged"] = chars
+                t.setdefault("debug", []).append({
+                    "ts": datetime.now().strftime("%H:%M:%S"),
+                    "node": "agent_production", "label": NODE_LABEL.get(
+                        "agent_production", "agent_production"),
+                    "phase": "running", "elapsed": None,
+                    "msg": f"流式输出中… {chars} 字（约 {data.get('tokens_est', 0)} token）",
+                })
+        elif etype == "agent_tool" and t:
+            # Agent 工具调用阶段：更新阶段提示（检索证据/生成配图 P3/6/OCR自检）
+            t["stage_hint"] = _tool_stage_text(data)
             t.setdefault("debug", []).append({
                 "ts": datetime.now().strftime("%H:%M:%S"),
                 "node": "agent_production", "label": NODE_LABEL.get(
                     "agent_production", "agent_production"),
-                "phase": "running", "elapsed": None, "msg": msg,
-                "trace": data.get("preview", ""),
+                "phase": "running", "elapsed": None,
+                "msg": t["stage_hint"],
             })
 
     def _append_log(self, etype: str, tid, data: dict) -> None:
@@ -212,7 +252,8 @@ class ProgressTracker:
     def clear(self) -> None:
         """清空任务进度状态（配合后台删除工作内容）。"""
         self.tasks.clear()
-        self.counts = {"queued": 0, "processing": 0, "done": 0, "failed": 0}
+        self.counts = {"queued": 0, "processing": 0, "done": 0, "failed": 0,
+                       "cancelled": 0}
 
     def get_log(self) -> list[str]:
         return list(self.log)

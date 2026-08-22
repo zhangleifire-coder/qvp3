@@ -45,6 +45,8 @@ class TaskScheduler:
         self._pause_event = asyncio.Event()
         self._pause_event.set()
         self._seq = 0                      # 入队序号：同优先级内保 FIFO
+        self._running: dict[str, asyncio.Task] = {}  # 执行中的 _process 协程（供手工中断）
+        self._cancel_pending: set[str] = set()       # 排队中被标记中断的任务
 
     async def start(self) -> None:
         if self._started:
@@ -111,6 +113,7 @@ class TaskScheduler:
     def clear(self) -> None:
         """清空内存中的队列与任务元数据（配合数据库清空）。"""
         self._meta.clear()
+        self._cancel_pending.clear()
         while not self.queue.empty():
             try:
                 self.queue.get_nowait()
@@ -118,19 +121,61 @@ class TaskScheduler:
             except asyncio.QueueEmpty:
                 break
 
+    async def cancel(self, task_id) -> str:
+        """手工中断任务：取消执行中的协程 / 出队排队中的任务。
+
+        返回 "running"（已发取消信号）/ "queued"（已出队）/ "not_found"（不在调度器内，
+        调用方直接改库即可）。CancelledError 不会经过 execute_node 的 except Exception，
+        节点事件自动回滚，中断后可幂等重试（已完成节点跳过）。
+        """
+        tid = str(task_id)
+        proc = self._running.get(tid)
+        if proc is not None:
+            proc.cancel()
+            return "running"
+        if tid in self._meta and self._meta[tid].get("status") == "queued":
+            self._cancel_pending.add(tid)
+            return "queued"
+        return "not_found"
+
     async def _worker(self) -> None:
         while True:
             await self._pause_event.wait()
             _, _, task_id = await self.queue.get()
             await self.limiter.acquire()
             tid = str(task_id)
+            if tid in self._cancel_pending:
+                # 排队期间被手工中断：直接丢弃，不再执行
+                self._cancel_pending.discard(tid)
+                self._meta[tid]["status"] = "cancelled"
+                await bus.publish("task_cancelled",
+                                  {"query": self._meta[tid].get("query", ""),
+                                   "phase": "queued"}, task_id=tid)
+                await self.limiter.release()
+                self.queue.task_done()
+                continue
+            self._meta[tid]["status"] = "processing"
+            await bus.publish("task_started", {"query": self._meta[tid]["query"]}, task_id=tid)
+            # _process 独立成协程：手工中断时才能精准 cancel 而不动 worker 本身
+            proc = asyncio.create_task(
+                self._process(task_id, self._meta[tid].get("kind", "pipeline")))
+            self._running[tid] = proc
             try:
-                self._meta[tid]["status"] = "processing"
-                await bus.publish("task_started", {"query": self._meta[tid]["query"]}, task_id=tid)
-                await self._process(task_id, self._meta[tid].get("kind", "pipeline"))
+                await proc
                 self._meta[tid]["status"] = "done"
                 await self.limiter.report(success=True, throttled=False)
                 await bus.publish("task_finished", {"query": self._meta[tid]["query"]}, task_id=tid)
+            except asyncio.CancelledError:
+                if not proc.cancelled():
+                    raise  # 是 worker 自身被取消（停机），不是手工中断
+                # 手工中断：不计入限流器失败统计；CancelledError 不经过
+                # execute_node 的 except Exception，节点事件自动回滚，
+                # 重试时幂等续跑（已完成节点跳过）
+                self._meta[tid]["status"] = "cancelled"
+                await bus.publish("task_cancelled",
+                                  {"query": self._meta[tid].get("query", ""),
+                                   "phase": "running"}, task_id=tid)
+                await self._mark_status(task_id, "cancelled")
             except Exception as e:  # noqa: BLE001
                 throttled = is_throttled(e)
                 self._meta[tid]["status"] = "failed"
@@ -140,6 +185,7 @@ class TaskScheduler:
                                    "throttled": throttled}, task_id=tid)
                 await self._mark_status(task_id, "failed")
             finally:
+                self._running.pop(tid, None)
                 await self.limiter.release()
                 self.queue.task_done()
 
