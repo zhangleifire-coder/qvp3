@@ -53,6 +53,7 @@ _AGENT_INSTRUCTIONS = """你是「图文生产平台」的创作 Agent，负责�
 【任务】
 - Query：{query}
 - 生产模式：{mode}（{mode_desc}）
+- task_id：{task_id}（每次调用工具时，task_id 参数必须原样传这个值，用于配额与成本记账）
 
 【可用工具（按需调用，均有配额）】
 - web_search(query, task_id)：网页检索事实证据（配额 {quota_search} 次，检索词要精准）
@@ -178,13 +179,14 @@ def _validate_output(data: dict) -> tuple[dict | None, list[str]]:
             "ocr_map": ocr_map, "notes": str(data.get("notes", ""))[:1000]}, []
 
 
-def _compose_message(query: str, mode: str, draft_tpl: str, pages_tpl: str,
-                     image_tpl: str, feedbacks: list[str]) -> str:
+def _compose_message(task_id: str, query: str, mode: str, draft_tpl: str,
+                     pages_tpl: str, image_tpl: str, feedbacks: list[str]) -> str:
     lines = "\n".join(f"{i}. {r}" for i, r in enumerate(feedbacks, 1))
     feedback_section = (_FEEDBACK_HEADER.format(feedback_lines=lines)
                         if feedbacks else "")
     return _AGENT_INSTRUCTIONS.format(
         query=query, mode=mode, mode_desc=_MODE_DESC.get(mode, mode),
+        task_id=task_id,
         quota_search=settings.mcp_max_web_searches_per_task,
         draft_template=draft_tpl, pages_template=pages_tpl,
         image_template=image_tpl, feedback_section=feedback_section,
@@ -270,7 +272,8 @@ async def node_agent_production(input_data: dict) -> dict:
             f"请启动 Nanobot 或设 AGENT_PIPELINE_ENABLED=false 回退直连路径")
 
     session_id = f"qvp-task-{tid}-{uuid.uuid4().hex[:8]}"
-    user_msg = _compose_message(query, mode, draft_tpl, pages_tpl, image_tpl, feedbacks)
+    user_msg = _compose_message(tid, query, mode, draft_tpl, pages_tpl,
+                                image_tpl, feedbacks)
     await bus.publish("agent_progress", {"message": "已连接 Nanobot，开始创作…",
                                          "session_id": session_id}, task_id=tid)
 
@@ -361,7 +364,6 @@ async def node_agent_production(input_data: dict) -> dict:
         for idx, body in enumerate(out["pages"], start=1):
             session.add(PageCopy(task_id=task_id, page_index=idx, body=body,
                                  claim_ids=[]))
-        ocr_rows_meta = []
         for img in localized:
             mv = result["model_version"]
             if not img["size_ok"]:

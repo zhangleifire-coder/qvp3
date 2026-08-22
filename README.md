@@ -2,6 +2,10 @@
 
 一条命令启动全部服务（应用 + PostgreSQL + Redis + OpenSERP）。
 
+> **2026-08-22 改造**：已接入 Nanobot 全链创作 Agent（创作段六节点收敛为
+> `agent_production` 大节点，双路径开关可回退）。本地运行步骤、架构与已知限制见
+> **`docs/改造说明-Nanobot全链Agent.md`**（先读这个）。
+
 ## 启动
 
 ```bash

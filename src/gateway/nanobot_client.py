@@ -111,10 +111,18 @@ async def call_agent(user_message: str, *, session_id: str,
     text = "".join(text_parts)
     if not text.strip():
         raise RuntimeError(f"nanobot 返回空响应，session={session_id}")
+    estimated = False
+    if usage["prompt_tokens"] == 0 and usage["completion_tokens"] == 0:
+        # 流式响应可能不带 usage：按字符估算（中文约 1.7 字/token），
+        # 保持成本口径非零（node_events 的 cost_estimate_cny 本就是估算值）
+        usage["prompt_tokens"] = int(len(user_message) / 1.7)
+        usage["completion_tokens"] = int(len(text) / 1.7)
+        estimated = True
     return {
         "text": text,
         "model_version": f"nanobot:{model_version}" if model_version else "nanobot",
         "prompt_tokens": usage["prompt_tokens"],
         "completion_tokens": usage["completion_tokens"],
+        "usage_estimated": estimated,
         "elapsed_seconds": round(time.time() - start, 2),
     }

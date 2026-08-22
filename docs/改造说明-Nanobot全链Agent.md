@@ -1,0 +1,144 @@
+# 改造说明 · Nanobot 全链创作 Agent + 业务调度层（2026-08-22）
+
+> 改造目标：AI 推理与工具执行的工作流交给 Nanobot Agent 调度；业务后端（FastAPI）
+> 保留参数校验、数据库、重试、失败告警、任务状态持久化，用传统软件工程层兜底稳定性。
+> 分支：`main`（基线 `6d938fa` 为移交包 20260822 原始状态；`6d9de57` 起为本次改造）。
+
+---
+
+## 一、目标架构
+
+```
+┌─ 业务调度层（FastAPI 后端，全部保留）────────────────────────────┐
+│ 导入/参数校验 → 任务入库(tasks) → 队列调度(AIMD 自适应并发)        │
+│ → agent_production 大节点 ──失败→ 重试(幂等)/任务failed/监控告警   │
+│ → rule_check → cross_check → risk_classify → review → 导出        │
+│ 成本核算(node_events) / SSE 实时监控 / 审核工作流 / 操作审计        │
+└──────────────┬──────────────────────────────────────────────────┘
+               │ 一次 OpenAI 兼容流式调用（POST /v1/chat/completions）
+               ▼
+┌─ Nanobot 创作 Agent（nanobot serve，127.0.0.1:8900）─────────────┐
+│ 模型路由：deepseek-v4-pro 主 / kimi k3 备（fallbackModels）        │
+│ 工具（qvp_mcp，MCP stdio 子进程）：                                │
+│   web_search(豆包) · image_search(OpenSERP)                       │
+│   generate_images(gpt-image-2 批量+去重+本地化) · ocr_image(qwen)  │
+│ 编排：检索取证 → 写正文 → 分页文案 → 生成6图 → OCR 自检            │
+│ 输出：严格 JSON 契约 {evidence, draft, pages[6], images[6], ...}   │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+**流水线双路径**（`AGENT_PIPELINE_ENABLED` 开关）：
+
+| 路径 | 节点序列 | 说明 |
+|---|---|---|
+| Agent 路径（新，默认开） | task_import → **agent_production** → rule_check → cross_check → risk_classify → review_queue → batch_signoff → publish_snapshot（8 节点） | 创作段六节点收敛为一个 Agent 大节点 |
+| 直连路径（原，兜底） | 原 13 节点 | Nanobot 故障时 `.env` 改 `false` 重启即回退 |
+
+两路径共用：幂等（node_events sha256 键）、成本、SSE 监控、审核、驳回重生成。
+`/api/meta/nodes` 按开关自适应返回节点清单（前端 StepsBar 唯一数据源，无需改前端）。
+
+## 二、新增代码地图
+
+```
+code/
+├── qvp_mcp/                      # MCP 工具服务器（nanobot 子进程，stdio）
+│   ├── server.py                 #   4 工具：web_search/image_search/generate_images/ocr_image
+│   ├── quotas.py                 #   task_id 级硬配额（生图≤8/搜索≤3/OCR≤8），超限报错
+│   └── cost_report.py            #   每次工具调用成本 POST 回调后端
+├── nanobot/
+│   ├── config.json               # nanobot 配置（providers/presets/fallback/MCP/密钥走 ${ENV}）
+│   └── start-nanobot.sh          # 启动脚本（从 .env 注入 key，--timeout 2400）
+├── src/gateway/nanobot_client.py # OpenAI 兼容流式客户端（session 隔离/超时/usage/纠错重问）
+├── src/gateway/tool_ledger.py    # 工具成本内存台账
+├── src/api/internal.py           # POST /api/internal/tool_usage（token 鉴权）
+├── src/pipeline/agent_production.py  # 创作大节点（核心，见下）
+├── src/pipeline/orchestrator.py  # 双路径调度
+├── src/stream/progress.py        # agent_production 标签/agent_progress 过程事件
+├── scripts/smoke_agent.py        # 冒烟：导入→轮询→产物摘要
+├── scripts/smoke_review.py       # 冒烟：通过/驳回/带反馈重生成
+└── tests/unit/test_nanobot_client.py / test_agent_output.py / test_quotas.py
+└── tests/integration/test_agent_pipeline.py   # 全 mock，4 用例
+```
+
+## 三、agent_production 节点工作流
+
+1. **前置健康检查**：Nanobot `/health` 不通 → 节点立刻失败（错误信息提示启动 Nanobot 或回退开关）。
+2. **上下文组装**：query + mode + 提示词库三模板（draft_gen/page_split/image_gen，
+   解析顺序：用户自定义 → admin 系统覆盖 → 代码默认，**提示词库仍然后端主管**）
+   + 驳回反馈（重生成轮次）+ 输出 JSON 契约 + task_id（配额记账用）。
+3. **流式调用**：`session_id = qvp-task-{task_id}-{rand}`（任务间隔离；纠错追问复用同 session）。
+   过程文本按 400 字节流转发 `agent_progress` 事件到监控页。
+4. **契约校验**：防御解析（剥 ```json 围栏/截大括号）+ 严格校验
+   （draft≥150 字 / pages=6 非空 / images=6 带 URL / evidence≤12）。
+   失败 → 同 session 纠错重问一次 → 再失败 → 节点失败（幂等重跑兜底）。
+5. **确定性收尾**（后端职责，Agent 不碰数据库）：
+   - 图片全部本地化（内容 md5 去重基准、3:4 尺寸校验、`static/generated/` 落盘）；
+   - 参考图（compare/single）本地化存 official 素材；
+   - 原子落库：claims/evidence、drafts、page_copies×6、assets×6(+refs)、ocr_results×6；
+   - OCR：Agent 自检结果优先，缺失则后端兜底补齐（cross_check 依赖）。
+6. **成本合并**：文本 usage（流式无 usage 时按字符估算）+ MCP 工具回调台账
+   → node_events.cost_estimate_cny（成本明细页口径不变）。
+
+## 四、可靠性设计（软件工程层兜底）
+
+| 风险 | 兜底机制 |
+|---|---|
+| Nanobot 进程崩溃 | 前置 health 检查 + 读超时 1800s + 节点失败 → 任务 failed → 幂等重试；`AGENT_PIPELINE_ENABLED=false` 秒级回退 13 节点直连 |
+| Agent 输出不合格 | JSON 契约严格校验 + 同 session 纠错一次 + 两次失败节点失败重跑 |
+| Agent 失控烧钱 | **MCP 工具内 task_id 硬配额**（不信任 LLM 自律）：生图≤8 张(¥0.2/张)、网页搜索≤3、OCR≤8；超限工具直接报错 |
+| 成本记账漂移 | 工具每次调用 HTTP 回调后端台账；文本 usage 缺失按字符估算；node_events/成本明细页口径不变 |
+| 任务半截状态 | 产物落库为一次原子提交；图片本地化在落库前完成，失败即节点失败不留半截产物 |
+| 调度崩溃恢复 | scheduler `_recover_pending` 不变（draft/processing 重置重入队；有驳回标记走 partial_regen 直连路径） |
+| 长连接断连 | 后端↔Nanobot 流式 SSE 保活；后端↔前端 SSE 原样保留 |
+
+## 五、本地运行（Windows / Git Bash）
+
+```bash
+cd code/
+# 0. 依赖（首次）
+py -3.12 -m venv .venv && .venv/Scripts/python -m pip install -r requirements.txt
+
+# 1. 起专用 PG（5432 被其它项目占用时映射 5433，.env 里 DATABASE_URL 同步改）
+docker run -d --name qvp-postgres -e POSTGRES_USER=qvp -e POSTGRES_PASSWORD=qvp \
+  -e POSTGRES_DB=qvp -p 127.0.0.1:5433:5432 postgres:16-alpine
+
+# 2. 建表 + 账号（DATABASE_URL 显式传，init_db 不读 .env）
+DATABASE_URL="postgresql+asyncpg://qvp:qvp@localhost:5433/qvp" \
+  PYTHONUTF8=1 .venv/Scripts/python init_db.py
+
+# 3. 起 Nanobot 网关（:8900，加载 nanobot/config.json + qvp_mcp 工具）
+bash nanobot/start-nanobot.sh        # 前台；后台加 > nanobot/nanobot.log 2>&1 &
+
+# 4. 起后端（:8000，.env 需含 AGENT_PIPELINE_ENABLED=true）
+.venv/Scripts/python -m uvicorn src.api.main:app --host 127.0.0.1 --port 8000
+
+# 5. 测试 / 冒烟
+DATABASE_URL="postgresql+asyncpg://qvp:qvp@localhost:5433/qvp" \
+  .venv/Scripts/python -m pytest -q            # 114 用例全绿
+PYTHONUTF8=1 .venv/Scripts/python scripts/smoke_agent.py "某Query" general
+```
+
+登录：张三/李四/王五（1qaz@WSX）、admin（root_admin_1234）。
+`MOCK_IMAGE_GEN=true` 时不调生图 API（本地联调不花钱，MCP OCR 返回占位文本）。
+
+## 六、已知限制与后续项
+
+1. **驳回定点重生成（partial_regen）仍走直连路径**：regen.py 未改（按计划第一版保留），
+   带「⚑标记」的驳回由后端直连 litellm/生图完成；整体驳回（无标记）已走 Agent 带反馈重生成（已验证 `_regen1`）。
+2. **OpenSERP 未起时**：compare/single 的搜图工具报错 → Agent 容错继续（参考图为空，纯文生图）。
+   服务器部署用 compose 起 openserp。本地 Docker Hub 拉镜像受限（403），未验证真实搜图链路。
+3. **流式 usage**：nanobot 流式响应不带 usage，文本成本按字符估算（usage_estimated 标记）。
+4. **nanobot session 内存**：每节点执行一个 session，长期运行建议定期重启 nanobot（低峰期）。
+5. **mock 生图下风险分级偏 red**：mock OCR 文本与文案对不上 → cross_check 误报，真实生图下正常。
+6. **服务器部署（后续）**：docker-compose 增加 nanobot + qvp_mcp 服务（或同容器），
+   config.json 中的绝对路径改容器内路径；密钥经 ${ENV} 注入。
+
+## 七、验证记录（2026-08-22 本地）
+
+- pytest：**114/114 全绿**（原 92 + 新增 22）
+- 冒烟 general：8 节点全绿 → review；540 字正文 / 6 页 / 6 图 / OCR 兜底 / 3 证据；成本 ¥0.0652
+- 冒烟 compare：677 字（agent_compare_v1），无 OpenSERP 容错通过
+- 冒烟 single：722 字（agent_single_v1）
+- 审核闭环：approve→approved；reject→rejected；retry→Agent 带反馈重生成（agent_compare_v1_regen1）
+- 成本明细：/api/admin/costs 按任务/节点/模型三维拆分正常（3 任务 4 次生产 ¥0.2654）
+- 回退开关：AGENT_PIPELINE_ENABLED=false → /api/meta/nodes 返回 13 节点直连路径

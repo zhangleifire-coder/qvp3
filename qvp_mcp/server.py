@@ -77,11 +77,15 @@ async def image_search(query: str, task_id: str, count: int = 6) -> dict:
 
 @mcp.tool
 async def ocr_image(image_url: str, task_id: str) -> dict:
-    """OCR 识别一张图片上的全部文字（用于图上文案与分页文案一致性自检）。
+    """OCR 识别一张图片上的全部文字（用于图上文字与分页文案一致性自检）。
 
     image_url 传 generate_images 返回的本地路径（/static/generated/...）即可。
     """
     quotas.check_and_consume(task_id, "ocr")
+    if settings.mock_image_gen:
+        # mock 生图是占位 SVG，视觉模型打不开（实测 400）；直接返回占位文本
+        return {"raw_text": "[mock] 开发模式模拟生图，无真实文字",
+                "model": "mock", "cost_cny": 0}
     r = await _ocr_impl(image_url)
     await report_usage(task_id, "ocr", r["cost_cny"], {"image_url": image_url[:200]})
     return {"raw_text": r["raw_text"], "model": r["model"], "cost_cny": r["cost_cny"]}
