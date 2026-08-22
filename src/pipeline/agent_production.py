@@ -75,6 +75,11 @@ _AGENT_INSTRUCTIONS = """你是「图文生产平台」的创作 Agent，负责�
 【正文创作规范（系统提示词，必须遵守）】
 {draft_template}
 
+【合规红线（规则机逐词扫描，出现即判不通过）】
+1. 禁用词：绝对、100%、最、第一、唯一、永久、终身、安全、无害、无副作用、治疗、疗效、保证。
+   注意「最」含一切搭配（最重要/最关键/最好…），请改用「很/十分/更/相对」等表述。
+2. 字数：正文（不计空白字符）必须落在 400-700 字之间，写完自查一遍再输出。
+
 【分页规范（系统提示词，必须遵守）】
 {pages_template}
 
@@ -375,23 +380,26 @@ async def node_agent_production(input_data: dict) -> dict:
                 origin_url=img["origin_url"] or None,
                 model_version=mv, is_illustration=False))
         await session.flush()
-        # OCR：Agent 自检结果优先，缺失则后端兜底补齐（cross_check 依赖）
+        # OCR：Agent 自检结果优先；Agent 未覆盖的页由后端兜底补齐
+        # （cross_check 按全页 OCR 对撞，缺页会被判「识别失败」拉高风险分级）
         assets = (await session.execute(
             select(Asset.id, Asset.page_index, Asset.image_url)
             .where(Asset.task_id == task_id,
                    Asset.source_type == "ai_generated")
             .order_by(Asset.page_index))).all()
         ocr_cost = 0.0
-        if out["ocr_map"]:
-            for asset_id, page_index, _ in assets:
-                text = out["ocr_map"].get(page_index, "")
-                session.add(OcrResult(
-                    asset_id=asset_id, raw_text=text,
-                    key_fields={"page": str(page_index), "source": "agent"},
-                    confidence=0.9 if text else 0.0))
-        else:
-            rows, ocr_cost = await _fallback_ocr(
-                [(a.id, a.page_index, a.image_url) for a in assets])
+        missing_rows = []
+        for asset_id, page_index, image_url in assets:
+            text = out["ocr_map"].get(page_index)
+            if text is None:
+                missing_rows.append((asset_id, page_index, image_url))
+                continue
+            session.add(OcrResult(
+                asset_id=asset_id, raw_text=text,
+                key_fields={"page": str(page_index), "source": "agent"},
+                confidence=0.9 if text else 0.0))
+        if missing_rows:
+            rows, ocr_cost = await _fallback_ocr(missing_rows)
             session.add_all(rows)
         await session.commit()
 

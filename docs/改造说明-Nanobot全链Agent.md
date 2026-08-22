@@ -127,18 +127,34 @@ PYTHONUTF8=1 .venv/Scripts/python scripts/smoke_agent.py "某Query" general
    带「⚑标记」的驳回由后端直连 litellm/生图完成；整体驳回（无标记）已走 Agent 带反馈重生成（已验证 `_regen1`）。
 2. **OpenSERP 未起时**：compare/single 的搜图工具报错 → Agent 容错继续（参考图为空，纯文生图）。
    服务器部署用 compose 起 openserp。本地 Docker Hub 拉镜像受限（403），未验证真实搜图链路。
+   生图线路已于 2026-08-23 切换为 linkai.pics 直连（linkai 实际单价未知，记账暂按 0.2 元/张）。
 3. **流式 usage**：nanobot 流式响应不带 usage，文本成本按字符估算（usage_estimated 标记）。
 4. **nanobot session 内存**：每节点执行一个 session，长期运行建议定期重启 nanobot（低峰期）。
 5. **mock 生图下风险分级偏 red**：mock OCR 文本与文案对不上 → cross_check 误报，真实生图下正常。
 6. **服务器部署（后续）**：docker-compose 增加 nanobot + qvp_mcp 服务（或同容器），
    config.json 中的绝对路径改容器内路径；密钥经 ${ENV} 注入。
 
-## 七、验证记录（2026-08-22 本地）
+## 七、验证记录（2026-08-22/23 本地）
+
+### 真实生图链路（2026-08-23，linkai.pics 直连线路，OPENAI_IMAGE_BASE_URL=https://direct.linkai.pics/v1）
+
+- API 探测：仅暴露 `gpt-image-2`，与平台模型配置一致；单张约 57s，返回 S3 预签名
+  远程 URL（浏览器友好，非 openox 内联 URL），实测 1152x1536 精确竖版。
+- 全真实冒烟①（修复前）：8 节点全绿 → review；6 张真图（1.8-2.3MB/张）全部本地化；
+  暴露两问题——Agent 只自检 2/6 页 OCR 导致缺页被判「识别失败」拉红风险；
+  正文「最」字触禁词规则。
+- 全真实冒烟②（修复后，"新手第一辆车怎么选"）：**OCR 6/6 页真实识别**、
+  **cross_check 6 过 0 失败**（图上文字与分页文案真实验证一致）、禁词规则通过、
+  风险 red→yellow（仅剩超字数）；随后已在指令中加 400-700 字硬约束。
+- 成本口径：image_cost_per_image_cny 仍按 0.2 元/张记账（linkai 实际单价未知，
+  拿到账单后调 .env 即可）。
+
+### mock 生图链路（2026-08-22）
 
 - pytest：**114/114 全绿**（原 92 + 新增 22）
 - 冒烟 general：8 节点全绿 → review；540 字正文 / 6 页 / 6 图 / OCR 兜底 / 3 证据；成本 ¥0.0652
 - 冒烟 compare：677 字（agent_compare_v1），无 OpenSERP 容错通过
 - 冒烟 single：722 字（agent_single_v1）
 - 审核闭环：approve→approved；reject→rejected；retry→Agent 带反馈重生成（agent_compare_v1_regen1）
-- 成本明细：/api/admin/costs 按任务/节点/模型三维拆分正常（3 任务 4 次生产 ¥0.2654）
+- 成本明细：/api/admin/costs 按任务/节点/模型三维拆分正常
 - 回退开关：AGENT_PIPELINE_ENABLED=false → /api/meta/nodes 返回 13 节点直连路径
