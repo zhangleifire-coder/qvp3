@@ -11,12 +11,14 @@ const ReviewView = {
       showReject: false, rejectReason: '', acting: false,
       marks: {},            // 定点驳回标记 {"page:2": {item_type, page_index, reason}}
       zoom: null,           // 图片放大浏览 {src, title, text}
+      allAccess: false,     // 试运行期全员开放三角色（ROLE_ALL_ACCESS）
+      activeRole: '',       // 当前审核角色（allAccess 时可切换，默认账号自身角色）
     };
   },
   computed: {
     user() { return getUser(); },
     role() { return this.user ? this.user.role : ''; },
-    isReviewer() { return ['A', 'B', 'C'].includes(this.role); },
+    isReviewer() { return ['A', 'B', 'C'].includes(this.role) || this.allAccess; },
     marksList() { return Object.values(this.marks).sort((a, b) => a.page_index - b.page_index); },
     timerText() {
       const m = String(Math.floor(this.seconds / 60)).padStart(2, '0');
@@ -69,9 +71,18 @@ const ReviewView = {
       this.zoom = { list, index };
     },
     async loadQueue() {
-      if (!this.isReviewer) return;
-      try { this.queue = (await api.get(`/api/review/queue/${this.role}`)).sessions || []; this.error = ''; }
+      if (!this.isReviewer || !this.activeRole) return;
+      try { this.queue = (await api.get(`/api/review/queue/${this.activeRole}`)).sessions || []; this.error = ''; }
       catch (e) { this.error = e.message; }
+    },
+    switchRole(r) {
+      if (r === this.activeRole) return;
+      this.releaseTimers();
+      this.activeRole = r;
+      this.queue = []; this.current = null; this.currentId = null;
+      this.claimed = false; this.lockedBy = ''; this.msg = ''; this.error = '';
+      this.marks = {}; this.showReject = false; this.rejectReason = '';
+      this.loadQueue();
     },
     async select(t) {
       this.releaseTimers();
@@ -88,12 +99,12 @@ const ReviewView = {
     async claim() {
       this.error = '';
       try {
-        const r = await api.post('/api/review/claim', { task_id: this.currentId, role: this.role, reviewer_id: this.user.name });
+        const r = await api.post('/api/review/claim', { task_id: this.currentId, role: this.activeRole, reviewer_id: this.user.name });
         if (!r.acquired) { this.lockedBy = r.locked_by || '其他人'; return; }
         this.claimed = true; this.seconds = 0;
         this.tickTimer = setInterval(() => { this.seconds++; }, 1000);
         this.hbTimer = setInterval(() => {
-          api.post('/api/review/heartbeat', { task_id: this.currentId, role: this.role, reviewer_id: this.user.name, client_ts: Date.now() }).catch(() => {});
+          api.post('/api/review/heartbeat', { task_id: this.currentId, role: this.activeRole, reviewer_id: this.user.name, client_ts: Date.now() }).catch(() => {});
         }, 10000);
       } catch (e) { this.error = e.message; }
     },
@@ -112,7 +123,7 @@ const ReviewView = {
       this.acting = true; this.error = '';
       try {
         await api.post('/api/review/action', {
-          task_id: this.currentId, role: this.role, reviewer_id: this.user.name,
+          task_id: this.currentId, role: this.activeRole, reviewer_id: this.user.name,
           action_type: actionType, reason: actionType === 'reject' ? this.rejectReason.trim() : '',
           marks: actionType === 'reject'
             ? this.marksList.map(m => ({ item_type: m.item_type, page_index: m.page_index, reason: m.reason.trim() }))
@@ -130,7 +141,14 @@ const ReviewView = {
     },
     releaseTimers() { clearInterval(this.hbTimer); clearInterval(this.tickTimer); this.hbTimer = this.tickTimer = null; },
   },
-  mounted() { this.loadQueue(); },
+  async mounted() {
+    // 试运行期（ROLE_ALL_ACCESS=true）：全员开放 A/B/C 切换；默认进自己账号的角色
+    try {
+      this.allAccess = !!(await api.get('/api/meta/access')).role_all_access;
+    } catch (e) { /* 取不到按收权处理 */ }
+    this.activeRole = ['A', 'B', 'C'].includes(this.role) ? this.role : 'A';
+    this.loadQueue();
+  },
   beforeUnmount() { this.releaseTimers(); },
   template: `
   <app-layout title="任务审核">
@@ -140,7 +158,19 @@ const ReviewView = {
       <p v-if="msg" class="form-ok">{{ msg }}</p>
       <div class="review-layout">
         <div class="card review-queue">
-          <h2>待审队列 · {{ role }}（{{ roleName(role) }}）<button class="btn btn-outline btn-sm" style="float:right" @click="loadQueue">刷新</button></h2>
+          <h2 v-if="!allAccess">待审队列 · {{ activeRole }}（{{ roleName(activeRole) }}）</h2>
+          <h2 v-else style="margin-bottom:6px">审核角色</h2>
+          <div v-if="allAccess" class="tabs">
+            <button v-for="r in ['A','B','C']" :key="r" class="tab" :class="{on: activeRole===r}"
+                    @click="switchRole(r)" style="flex:1">{{ r }} · {{ roleName(r) }}</button>
+          </div>
+          <p v-if="allAccess" class="muted" style="font-size:12.5px;margin:6px 0 10px">
+            试运行模式：全员可审全部角色（默认进入你的账号角色 {{ role || 'A' }}），正式生产时将按账号分配固定角色。</p>
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <b v-if="allAccess" style="font-size:14px">待审队列 · {{ roleName(activeRole) }}</b>
+            <span v-else></span>
+            <button class="btn btn-outline btn-sm" @click="loadQueue">刷新</button>
+          </div>
           <div v-if="!queue.length" class="empty">暂无待审任务</div>
           <div v-for="t in queue" :key="t.task_id" class="queue-item" :class="{on: currentId === t.task_id}" @click="select(t)">
             <div class="q">{{ t.query }}</div>

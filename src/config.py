@@ -68,6 +68,10 @@ class Settings(BaseSettings):
     mcp_max_web_searches_per_task: int = 3
     mcp_max_image_searches_per_task: int = 3
     mcp_max_ocr_per_task: int = 8
+    # ── 审核角色权限口径 ─────────────────────────────────────────────
+    # true（试运行默认）：任何账号在审核台可切换 A/B/C 任一角色审核（一人担全部工作）；
+    # false（正式生产）：恢复按账号角色（users.role）锁定各自单一队列
+    role_all_access: bool = True
 
 
 settings = Settings()
