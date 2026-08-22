@@ -52,6 +52,22 @@ class Settings(BaseSettings):
     sampling_rate: float = 0.20
     anomaly_min_seconds: int = 5
     anomaly_max_seconds: int = 3600
+    # ── Nanobot 全链创作 Agent（2026-08-22 改造）──────────────────────
+    # 双路径总开关：true=创作段(evidence/正文/分页/生图/OCR)整体交给 Nanobot Agent；
+    # false=原 13 节点直连路径（Nanobot 故障时秒级回退，软件工程层兜底）
+    agent_pipeline_enabled: bool = False
+    nanobot_base_url: str = "http://127.0.0.1:8900/v1"  # OpenAI 兼容地址（含 /v1）
+    nanobot_api_key: str = ""            # 仅 bind 非 localhost 时需要（Bearer）
+    nanobot_model: str = ""              # 留空 = 用 nanobot 默认模型/主备预设
+    nanobot_request_timeout_seconds: float = 1800.0  # 全链一次跑 15-25 分钟，读超时给足
+    # MCP 工具进程 → 后端的成本回调
+    mcp_callback_base_url: str = "http://127.0.0.1:8000"
+    internal_callback_token: str = "qvp-internal-dev"
+    # MCP 工具配额（按 task_id 计，防 Agent 失控烧钱的硬限制）
+    mcp_max_images_per_task: int = 8     # 6 张交付 + 2 张去重重生余量（¥0.2/张）
+    mcp_max_web_searches_per_task: int = 3
+    mcp_max_image_searches_per_task: int = 3
+    mcp_max_ocr_per_task: int = 8
 
 
 settings = Settings()

@@ -10,6 +10,8 @@ NODE_LABEL = {
     "asset_gen": "配图生成", "ocr_read": "OCR回读", "cross_check": "图文一致性",
     "risk_classify": "风险分流", "review_queue": "审核队列", "batch_signoff": "批次会签",
     "publish_snapshot": "发布快照",
+    # Nanobot 全链创作 Agent 路径（2026-08-22 改造）
+    "agent_production": "创作Agent生产",
     # 定点重生成节点（仅用于成本/日志展示，不进流水线步骤条）
     "page_regen": "单页重写", "asset_regen": "定点重生图",
 }
@@ -21,6 +23,18 @@ NODE_ORDER = [
     "review_queue", "batch_signoff", "publish_snapshot",
 ]
 
+# Nanobot 创作大节点路径（8 节点）：创作段六节点收敛为 agent_production
+NODE_ORDER_AGENT = [
+    "task_import", "agent_production", "rule_check", "cross_check",
+    "risk_classify", "review_queue", "batch_signoff", "publish_snapshot",
+]
+
+
+def node_order() -> list:
+    """当前生效的流水线步骤条顺序（AGENT_PIPELINE_ENABLED 双路径）。"""
+    from src.config import settings
+    return NODE_ORDER_AGENT if settings.agent_pipeline_enabled else NODE_ORDER
+
 
 def _done_msg(node: str, data: dict) -> str:
     if node == "draft_gen":
@@ -29,6 +43,12 @@ def _done_msg(node: str, data: dict) -> str:
         return f"{data.get('count', 0)}张图"
     if node == "evidence_build":
         return f"证据 {data.get('evidence_count', 0)}条" + (" · ⚠争议" if data.get("conflicts") else "")
+    if node == "agent_production":
+        parts = [f"{data.get('length', 0)}字", f"{data.get('asset_count', 0)}张图",
+                 f"证据{data.get('evidence_count', 0)}条"]
+        if data.get("correction_rounds"):
+            parts.append(f"纠错{data['correction_rounds']}轮")
+        return " · ".join(parts)
     if node == "risk_classify":
         return f"风险 {data.get('level', '')}"
     if node == "entity_bind":
@@ -108,6 +128,11 @@ class ProgressTracker:
             if node == "draft_gen" and data.get("preview"):
                 t["preview"] = data["preview"]
                 t["model"] = data.get("model", "")
+            elif node == "agent_production" and data.get("preview"):
+                t["preview"] = data["preview"]
+                t["model"] = data.get("model", "")
+                if data.get("image_urls"):
+                    t["imgs"] = data["image_urls"]
             elif node == "asset_gen" and data.get("image_urls"):
                 t["imgs"] = data["image_urls"]
             elif node == "risk_classify" and data.get("level"):
@@ -125,6 +150,17 @@ class ProgressTracker:
                 "phase": "error", "elapsed": data.get("elapsed"),
                 "msg": data.get("error", ""),
                 "trace": data.get("traceback", ""),
+            })
+        elif etype == "agent_progress" and t:
+            # Nanobot 创作 Agent 过程事件（连接/纠错/流式进度），进 debug 不进全局日志
+            msg = data.get("message") or (
+                f"生成中… 已输出 {data.get('chars', 0)} 字")
+            t.setdefault("debug", []).append({
+                "ts": datetime.now().strftime("%H:%M:%S"),
+                "node": "agent_production", "label": NODE_LABEL.get(
+                    "agent_production", "agent_production"),
+                "phase": "running", "elapsed": None, "msg": msg,
+                "trace": data.get("preview", ""),
             })
 
     def _append_log(self, etype: str, tid, data: dict) -> None:
@@ -170,7 +206,7 @@ class ProgressTracker:
         return {
             "counts": dict(self.counts),
             "tasks": list(self.tasks.values()),
-            "node_order": NODE_ORDER,
+            "node_order": node_order(),
         }
 
     def clear(self) -> None:

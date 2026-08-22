@@ -21,6 +21,12 @@ async def fetch_image_bytes(image_url: str) -> tuple:
     任何 HTTP 客户端都无法请求（414），需要本地解码出内嵌的图片数据。
     本地产出（/static/generated/...）直接读磁盘。
     """
+    if image_url.startswith("data:"):
+        # data:image/png;base64,....（MCP mock 生图 / Agent 直接回传内联图）
+        ctype = image_url.split(";")[0].split(":")[1]
+        if ctype == "image/jpg":
+            ctype = "image/jpeg"
+        return base64.b64decode(image_url.split(",", 1)[1]), ctype
     if image_url.startswith("/static/"):
         from pathlib import Path
         ctype = {".png": "image/png", ".jpg": "image/jpeg",

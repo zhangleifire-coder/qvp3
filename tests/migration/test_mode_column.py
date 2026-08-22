@@ -1,10 +1,12 @@
 import pytest
 import asyncpg
 
+from tests.conftest import _TEST_DSN
+
 
 @pytest.mark.asyncio
 async def test_tasks_has_mode_column():
-    conn = await asyncpg.connect("postgresql://qvp:qvp@localhost:5432/qvp_test")
+    conn = await asyncpg.connect(_TEST_DSN)
     try:
         col = await conn.fetchrow(
             "SELECT column_default FROM information_schema.columns "

@@ -9,14 +9,21 @@ import pytest
 # ============ 测试库隔离 ============
 # 必须在导入 app 之前设置，让 settings / SessionLocal 指向独立测试库，
 # 避免集成测试向开发/生产库（qvp）写入测试数据。
+# 测试库跟随 DATABASE_URL 的主机/端口（本地专用 PG 容器可能是 5433 等非默认端口）。
+import re
+
 TEST_DB = "qvp_test"
-TEST_DB_URL = f"postgresql+asyncpg://qvp:qvp@localhost:5432/{TEST_DB}"
+_DEV_URL = os.environ.get("DATABASE_URL") or "postgresql+asyncpg://qvp:qvp@localhost:5432/qvp"
+_m = re.match(r"postgresql(?:\+asyncpg)?://[^@]*@([^:/]+):(\d+)/", _DEV_URL)
+_HOST, _PORT = (_m.group(1), _m.group(2)) if _m else ("localhost", "5432")
+TEST_DB_URL = f"postgresql+asyncpg://qvp:qvp@{_HOST}:{_PORT}/{TEST_DB}"
 os.environ["DATABASE_URL"] = TEST_DB_URL
 os.environ["IMAGE_GEN_DELAY_SECONDS"] = "0"  # 测试不 sleep，加速
 os.environ["MOCK_IMAGE_GEN"] = "false"       # 测试默认关 mock，路由逻辑走真函数
+os.environ["AGENT_PIPELINE_ENABLED"] = "false"  # 测试默认直连路径；Agent 路径有专测
 
-_ADMIN_DSN = "postgresql://qvp:qvp@localhost:5432/postgres"
-_TEST_DSN = f"postgresql://qvp:qvp@localhost:5432/{TEST_DB}"
+_ADMIN_DSN = f"postgresql://qvp:qvp@{_HOST}:{_PORT}/postgres"
+_TEST_DSN = f"postgresql://qvp:qvp@{_HOST}:{_PORT}/{TEST_DB}"
 
 _ALL_TABLES = [
     "organizations", "users", "tasks", "entity_snapshots", "claims", "evidence",
