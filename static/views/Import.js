@@ -15,6 +15,7 @@ const ImportView = {
         const r = await api.post('/api/tasks/import_queries', { queries: this.queries, mode: this.mode, actor: (getUser() || {}).name });
         this.result = `成功导入 ${r.imported} 条，已加入生产队列`;
         this.text = '';
+        window.dispatchEvent(new CustomEvent('qvp:imported'));
       } catch (e) { this.error = e.message; }
       finally { this.loading = false; }
     },
@@ -30,6 +31,7 @@ const ImportView = {
         this.result = `成功导入 ${r.imported} 条` + (r.errors && r.errors.length ? `，${r.errors.length} 行失败` : '');
         this.errors = (r.errors || []).slice(0, 5).map(e => `${(e.row && e.row.query) || '(空行)'}：${e.error}`);
         this.file = null; this.$refs.fileInput.value = '';
+        window.dispatchEvent(new CustomEvent('qvp:imported'));
       } catch (e) { this.error = e.message; }
       finally { this.loading = false; }
     },

@@ -5,7 +5,7 @@ const TasksView = {
       list: [], total: 0, error: '', loading: false,
       approvedCount: 0,      // 审核通过的任务数（>0 才可导出内容包）
       fStatus: '', fMode: '', fRisk: '', auto: true,
-      nodes: [], timer: null, es: null, sseTimer: null,
+      nodes: [], timer: null, es: null, sseTimer: null, agentTimer: null,
       live: {},              // task_id -> 内存实时态（current_node/debug/imgs）
       detail: null, detailError: '', retrying: false,
       exportJob: null, exportTimer: null,   // 任务式导出进度 {id,status,total,done,detail}
@@ -138,6 +138,34 @@ const TasksView = {
         if (this.detailTask) this.open(this.detailTask);
       }, 800);
     },
+    onAgentProgress() {
+      // Agent 生产过程事件（长节点期间唯一信号）：只刷内存实时态，列表行
+      // 经 live 覆盖即时反映当前节点/状态，不打 DB
+      if (this.agentTimer) return;
+      this.agentTimer = setTimeout(() => {
+        this.agentTimer = null;
+        this.loadLive();
+      }, 800);
+    },
+    // ── 列表行实时覆盖：DB 行数据 + 内存实时态（live）合并 ──
+    rowStatus(t) {
+      const lv = this.live[t.id];
+      // live.status: queued/processing/done/failed；DB 的 draft/review 等为准终态
+      if (lv && lv.status === 'processing') return 'processing';
+      if (lv && lv.status === 'queued') return 'draft';
+      return t.status;
+    },
+    rowNode(t) {
+      const lv = this.live[t.id];
+      return (lv && lv.current_node) || t.current_node || '';
+    },
+    rowLiveMsg(t) {
+      // Agent 生产中的最近一条过程消息（debug 尾部），列表行悬浮提示
+      const lv = this.live[t.id];
+      if (!lv || lv.status !== 'processing' || !lv.debug || !lv.debug.length) return '';
+      const d = lv.debug[lv.debug.length - 1];
+      return d ? (d.msg || '') : '';
+    },
     async startExport() {
       this.error = '';
       try {
@@ -179,15 +207,21 @@ const TasksView = {
     this.es.onmessage = (ev) => {
       try {
         const d = JSON.parse(ev.data);
-        if (d.type && (d.type.startsWith('task_') || d.type.startsWith('node_'))) this.onSse();
+        if (d.type === 'agent_progress') this.onAgentProgress();
+        else if (d.type && (d.type.startsWith('task_') || d.type.startsWith('node_'))) this.onSse();
       } catch (e) { /* ping 等非 JSON 帧忽略 */ }
     };
+    // 导入页刚完成导入的即时联动（本视图挂载后注册；跨页由路由重挂载自然刷新）
+    this._onImported = () => { this.load(); this.loadLive(); };
+    window.addEventListener('qvp:imported', this._onImported);
   },
   beforeUnmount() {
     clearInterval(this.timer);
     clearInterval(this.exportTimer);
     clearTimeout(this.sseTimer);
+    clearTimeout(this.agentTimer);
     if (this.es) this.es.close();
+    if (this._onImported) window.removeEventListener('qvp:imported', this._onImported);
   },
   template: `
   <app-layout title="任务中心">
@@ -219,12 +253,18 @@ const TasksView = {
       <table v-else class="table">
         <thead><tr><th>Query</th><th>模式</th><th>状态</th><th>风险</th><th>当前节点</th><th>创建时间</th></tr></thead>
         <tbody>
-          <tr v-for="t in list" :key="t.id" @click="open(t)" :class="{selected: detailTask && detailTask.id === t.id}">
+          <tr v-for="t in list" :key="t.id" @click="open(t)" :class="{selected: detailTask && detailTask.id === t.id}" :title="rowLiveMsg(t)">
             <td class="q-cell">{{ t.query }}</td>
             <td><span class="tag tag-blue">{{ modeLabel(t.mode) }}</span></td>
-            <td><span class="tag" :class="statusTag(t.status).cls">{{ statusTag(t.status).label }}</span></td>
+            <td>
+              <span class="tag" :class="statusTag(rowStatus(t)).cls">{{ statusTag(rowStatus(t)).label }}</span>
+              <span v-if="rowStatus(t) === 'processing'" class="live-dot" title="生产进行中（实时）"></span>
+            </td>
             <td><span v-if="riskTag(t.risk_level)" class="tag" :class="riskTag(t.risk_level).cls">{{ riskTag(t.risk_level).label }}</span><span v-else class="muted">-</span></td>
-            <td>{{ nodeLabel(t.current_node) }}</td>
+            <td>
+              {{ nodeLabel(rowNode(t)) }}
+              <span v-if="rowNode(t) === 'agent_production' && rowStatus(t) === 'processing'" class="muted" style="font-size:12px">· 创作中…</span>
+            </td>
             <td class="muted">{{ fmtTime(t.created_at) }}</td>
           </tr>
         </tbody>
