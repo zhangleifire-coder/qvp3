@@ -11,6 +11,10 @@ const TasksView = {
       exportJob: null, exportTimer: null,   // 任务式导出进度 {id,status,total,done,detail}
       showExport: false,     // 导出弹窗开关（关闭不中断后台打包）
       zoom: null,            // 图片放大浏览 {src, title, text}
+      search: '',            // 关键词搜索（Query 模糊匹配）
+      editForm: null,        // 编辑弹窗 {id, query, mode, priority, status}
+      editError: '', saving: false,
+      deleting: '',          // 删除中的任务 id（按钮防抖）
     };
   },
   computed: {
@@ -61,6 +65,7 @@ const TasksView = {
       if (this.fStatus) p.set('status', this.fStatus);
       if (this.fMode) p.set('mode', this.fMode);
       if (this.fRisk) p.set('risk_level', this.fRisk);
+      if (this.search.trim()) p.set('q', this.search.trim());
       p.set('limit', '100');
       return p.toString();
     },
@@ -198,6 +203,41 @@ const TasksView = {
       if (!b) return '0B';
       return b >= 1048576 ? (b / 1048576).toFixed(1) + 'MB' : Math.round(b / 1024) + 'KB';
     },
+    // ── 编辑 / 删除 ──
+    canEdit(t) { return ['draft', 'failed', 'rejected', 'cancelled'].includes(t.status); },
+    canDelete(t) { return t.status !== 'processing'; },
+    openEdit(t) {
+      this.editError = '';
+      this.editForm = { id: t.id, query: t.query, mode: t.mode || 'general',
+                        priority: t.priority || 'normal', status: t.status };
+    },
+    async saveEdit() {
+      if (!this.editForm) return;
+      const q = this.editForm.query.trim();
+      if (!q) { this.editError = 'Query 不能为空'; return; }
+      this.saving = true; this.editError = '';
+      try {
+        await api.patch(`/api/tasks/${this.editForm.id}`, {
+          query: q, mode: this.editForm.mode, priority: this.editForm.priority,
+        });
+        this.editForm = null;
+        await this.load();
+        if (this.detailTask) await this.open(this.detailTask);
+      } catch (e) { this.editError = e.message; }
+      finally { this.saving = false; }
+    },
+    async removeTask(t) {
+      if (this.deleting) return;
+      if (t.status === 'processing') { alert('任务正在生产中，请先在实时监控页中断后再删除'); return; }
+      if (!confirm(`确定删除该任务？\n\n「${t.query}」\n\n将一并删除其正文、分页、配图、审核记录等全部产物，不可恢复。`)) return;
+      this.deleting = t.id;
+      try {
+        await api.delete(`/api/tasks/${t.id}?actor=` + encodeURIComponent(this.actorName));
+        if (this.detailTask && this.detailTask.id === t.id) this.close();
+        await this.load();
+      } catch (e) { alert('删除失败：' + e.message); }
+      finally { this.deleting = ''; }
+    },
   },
   watch: {
     fStatus() { this.load(); }, fMode() { this.load(); }, fRisk() { this.load(); },
@@ -242,6 +282,8 @@ const TasksView = {
         <option value="green">绿</option><option value="yellow">黄</option><option value="red">红</option>
       </select>
       <label class="auto-refresh"><input type="checkbox" v-model="auto" style="width:auto"> 自动刷新</label>
+      <input v-model="search" @keyup.enter="load" placeholder="🔍 搜索 Query…" style="width:170px">
+      <button v-if="search" class="btn btn-outline btn-sm" @click="search=''; load()">清除</button>
       <template v-if="approvedCount > 0">
         <button v-if="!exportJob" class="btn btn-outline btn-sm" @click="startExport">📦 导出已通过内容包（{{ approvedCount }}）</button>
         <button v-else-if="exportJob.status !== 'done'" class="btn btn-outline btn-sm" @click="showExport = true">📦 打包中… {{ exportPct }}%</button>
@@ -254,7 +296,7 @@ const TasksView = {
     <div class="card">
       <div v-if="!list.length" class="empty">暂无任务，<router-link to="/import">去导入 →</router-link></div>
       <table v-else class="table">
-        <thead><tr><th>Query</th><th>模式</th><th>状态</th><th>风险</th><th>当前节点</th><th>创建时间</th></tr></thead>
+        <thead><tr><th>Query</th><th>模式</th><th>状态</th><th>风险</th><th>当前节点</th><th>创建时间</th><th style="text-align:right">操作</th></tr></thead>
         <tbody>
           <tr v-for="t in list" :key="t.id" @click="open(t)" :class="{selected: detailTask && detailTask.id === t.id}" :title="rowLiveMsg(t)">
             <td class="q-cell">{{ t.query }}</td>
@@ -269,6 +311,13 @@ const TasksView = {
               <span v-if="rowNode(t) === 'agent_production' && rowStatus(t) === 'processing'" class="muted" style="font-size:12px">· 创作中…</span>
             </td>
             <td class="muted">{{ fmtTime(t.created_at) }}</td>
+            <td style="white-space:nowrap;text-align:right">
+              <button v-if="canEdit(t)" class="btn btn-outline btn-sm" title="编辑任务"
+                      @click.stop="openEdit(t)">✎</button>
+              <button v-if="canDelete(t)" class="btn btn-outline btn-sm" style="color:var(--red)"
+                      :disabled="deleting === t.id" title="删除任务及全部产物"
+                      @click.stop="removeTask(t)">{{ deleting === t.id ? '…' : '🗑' }}</button>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -400,6 +449,34 @@ const TasksView = {
       </div>
     </div>
     <img-lightbox :img="zoom" @close="zoom=null" />
+
+    <div v-if="editForm" class="drawer-mask" @click.self="editForm=null">
+      <div class="card" style="width:440px;margin:16vh auto 0">
+        <h2>编辑任务</h2>
+        <p class="muted" style="font-size:13px">当前状态：{{ statusTag(editForm.status).label }}（排队/失败/驳回/中断状态可编辑）</p>
+        <form @submit.prevent="saveEdit">
+          <label>Query</label>
+          <textarea v-model="editForm.query" rows="3" required></textarea>
+          <label style="margin-top:10px">生产模式</label>
+          <select v-model="editForm.mode" style="width:100%">
+            <option value="general">通用（纯文生图）</option>
+            <option value="single">单品（搜参考图·图生图）</option>
+            <option value="compare">对比（搜参考图·图生图）</option>
+          </select>
+          <label style="margin-top:10px">优先级</label>
+          <select v-model="editForm.priority" style="width:100%">
+            <option value="urgent">加急（优先调度）</option>
+            <option value="normal">普通</option>
+            <option value="scheduled">定时（靠后调度）</option>
+          </select>
+          <p v-if="editError" class="form-error">{{ editError }}</p>
+          <div style="display:flex;gap:8px;margin-top:14px">
+            <button class="btn btn-primary" :disabled="saving">{{ saving ? '保存中…' : '保存修改' }}</button>
+            <button type="button" class="btn btn-outline" @click="editForm=null">取消</button>
+          </div>
+        </form>
+      </div>
+    </div>
   </app-layout>`,
   created() { this.STATUS = STATUS; this.MODE = MODE; },
 };

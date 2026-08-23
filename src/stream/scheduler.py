@@ -138,6 +138,12 @@ class TaskScheduler:
             return "queued"
         return "not_found"
 
+    def update_meta(self, task_id, query: str | None = None) -> None:
+        """任务条目被编辑后同步内存元数据（监控/事件里显示最新 Query）。"""
+        m = self._meta.get(str(task_id))
+        if m is not None and query:
+            m["query"] = query
+
     async def _worker(self) -> None:
         while True:
             await self._pause_event.wait()

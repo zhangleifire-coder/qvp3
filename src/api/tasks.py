@@ -4,7 +4,7 @@ import uuid
 from pathlib import Path
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Response
 from pydantic import BaseModel
-from sqlalchemy import select, func, text
+from sqlalchemy import delete, select, func, text
 from src.db.session import SessionLocal
 from src.models.tasks import Task
 from src.services.activity import log_action
@@ -102,8 +102,9 @@ async def import_queries(payload: ImportQueriesIn):
 
 @router.get("/api/tasks")
 async def list_tasks(status: str | None = None, mode: str | None = None,
-                     risk_level: str | None = None, limit: int = 20, offset: int = 0):
-    """任务列表：状态/模式/风险筛选 + 分页，每项带当前节点与风险等级。"""
+                     risk_level: str | None = None, q: str | None = None,
+                     limit: int = 20, offset: int = 0):
+    """任务列表：状态/模式/风险筛选 + 关键词搜索 + 分页，每项带当前节点与风险等级。"""
     from src.models.events import NodeEvent
     from src.models.review import RiskClassification
     limit = max(1, min(limit, 200))
@@ -114,6 +115,8 @@ async def list_tasks(status: str | None = None, mode: str | None = None,
             filters.append(Task.status == status)
         if mode:
             filters.append(Task.mode == mode)
+        if q:
+            filters.append(Task.query.ilike(f"%{q.strip()}%"))
         if risk_level:
             filters.append(Task.id.in_(
                 select(RiskClassification.task_id).where(RiskClassification.level == risk_level)))
@@ -255,6 +258,125 @@ async def task_detail(task_id: str):
             "reject_marks": [{"item_type": m.item_type, "page_index": m.page_index,
                               "reason": m.reason} for m in marks],
         }
+
+
+_EDITABLE_STATUSES = ("draft", "failed", "rejected", "cancelled")
+
+
+class TaskPatchIn(BaseModel):
+    query: str | None = None
+    mode: str | None = None
+    content_type: str | None = None
+    platform: str | None = None
+    priority: str | None = None
+
+
+@router.patch("/api/tasks/{task_id}")
+async def patch_task(task_id: str, payload: TaskPatchIn, actor: str = "anonymous"):
+    """编辑任务条目（Query/模式/优先级等）。
+
+    仅未在生产/审核通道中的状态可改（draft/failed/rejected/cancelled）：
+    review/approved 的产物与 Query 已绑定，改 Query 会造成内容错位；
+    processing 中途改参数会与正在跑的流水线竞态。
+    """
+    try:
+        tid = uuid.UUID(task_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid task_id")
+    async with SessionLocal() as session:
+        task = (await session.execute(select(Task).where(Task.id == tid))).scalars().first()
+        if not task:
+            raise HTTPException(status_code=404, detail="task not found")
+        if task.status not in _EDITABLE_STATUSES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"当前状态 {task.status} 不可编辑（仅 {'/'.join(_EDITABLE_STATUSES)}；"
+                       f"生产中的任务请先中断，已审核任务不可改）")
+        updates = (payload.model_dump(exclude_unset=True)
+                   if hasattr(payload, "model_dump")
+                   else {k: v for k, v in dict(payload).items() if v is not None})
+        if not updates:
+            raise HTTPException(status_code=422, detail="没有要修改的字段")
+        if "query" in updates:
+            q = (updates["query"] or "").strip()
+            if not q:
+                raise HTTPException(status_code=422, detail="query 不能为空")
+            updates["query"] = q
+        if "mode" in updates and updates["mode"] not in ("general", "single", "compare"):
+            raise HTTPException(status_code=422, detail="mode 取值无效")
+        if "priority" in updates and updates["priority"] not in ("urgent", "normal", "scheduled"):
+            raise HTTPException(status_code=422, detail="priority 取值无效")
+        for k, v in updates.items():
+            setattr(task, k, v)
+        # 幂等键跟随内容重算，防与其它任务撞车
+        new_key = f"{task.query}|{task.content_type}|{task.platform or ''}|{task.mode}"
+        clash = await session.execute(
+            select(Task.id).where(Task.idempotency_key == new_key, Task.id != tid))
+        if clash.first():
+            await session.rollback()
+            raise HTTPException(status_code=409, detail="已存在相同 Query+模式+类型的任务")
+        task.idempotency_key = new_key
+        await session.commit()
+    scheduler.update_meta(tid, query=updates.get("query"))
+    await log_action(actor, "update", f"编辑任务：{(updates.get('query') or '')[:50]}", task_id=tid)
+    return {"ok": True, "task_id": task_id, "updated": sorted(updates.keys())}
+
+
+@router.delete("/api/tasks/{task_id}")
+async def delete_task(task_id: str, actor: str = "anonymous"):
+    """删除任务条目及其全部产物（17 张子表级联；审计日志保留）。
+
+    生产中（processing）不可删——先在监控页中断；排队中（draft）自动出队。
+    """
+    try:
+        tid = uuid.UUID(task_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid task_id")
+    async with SessionLocal() as session:
+        task = (await session.execute(select(Task).where(Task.id == tid))).scalars().first()
+        if not task:
+            raise HTTPException(status_code=404, detail="task not found")
+        if task.status == "processing":
+            raise HTTPException(
+                status_code=400, detail="任务正在生产中，请先在实时监控页中断后再删除")
+        query = task.query
+    # 排队中的任务先出队（worker 取到时直接丢弃）
+    await scheduler.cancel(tid)
+    from src.models.assets import Asset, CrossCheck, OcrResult
+    from src.models.drafts import Draft, PageCopy, RuleResult
+    from src.models.entities import Claim, Evidence
+    from src.models.events import NodeEvent
+    from src.models.review import (Approval, BatchMember, Issue, RejectMark,
+                                   ReviewAction, ReviewSession, RiskClassification)
+    from src.models.snapshots import PublishSnapshot
+    async with SessionLocal() as session:
+        rs_ids = select(ReviewSession.id).where(ReviewSession.task_id == tid)
+        asset_ids = select(Asset.id).where(Asset.task_id == tid)
+        claim_ids = select(Claim.id).where(Claim.task_id == tid)
+        for stmt in (
+            delete(ReviewAction).where(ReviewAction.review_session_id.in_(rs_ids)),
+            delete(ReviewSession).where(ReviewSession.task_id == tid),
+            delete(OcrResult).where(OcrResult.asset_id.in_(asset_ids)),
+            delete(Asset).where(Asset.task_id == tid),
+            delete(CrossCheck).where(CrossCheck.task_id == tid),
+            delete(RuleResult).where(RuleResult.task_id == tid),
+            delete(RiskClassification).where(RiskClassification.task_id == tid),
+            delete(Issue).where(Issue.task_id == tid),
+            delete(Approval).where(Approval.task_id == tid),
+            delete(PublishSnapshot).where(PublishSnapshot.task_id == tid),
+            delete(NodeEvent).where(NodeEvent.task_id == tid),
+            delete(RejectMark).where(RejectMark.task_id == tid),
+            delete(BatchMember).where(BatchMember.task_id == tid),
+            delete(PageCopy).where(PageCopy.task_id == tid),
+            delete(Draft).where(Draft.task_id == tid),
+            delete(Evidence).where(Evidence.claim_id.in_(claim_ids)),
+            delete(Claim).where(Claim.task_id == tid),
+            delete(Task).where(Task.id == tid),
+        ):
+            await session.execute(stmt)
+        await session.commit()
+    await log_action(actor, "delete", f"删除任务及其全部产物：{query[:50]}", task_id=tid)
+    return {"ok": True, "task_id": task_id, "deleted": query[:50]}
 
 
 @router.post("/api/tasks/{task_id}/cancel")
