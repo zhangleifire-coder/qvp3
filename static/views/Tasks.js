@@ -12,6 +12,7 @@ const TasksView = {
       showExport: false,     // 导出弹窗开关（关闭不中断后台打包）
       zoom: null,            // 图片放大浏览 {src, title, text}
       search: '',            // 关键词搜索（Query 模糊匹配）
+      rowMenu: null,         // 展开操作菜单的行任务 id
       editForm: null,        // 编辑弹窗 {id, query, mode, priority, status}
       editError: '', saving: false,
       deleting: '',          // 删除中的任务 id（按钮防抖）
@@ -206,6 +207,7 @@ const TasksView = {
     // ── 编辑 / 删除 ──
     canEdit(t) { return ['draft', 'failed', 'rejected', 'cancelled'].includes(t.status); },
     canDelete(t) { return t.status !== 'processing'; },
+    toggleMenu(t) { this.rowMenu = this.rowMenu === t.id ? null : t.id; },
     openEdit(t) {
       this.editError = '';
       this.editForm = { id: t.id, query: t.query, mode: t.mode || 'general',
@@ -257,6 +259,9 @@ const TasksView = {
     // 导入页刚完成导入的即时联动（本视图挂载后注册；跨页由路由重挂载自然刷新）
     this._onImported = () => { this.load(); this.loadLive(); };
     window.addEventListener('qvp:imported', this._onImported);
+    // 点击空白处收起行操作菜单
+    this._closeMenu = (e) => { if (!e.target.closest('.row-menu')) this.rowMenu = null; };
+    document.addEventListener('click', this._closeMenu);
   },
   beforeUnmount() {
     clearInterval(this.timer);
@@ -265,6 +270,7 @@ const TasksView = {
     clearTimeout(this.agentTimer);
     if (this.es) this.es.close();
     if (this._onImported) window.removeEventListener('qvp:imported', this._onImported);
+    if (this._closeMenu) document.removeEventListener('click', this._closeMenu);
   },
   template: `
   <app-layout title="任务中心">
@@ -311,12 +317,17 @@ const TasksView = {
               <span v-if="rowNode(t) === 'agent_production' && rowStatus(t) === 'processing'" class="muted" style="font-size:12px">· 创作中…</span>
             </td>
             <td class="muted">{{ fmtTime(t.created_at) }}</td>
-            <td style="white-space:nowrap;text-align:right">
-              <button v-if="canEdit(t)" class="btn btn-outline btn-sm" title="编辑任务"
-                      @click.stop="openEdit(t)">✎</button>
-              <button v-if="canDelete(t)" class="btn btn-outline btn-sm" style="color:var(--red)"
-                      :disabled="deleting === t.id" title="删除任务及全部产物"
-                      @click.stop="removeTask(t)">{{ deleting === t.id ? '…' : '🗑' }}</button>
+            <td style="white-space:nowrap;text-align:right;position:relative">
+              <button class="btn btn-outline btn-sm" title="操作"
+                      @click.stop="toggleMenu(t)">⋯</button>
+              <div v-if="rowMenu === t.id" class="row-menu" @click.stop>
+                <button class="row-menu-item" :disabled="!canEdit(t)"
+                        :title="canEdit(t) ? '' : '仅排队/失败/驳回/中断状态可编辑'"
+                        @click="rowMenu=null; openEdit(t)">✎ 编辑任务</button>
+                <button class="row-menu-item danger" :disabled="!canDelete(t)"
+                        :title="canDelete(t) ? '删除任务及其全部产物' : '生产中请先到实时监控页中断'"
+                        @click="rowMenu=null; removeTask(t)">🗑 删除任务</button>
+              </div>
             </td>
           </tr>
         </tbody>

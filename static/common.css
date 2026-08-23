@@ -230,3 +230,15 @@ input, select, textarea { font-size: 15px; }
 .stream-box { margin-top: 10px; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
 .stream-head { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: #f6f8fb; font-size: 12.5px; color: var(--muted); }
 .stream-text { margin: 0; padding: 10px 12px; max-height: 180px; overflow: hidden; font-size: 13px; line-height: 1.7; white-space: pre-wrap; word-break: break-all; color: var(--text); }
+
+/* ── 行操作下拉菜单（任务中心）── */
+.row-menu { position: absolute; right: 8px; top: calc(100% - 4px); z-index: 30;
+  background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.13); min-width: 136px; padding: 4px;
+  display: flex; flex-direction: column; }
+.row-menu-item { text-align: left; background: none; border: 0; padding: 8px 10px;
+  font-size: 13.5px; cursor: pointer; border-radius: 6px; color: var(--text); }
+.row-menu-item:hover:not(:disabled) { background: #f1f4f9; }
+.row-menu-item:disabled { color: var(--muted); cursor: not-allowed; }
+.row-menu-item.danger:not(:disabled) { color: var(--red); }
+.row-menu-item.danger:not(:disabled):hover { background: #fdeaea; }
