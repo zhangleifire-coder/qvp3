@@ -61,7 +61,8 @@ _AGENT_INSTRUCTIONS = """你是「图文生产平台」的创作 Agent，负责�
 - generate_images(task_id, pages, mode, image_template, reference_urls)：批量生成 6 张交付配图。
   必须传：pages=6 页文案原样列表、mode、image_template=下方生图模板原样字符串；
   single/compare 再传 reference_urls=image_search 结果里挑出的图片 URL。
-- ocr_image(image_url, task_id)：OCR 识别配图文字，自检图上文字与该页文案是否一致（可选）
+- ocr_image(image_url, task_id)：OCR 识别配图文字。默认跳过——系统会自动做图文
+  一致性校验；仅当某页文案含关键数字/型号必须重点核验时，对那一页调用
 
 【工作流程（必须遵守）】
 1. 先调 web_search 检索证据（1-2 次），整理成 evidence（没有可靠来源就给空数组，不要编造 URL）。
@@ -69,7 +70,7 @@ _AGENT_INSTRUCTIONS = """你是「图文生产平台」的创作 Agent，负责�
 3. 严格按【分页规范】把正文改写成恰好 6 页图上文案 pages（列表长度必须等于 6）。
 4. single/compare 模式：调 image_search 搜参考图，把可用结果放进 references。
 5. 调 generate_images 生成 6 张图（生成结果里的 image_url 是本地路径，输出时必须原样照抄）。
-6. （可选）对关键页调 ocr_image 自检图文一致性，结果写进 ocr_texts。
+6. 默认不做 OCR（系统自动校验）。仅关键数字页需核验时，对该页调 ocr_image，结果写进 ocr_texts。
 7. 只输出最终 JSON，不要输出 JSON 以外的任何解释文字。
 
 【正文创作规范（系统提示词，必须遵守）】
@@ -228,29 +229,34 @@ async def _localize_image(task_id, page_index: int, image_url: str,
 
 
 async def _fallback_ocr(rows: list[tuple]) -> tuple[list, float]:
-    """Agent 未提供 OCR 时由后端兜底识别（保证 cross_check 有数据）。"""
+    """Agent 未提供 OCR 时由后端兜底识别（保证 cross_check 有数据）。
+
+    3 路信号量并发：6 张串行约 30-60s → 并发后约 15-25s。
+    """
+    import asyncio
     from src.gateway.ocr import ocr_image
-    results, total_cost = [], 0.0
-    for asset_id, page_index, image_url in rows:
+    sem = asyncio.Semaphore(3)
+
+    async def _one(asset_id, page_index, image_url) -> tuple[OcrResult, float]:
         if settings.mock_image_gen:
-            results.append(OcrResult(asset_id=asset_id,
-                                     raw_text=f"page {page_index}",
-                                     key_fields={"page": str(page_index)},
-                                     confidence=0.95))
-            continue
+            return OcrResult(asset_id=asset_id, raw_text=f"page {page_index}",
+                             key_fields={"page": str(page_index)},
+                             confidence=0.95), 0.0
         try:
-            r = await ocr_image(image_url)
-            results.append(OcrResult(asset_id=asset_id, raw_text=r["raw_text"],
-                                     key_fields={"page": str(page_index),
-                                                 "ocr_model": r["model"]},
-                                     confidence=0.9))
-            total_cost += r["cost_cny"]
+            async with sem:
+                r = await ocr_image(image_url)
+            return OcrResult(asset_id=asset_id, raw_text=r["raw_text"],
+                             key_fields={"page": str(page_index),
+                                         "ocr_model": r["model"]},
+                             confidence=0.9), r["cost_cny"]
         except Exception:  # noqa: BLE001
             traceback.print_exc()
-            results.append(OcrResult(asset_id=asset_id, raw_text="",
-                                     key_fields={"page": str(page_index)},
-                                     confidence=0.0))
-    return results, total_cost
+            return OcrResult(asset_id=asset_id, raw_text="",
+                             key_fields={"page": str(page_index)},
+                             confidence=0.0), 0.0
+
+    outs = await asyncio.gather(*[_one(*row) for row in rows])
+    return [o for o, _ in outs], round(sum(c for _, c in outs), 6)
 
 
 async def node_agent_production(input_data: dict) -> dict:

@@ -29,7 +29,8 @@
       "modelPreset": "qvp_main",
       "fallbackModels": ["qvp_fallback"],
       "failOnToolError": false,
-      "maxConcurrentSubagents": 1
+      "maxConcurrentSubagents": 1,
+      "idleCompactAfterMinutes": 10
     }
   },
   "tools": {

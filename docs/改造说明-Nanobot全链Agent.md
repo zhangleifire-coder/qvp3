@@ -142,7 +142,19 @@ PYTHONUTF8=1 .venv/Scripts/python scripts/smoke_agent.py "某Query" general
 6. **服务器部署（后续）**：docker-compose 增加 nanobot + qvp_mcp 服务（或同容器），
    config.json 中的绝对路径改容器内路径；密钥经 ${ENV} 注入。
 
-## 七、验证记录（2026-08-22/23 本地）
+## 七、验证记录（2026-08-22/23/24 本地）
+
+### 性能优化（2026-08-24，实测 agent_production 560s → 277s，↓51%）
+
+- **并行生图**：`IMAGE_GEN_PARALLEL=2`（6 张分 3 批并发调用生图 API，批间隔 1s；
+  跨批内容去重保留，重复页串行重生；`1` 退回串行防限流）
+- **并发对齐**：`NANOBOT_MAX_CONCURRENCY_REQUESTS=4` 与后端 MAX_CONCURRENCY 一致
+  （消除第 4 个任务在 Nanobot 的隐形排队）；`idleCompactAfterMinutes=10` 及时压缩会话内存
+- **OCR 策略**：Agent 指令改为默认跳过 OCR 自检（系统自动校验，省 30-60s/任务）；
+  后端兜底 OCR 改 3 路信号量并发（30-60s → 15-25s）
+- 吞吐估算：单任务 4.6 分 × 并发 2-4 ≈ **26-52 条/小时**（原 12-24）
+- 观察点：linkai 在并发 4 下的限流表现（AIMD 自动降并发兜底），稳定后可再提
+  IMAGE_GEN_PARALLEL 至 3 与并发上限至 6-8
 
 ### 真实生图链路（2026-08-23，linkai.pics 直连线路，OPENAI_IMAGE_BASE_URL=https://direct.linkai.pics/v1）
 

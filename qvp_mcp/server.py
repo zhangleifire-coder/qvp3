@@ -91,10 +91,16 @@ async def ocr_image(image_url: str, task_id: str) -> dict:
     return {"raw_text": r["raw_text"], "model": r["model"], "cost_cny": r["cost_cny"]}
 
 
+def _batches(items: list, n: int) -> list[list]:
+    """把 items 切成每批至多 n 个的批次（并行生图用；n<=1 即单元素批）。"""
+    n = max(1, int(n))
+    return [items[k:k + n] for k in range(0, len(items), n)]
+
+
 @mcp.tool
 async def generate_images(task_id: str, pages: list[str], mode: str = "general",
                           image_template: str = "", reference_urls: list[str] | None = None) -> dict:
-    """按 6 页分页文案批量生成交付配图（内部完成提示词组装/去重/本地化/尺寸校验）。
+    """按 6 页分页文案批量生成交付配图（内部完成提示词组装/并行生成/去重/本地化/尺寸校验）。
 
     参数：
     - pages: 6 页图上文案（顺序即页序 1-6）
@@ -111,43 +117,63 @@ async def generate_images(task_id: str, pages: list[str], mode: str = "general",
     await check_and_consume(task_id, "image", n=len(pages))
 
     reference_urls = [u for u in (reference_urls or []) if u]
-    seen_hashes: set[str] = set()
-    images, warnings = [], []
-    extra_gen = 0
-    for i, body in enumerate(pages, start=1):
+    total_pages = len(pages)
+
+    async def _gen_one(i: int, body: str) -> dict:
         prompt = get_image_prompt(mode, body, i, template=image_template or None)
         r = await generate_image(prompt, reference_image_urls=reference_urls or None)
         origin_url = r["image_url"]
         data, ctype = await fetch_image_bytes(origin_url)
-        content_hash = hashlib.md5(data).hexdigest()
-        # 逐张进度回调（监控页展示「生成配图 P3/6」，不进成本台账）
         await report_usage(task_id, "image_gen_progress", 0,
-                           {"page": i, "total": len(pages)})
-        # 内容级去重：与同任务已出图重复 → 换构图重生一次（配额已含余量）
-        if content_hash in seen_hashes and not settings.mock_image_gen:
+                           {"page": i, "total": total_pages})
+        return {"page_index": i, "prompt": prompt, "origin_url": origin_url,
+                "data": data, "ctype": ctype,
+                "hash": hashlib.md5(data).hexdigest()}
+
+    # 并行分批生成（IMAGE_GEN_PARALLEL 控制批量，批间隔防限流）
+    page_list = list(enumerate(pages, start=1))
+    results: dict[int, dict] = {}
+    batches = _batches(page_list, settings.image_gen_parallel)
+    for bi, batch in enumerate(batches):
+        for r in await asyncio.gather(*[_gen_one(i, b) for i, b in batch]):
+            results[r["page_index"]] = r
+        if bi < len(batches) - 1:
+            await asyncio.sleep(settings.image_gen_delay_seconds)
+
+    # 内容级去重（跨批，按页序）：重复页串行换构图重生一次（配额已含余量）
+    seen_hashes: set[str] = set()
+    images, warnings = [], []
+    extra_gen = 0
+    for i, body in page_list:
+        r = results[i]
+        if r["hash"] in seen_hashes and not settings.mock_image_gen:
             await check_and_consume(task_id, "image")
             extra_gen += 1
-            r = await generate_image(
-                prompt + "（请换一种与之前不同的构图和视角）",
+            r2 = await generate_image(
+                r["prompt"] + "（请换一种与之前不同的构图和视角）",
                 reference_image_urls=reference_urls or None)
-            origin_url = r["image_url"]
-            data, ctype = await fetch_image_bytes(origin_url)
-            content_hash = hashlib.md5(data).hexdigest()
-            if content_hash in seen_hashes:
+            data, ctype = await fetch_image_bytes(r2["image_url"])
+            new_hash = hashlib.md5(data).hexdigest()
+            if new_hash in seen_hashes:
                 warnings.append(f"第{i}页重生后仍重复，请人工复核")
-        seen_hashes.add(content_hash)
-        local_url = _persist_image(task_id, i, "p", data, ctype)
+            seen_hashes.add(new_hash)
+            await report_usage(task_id, "image_gen_progress", 0,
+                               {"page": i, "total": total_pages, "regen": True})
+            r = {"page_index": i, "prompt": r["prompt"], "origin_url": r2["image_url"],
+                 "data": data, "ctype": ctype, "hash": new_hash}
+        seen_hashes.add(r["hash"])
+        local_url = _persist_image(task_id, i, "p", r["data"], r["ctype"])
         images.append({
-            "page_index": i, "prompt": prompt, "image_url": local_url,
-            "origin_url": origin_url if not origin_url.startswith("data:") else "",
-            "hash": content_hash, "size_ok": _size_ok(data),
+            "page_index": i, "prompt": r["prompt"], "image_url": local_url,
+            "origin_url": r["origin_url"] if not r["origin_url"].startswith("data:") else "",
+            "hash": r["hash"], "size_ok": _size_ok(r["data"]),
         })
-        await asyncio.sleep(settings.image_gen_delay_seconds)
 
-    total = len(pages) + extra_gen
+    total = total_pages + extra_gen
     cost = 0 if settings.mock_image_gen else total * settings.image_cost_per_image_cny
     await report_usage(task_id, "image_gen", cost, {
-        "pages": len(pages), "extra_regens": extra_gen, "mode": mode})
+        "pages": total_pages, "extra_regens": extra_gen, "mode": mode,
+        "parallel": settings.image_gen_parallel})
     return {"images": images, "warnings": warnings, "total_generated": total,
             "cost_cny": cost, "mock": settings.mock_image_gen}
 

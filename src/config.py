@@ -32,8 +32,11 @@ class Settings(BaseSettings):
     initial_concurrency: int = 1
     min_concurrency: int = 1
     max_concurrency: int = 1
-    # 配图间隔（秒）：每张图之间留足处理时间，避免触发限流
+    # 配图间隔（秒）：批与批之间留处理时间，避免触发限流
     image_gen_delay_seconds: float = 5.0
+    # 任务内生图并行批量（2026-08-24）：6 张按批并发调用生图 API，
+    # 1=退回串行（openox 老线路防限流用），2-3=linkai 等容忍并发的线路
+    image_gen_parallel: int = 2
     image_cost_per_image_cny: float = 0.2   # 每张生图成本（元，客户确认 2026-08-19）
     # OCR（阿里百炼 qwen 系列，模型可按需换 qwen3.5-ocr / qwen3-vl-flash 等）
     ocr_model: str = "qwen-vl-ocr"
