@@ -7,10 +7,13 @@ ENV PYTHONUTF8=1 \
 
 WORKDIR /app
 
+# 国内服务器走清华 PyPI 源（与旧栈一致，可 --build-arg 覆盖）
+ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+
 # 先装依赖层（代码变动不触发重装）
 COPY requirements.txt .
-RUN pip install -r requirements.txt \
-    && pip install nanobot-ai==0.3.0
+RUN pip install -i ${PIP_INDEX_URL} -r requirements.txt \
+    && pip install -i ${PIP_INDEX_URL} nanobot-ai==0.3.0
 
 # 代码 + 部署脚本（.env 由 compose env_file 运行时注入，不打进镜像）
 COPY . .
