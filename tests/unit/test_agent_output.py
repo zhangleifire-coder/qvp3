@@ -5,6 +5,8 @@ from src.pipeline.agent_production import _parse_agent_json, _validate_output
 def _valid_output():
     return {
         "evidence": [{"title": "t", "url": "https://a", "summary": "s"}],
+        "content_style": "避坑指南",
+        "image_style": "真实摄影",
         "draft": "正文" * 100,
         "pages": [f"第{i}页文案内容" for i in range(1, 7)],
         "references": [{"image_url": "https://img/1.png", "title": "r", "engine": "bing"}],
@@ -35,6 +37,16 @@ def test_validate_ok_normalizes():
     assert out["pages"] == [f"第{i}页文案内容" for i in range(1, 7)]
     assert out["images"][0]["page_index"] == 1
     assert out["ocr_map"] == {1: "第1页文案内容"}
+    assert out["content_style"] == "避坑指南"
+    assert out["image_style"] == "真实摄影"
+
+
+def test_validate_style_fields_optional():
+    data = _valid_output()
+    del data["content_style"], data["image_style"]
+    out, errors = _validate_output(data)
+    assert errors == []           # 缺风格字段不判错（旧契约兼容）
+    assert out["content_style"] == "" and out["image_style"] == ""
 
 
 def test_validate_pages_wrong_count():

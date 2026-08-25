@@ -336,6 +336,7 @@ async def task_detail(task_id: str):
                 "supplement_question": task.supplement_question,
                 "gen_style": task.gen_style,
                 "gen_category": task.gen_category,
+                "gen_image_style": task.gen_image_style,
                 "template_id": str(task.template_id) if task.template_id else None,
                 "created_at": task.created_at.isoformat() if task.created_at else None,
                 "created_by": str(task.created_by) if task.created_by else None,

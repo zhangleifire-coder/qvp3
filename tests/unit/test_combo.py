@@ -85,3 +85,21 @@ class TestComboSection:
             self._task(source_query=None, gen_style=None, gen_category=None)) == ""
         msg = _compose_message("t1", "普通query", "general", "D", "P", "I", [])
         assert "组合创作上下文" not in msg
+
+
+class TestStyleAdaptiveCompose:
+    def test_style_library_injected(self):
+        msg = _compose_message("t1", "q", "general", "D", "P", "I", [])
+        assert "图片视觉风格库" in msg and "真实摄影" in msg
+        assert "随机选一种" in msg and "content_style" in msg and "image_style" in msg
+
+    def test_fixed_style_rule(self):
+        msg = _compose_message("t1", "q", "general", "D", "P", "I", [],
+                               fixed_style="避坑指南")
+        assert "已指定内容风格「避坑指南」" in msg
+
+    def test_image_style_library_text(self):
+        from src.services.combo import image_style_library_text, IMAGE_STYLE_LIBRARY
+        t = image_style_library_text()
+        assert len(IMAGE_STYLE_LIBRARY) == 8
+        assert all(f"- {n}：" in t for n, _ in IMAGE_STYLE_LIBRARY)

@@ -36,6 +36,8 @@ def _agent_json(mode: str = "general") -> str:
         "evidence": [{"title": "来源A", "url": "https://a.com/1",
                       "summary": "关键事实：测试主体成立于1990年"},
                      {"title": "来源B", "url": "https://b.com/2", "summary": "佐证"}],
+        "content_style": "避坑指南",
+        "image_style": "真实摄影",
         "draft": "这是一篇测试正文，用于验证创作 Agent 全链路。" * 20,
         "pages": [f"第{i}页图上文案：测试要点{i}" for i in range(1, 7)],
         "references": [],
@@ -90,6 +92,12 @@ async def test_agent_pipeline_produces_full_artifacts(agent_path):
     assert [r["node"] for r in results] == NODES_AGENT
 
     async with SessionLocal() as session:
+        # 风格自适应回填：普通导入任务 gen_style 为空 → Agent 判定结果回填
+        task_row = (await session.execute(
+            select(Task).where(Task.id == task_id))).scalar_one()
+        assert task_row.gen_style == "避坑指南"
+        assert task_row.gen_image_style == "真实摄影"
+
         draft = (await session.execute(
             select(Draft).where(Draft.task_id == task_id))).scalars().one()
         assert len(draft.body) > 150
@@ -182,3 +190,21 @@ async def test_agent_two_bad_rounds_fails_node(agent_path):
             select(NodeEvent).where(NodeEvent.task_id == task_id))).scalars().all()
         ap = [e for e in events if e.node_name == "agent_production"][0]
         assert ap.error_class == "RuntimeError"
+
+
+async def test_agent_presets_style_not_overwritten(agent_path):
+    """组合导入任务已显式指定 gen_style → Agent 回填不覆盖；图片风格仍记录。"""
+    async with SessionLocal() as session:
+        task = Task(idempotency_key=f"agent-fix-{uuid.uuid4().hex[:8]}",
+                    query="组合风格任务", content_type="x", mode="general",
+                    gen_style="解读·经验分享", gen_category="汽车")
+        session.add(task)
+        await session.commit()
+        await session.refresh(task)
+        task_id = task.id
+    await run_pipeline(task_id)
+    async with SessionLocal() as session:
+        task_row = (await session.execute(
+            select(Task).where(Task.id == task_id))).scalar_one()
+        assert task_row.gen_style == "解读·经验分享"   # 显式风格未被 Agent 判定覆盖
+        assert task_row.gen_image_style == "真实摄影"  # 图片风格始终记录本轮判定

@@ -40,6 +40,8 @@ _MODE_DESC = {
 
 _OUTPUT_CONTRACT = """{
   "evidence":  [{"title": "来源标题", "url": "https://...", "summary": "关键事实摘要"}],
+  "content_style": "判定的内容风格（解读·经验分享/测评实测/攻略教程/避坑指南/观点杂谈）",
+  "image_style": "选定的图片整体视觉风格（图片视觉风格库中的一种）",
   "draft":     "正文全文（400-700 字）",
   "pages":     ["第1页图上文案", "第2页图上文案", "第3页图上文案", "第4页图上文案", "第5页图上文案", "第6页图上文案"],
   "references": [{"image_url": "image_search 返回的图 URL", "title": "...", "engine": "..."}],
@@ -59,19 +61,31 @@ _AGENT_INSTRUCTIONS = """你是「图文生产平台」的创作 Agent，负责�
 - web_search(query, task_id)：网页检索事实证据（配额 {quota_search} 次，检索词要精准）
 - image_search(query, task_id, count)：搜实景/实物参考图（仅 single/compare 模式需要）
 - generate_images(task_id, pages, mode, image_template, reference_urls)：批量生成 6 张交付配图。
-  必须传：pages=6 页文案原样列表、mode、image_template=下方生图模板原样字符串；
+  必须传：pages=6 页文案原样列表、mode、image_template=下方生图模板（按第 6 步替换风格句后的版本）；
   single/compare 再传 reference_urls=image_search 结果里挑出的图片 URL。
 - ocr_image(image_url, task_id)：OCR 识别配图文字。默认跳过——系统会自动做图文
   一致性校验；仅当某页文案含关键数字/型号必须重点核验时，对那一页调用
 
+【图片视觉风格库（风格判定时从中选择）】
+{image_style_library}
+
 【工作流程（必须遵守）】
 1. 先调 web_search 检索证据（1-2 次），整理成 evidence（没有可靠来源就给空数组，不要编造 URL）。
-2. 严格按【正文创作规范】写正文 draft（400-700 字，事实以证据为准）。
-3. 严格按【分页规范】把正文改写成恰好 6 页图上文案 pages（列表长度必须等于 6）。
-4. single/compare 模式：调 image_search 搜参考图，把可用结果放进 references。
-5. 调 generate_images 生成 6 张图（生成结果里的 image_url 是本地路径，输出时必须原样照抄）。
-6. 默认不做 OCR（系统自动校验）。仅关键数字页需核验时，对该页调 ocr_image，结果写进 ocr_texts。
-7. 只输出最终 JSON，不要输出 JSON 以外的任何解释文字。
+2. 风格判定（自适应，写进 content_style / image_style 两个字段）：
+   a. 内容风格：{style_rule}结合 Query 与上一步检索到的信息，从
+      「解读·经验分享 / 测评实测 / 攻略教程 / 避坑指南 / 观点杂谈」中判定最贴合的一种；
+      多个都适配时随机选一种（不同次生成允许不同，保证内容多样性）。
+   b. 图片整体视觉风格：从上方【图片视觉风格库】选一种最贴合内容气质的视觉风格；
+      多个适配时同样随机选一种。后续正文行文按内容风格执行。
+3. 严格按【正文创作规范】写正文 draft（400-700 字，事实以证据为准）。
+4. 严格按【分页规范】把正文改写成恰好 6 页图上文案 pages（列表长度必须等于 6）。
+5. single/compare 模式：调 image_search 搜参考图，把可用结果放进 references。
+6. 调 generate_images 生成 6 张图（生成结果里的 image_url 是本地路径，输出时必须原样照抄）。
+   传 image_template 时：把模板中的风格句「坚韧治愈风、高清、极简高级」替换为你选定的
+   视觉风格的描述词（风格库里该风格名后的整段描述），其余约束原样保留——
+   这样 6 张配图统一为你选定的整体视觉风格。
+7. 默认不做 OCR（系统自动校验）。仅关键数字页需核验时，对该页调 ocr_image，结果写进 ocr_texts。
+8. 只输出最终 JSON，不要输出 JSON 以外的任何解释文字。
 
 【正文创作规范（系统提示词，必须遵守）】
 {draft_template}
@@ -203,23 +217,37 @@ def _validate_output(data: dict) -> tuple[dict | None, list[str]]:
             except (TypeError, ValueError):
                 continue
 
+    # 风格字段（缺失不报错：旧契约兼容，取默认值）
+    content_style = str(data.get("content_style") or "").strip()[:30]
+    image_style = str(data.get("image_style") or "").strip()[:30]
+
     if errors:
         return None, errors
     return {"draft": draft, "pages": pages, "images": images,
             "evidence": evidence, "references": references,
-            "ocr_map": ocr_map, "notes": str(data.get("notes", ""))[:1000]}, []
+            "ocr_map": ocr_map, "notes": str(data.get("notes", ""))[:1000],
+            "content_style": content_style, "image_style": image_style}, []
 
 
 def _compose_message(task_id: str, query: str, mode: str, draft_tpl: str,
                      pages_tpl: str, image_tpl: str, feedbacks: list[str],
-                     combo_section: str = "") -> str:
+                     combo_section: str = "",
+                     fixed_style: str | None = None) -> str:
+    from src.services.combo import image_style_library_text
     lines = "\n".join(f"{i}. {r}" for i, r in enumerate(feedbacks, 1))
     feedback_section = (_FEEDBACK_HEADER.format(feedback_lines=lines)
                         if feedbacks else "")
+    if fixed_style:
+        style_rule = (f"本任务已指定内容风格「{fixed_style}」，content_style 直接填该风格，"
+                      f"正文严格按该风格行文，不要另行选择。")
+    else:
+        style_rule = ""
     return _AGENT_INSTRUCTIONS.format(
         query=query, mode=mode, mode_desc=_MODE_DESC.get(mode, mode),
         task_id=task_id,
         quota_search=settings.mcp_max_web_searches_per_task,
+        image_style_library=image_style_library_text(),
+        style_rule=style_rule,
         draft_template=draft_tpl, pages_template=pages_tpl,
         image_template=image_tpl,
         feedback_section=combo_section + feedback_section,
@@ -296,6 +324,7 @@ async def node_agent_production(input_data: dict) -> dict:
             select(Task).where(Task.id == task_id))).scalar_one()
         query, mode, owner_id = task.query, (task.mode or "general"), task.created_by
         combo_section = _build_combo_section(task)
+        fixed_style = task.gen_style
 
     # 提示词库仍然后端主管：解析顺序 用户自定义 → admin 系统覆盖 → 代码默认
     draft_tpl = await get_effective_prompt("draft_gen", mode, owner_id)
@@ -317,7 +346,8 @@ async def node_agent_production(input_data: dict) -> dict:
 
     session_id = f"qvp-task-{tid}-{uuid.uuid4().hex[:8]}"
     user_msg = _compose_message(tid, query, mode, draft_tpl, pages_tpl,
-                                image_tpl, feedbacks, combo_section)
+                                image_tpl, feedbacks, combo_section,
+                                fixed_style=fixed_style)
     await bus.publish("agent_progress", {"message": "已连接 Nanobot，开始创作…",
                                          "session_id": session_id}, task_id=tid)
 
@@ -390,6 +420,14 @@ async def node_agent_production(input_data: dict) -> dict:
 
     # ── 落库：一次性原子提交全部产物 ──
     async with SessionLocal() as session:
+        # 风格自适应回填：图片视觉风格始终记录本轮 Agent 判定；
+        # 内容风格仅普通导入（未显式指定时）回填，组合导入的显式风格不覆盖
+        task_row = (await session.execute(
+            select(Task).where(Task.id == task_id))).scalar_one()
+        if out["image_style"]:
+            task_row.gen_image_style = out["image_style"]
+        if out["content_style"] and not task_row.gen_style:
+            task_row.gen_style = out["content_style"]
         claim = Claim(task_id=task_id, claim_text=query, risk_level="P1", position=1)
         session.add(claim)
         await session.flush()

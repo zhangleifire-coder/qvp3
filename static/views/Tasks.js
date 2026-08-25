@@ -347,6 +347,7 @@ const TasksView = {
             <span class="tag tag-blue">{{ modeLabel(detailTask.mode) }}</span>
             <span v-if="detailTask.gen_style" class="tag tag-blue">风格：{{ detailTask.gen_style }}</span>
             <span v-if="detailTask.gen_category" class="tag tag-blue">垂类：{{ detailTask.gen_category }}</span>
+            <span v-if="detailTask.gen_image_style" class="tag tag-blue">配图：{{ detailTask.gen_image_style }}</span>
             <span v-if="detail.risk" class="tag" :class="riskTag(detail.risk.level).cls">风险：{{ riskTag(detail.risk.level).label }}</span>
             <span class="muted" style="margin-left:8px">{{ fmtTime(detailTask.created_at) }}</span>
           </p>

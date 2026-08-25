@@ -23,6 +23,7 @@ class Task(Base):
     supplement_question = Column(Text)
     gen_style = Column(Text)
     gen_category = Column(Text)
+    gen_image_style = Column(Text)   # Agent 自适应判定的图片整体视觉风格（008）
     template_id = Column(UUID(as_uuid=True))
     created_at = Column(TIMESTAMP(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     created_by = Column(UUID(as_uuid=True))
