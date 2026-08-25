@@ -49,7 +49,7 @@ async def fetch_image_bytes(image_url: str) -> tuple:
                       "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
         "Referer": "https://www.baidu.com/",
     }
-    async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
+    async with httpx.AsyncClient(timeout=180, follow_redirects=True) as client:
         resp = await client.get(image_url, headers=headers)
         resp.raise_for_status()
         ctype = resp.headers.get("Content-Type", "image/png").split(";")[0]

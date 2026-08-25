@@ -69,7 +69,7 @@ async def _generate(prompt: str, size: str) -> dict:
     url = f"{settings.openai_image_base_url}/images/generations"
     payload = {"model": IMAGE_MODEL, "prompt": prompt, "size": size, "n": 1,
                "response_format": "url"}
-    async with httpx.AsyncClient(timeout=300) as client:
+    async with httpx.AsyncClient(timeout=600) as client:
         resp = await client.post(url, json=payload, headers=_headers())
         if resp.status_code >= 400:
             raise RuntimeError(f"image gen failed ({resp.status_code}): {resp.text[:400]}")
@@ -93,7 +93,7 @@ async def _edit_with_references(prompt: str, reference_image_urls: list[str],
     # gpt-image-2 编辑时自动高保真，传 input_fidelity 会返回 400，故不传
     data = {"model": IMAGE_MODEL, "prompt": prompt, "size": size,
             "n": "1", "response_format": "url"}
-    async with httpx.AsyncClient(timeout=300) as client:
+    async with httpx.AsyncClient(timeout=600) as client:
         resp = await client.post(url, data=data, files=files, headers=_headers())
         if resp.status_code >= 400:
             raise RuntimeError(f"image edit failed ({resp.status_code}): {resp.text[:400]}")

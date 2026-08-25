@@ -121,24 +121,44 @@ async def generate_images(task_id: str, pages: list[str], mode: str = "general",
 
     async def _gen_one(i: int, body: str) -> dict:
         prompt = get_image_prompt(mode, body, i, template=image_template or None)
-        r = await generate_image(prompt, reference_image_urls=reference_urls or None)
-        origin_url = r["image_url"]
-        data, ctype = await fetch_image_bytes(origin_url)
-        await report_usage(task_id, "image_gen_progress", 0,
-                           {"page": i, "total": total_pages})
-        return {"page_index": i, "prompt": prompt, "origin_url": origin_url,
-                "data": data, "ctype": ctype,
-                "hash": hashlib.md5(data).hexdigest()}
+        # 服务器跨国网络抖动（ReadTimeout 等）：单图最多 3 次尝试，避免一张失败炸整批
+        last_err: Exception | None = None
+        for attempt in range(3):
+            try:
+                r = await generate_image(prompt, reference_image_urls=reference_urls or None)
+                origin_url = r["image_url"]
+                data, ctype = await fetch_image_bytes(origin_url)
+                await report_usage(task_id, "image_gen_progress", 0,
+                                   {"page": i, "total": total_pages})
+                return {"page_index": i, "prompt": prompt, "origin_url": origin_url,
+                        "data": data, "ctype": ctype,
+                        "hash": hashlib.md5(data).hexdigest()}
+            except Exception as e:  # noqa: BLE001
+                last_err = e
+                if attempt < 2:
+                    await asyncio.sleep(3 * (attempt + 1))
+        raise RuntimeError(f"第{i}页生图 3 次尝试均失败: {last_err}") from last_err
 
-    # 并行分批生成（IMAGE_GEN_PARALLEL 控制批量，批间隔防限流）
+    # 并行分批生成（IMAGE_GEN_PARALLEL 控制批量，批间隔防限流）；
+    # 单页失败不炸整批：聚合后明确报出失败页，Agent 无需整批重试（配额有限）
     page_list = list(enumerate(pages, start=1))
     results: dict[int, dict] = {}
+    failed_pages: list[str] = []
     batches = _batches(page_list, settings.image_gen_parallel)
     for bi, batch in enumerate(batches):
-        for r in await asyncio.gather(*[_gen_one(i, b) for i, b in batch]):
-            results[r["page_index"]] = r
+        outs = await asyncio.gather(*[_gen_one(i, b) for i, b in batch],
+                                    return_exceptions=True)
+        for (i, _b), r in zip(batch, outs):
+            if isinstance(r, BaseException):
+                failed_pages.append(f"第{i}页: {r}")
+            else:
+                results[r["page_index"]] = r
         if bi < len(batches) - 1:
             await asyncio.sleep(settings.image_gen_delay_seconds)
+    if failed_pages:
+        raise RuntimeError(
+            "部分页生图失败（每页已重试 3 次，勿整批重试，请稍后单页补生成或结束本轮）: "
+            + "；".join(f[:150] for f in failed_pages))
 
     # 内容级去重（跨批，按页序）：重复页串行换构图重生一次（配额已含余量）
     seen_hashes: set[str] = set()
