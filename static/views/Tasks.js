@@ -345,8 +345,13 @@ const TasksView = {
           <p>
             <span class="tag" :class="statusTag(detailTask.status).cls">{{ statusTag(detailTask.status).label }}</span>
             <span class="tag tag-blue">{{ modeLabel(detailTask.mode) }}</span>
+            <span v-if="detailTask.gen_style" class="tag tag-blue">风格：{{ detailTask.gen_style }}</span>
+            <span v-if="detailTask.gen_category" class="tag tag-blue">垂类：{{ detailTask.gen_category }}</span>
             <span v-if="detail.risk" class="tag" :class="riskTag(detail.risk.level).cls">风险：{{ riskTag(detail.risk.level).label }}</span>
             <span class="muted" style="margin-left:8px">{{ fmtTime(detailTask.created_at) }}</span>
+          </p>
+          <p v-if="detailTask.source_query" class="muted" style="margin:4px 0 0; white-space:pre-wrap; background:#f6f8fb; border-radius:8px; padding:8px 10px; font-size:13px">
+            组合生成 · 原始提问：{{ detailTask.source_query }}
           </p>
 
           <h3>生产进度</h3>

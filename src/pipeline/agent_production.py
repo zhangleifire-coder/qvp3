@@ -95,6 +95,31 @@ _FEEDBACK_HEADER = """【审核驳回反馈（上一轮内容被人工驳回，�
 
 """
 
+# 组合生成任务（007）：query 是随机抽中的泛化问题，创作时需带上原始情境/风格/垂类
+_COMBO_SECTION = """【组合创作上下文（本任务由「组合生成导入」产生）】
+- 用户原始提问情境（成文需照顾该情境，可自然化用其中的细节）：
+{source_query}
+- 本篇创作角度（即下方 Query，是本篇的标题与主线）：{supplement_question}
+- 内容风格：{style}{category_line}
+写作要求：以「创作角度」为主线成文；{style_hint}{category_req}正文口吻与组织方式按上述风格执行。
+
+"""
+
+
+def _build_combo_section(task) -> str:
+    """组合任务注入组合上下文；普通任务返回空串（提示词不受影响）。"""
+    if not (task.source_query or task.gen_style or task.gen_category):
+        return ""
+    from src.services.combo import style_hint
+    category = (task.gen_category or "").strip()
+    return _COMBO_SECTION.format(
+        source_query=(task.source_query or "（未提供）").strip(),
+        supplement_question=(task.supplement_question or task.query).strip(),
+        style=(task.gen_style or "通用").strip(),
+        category_line=f"\n- 垂类领域：{category}（受众与用词贴合该垂类）" if category else "",
+        style_hint=style_hint(task.gen_style) or "按所选风格行文",
+        category_req="" if category else "")
+
 _CORRECTION_MESSAGE = """你上一轮的输出未通过系统校验，问题如下：
 {errors}
 
@@ -186,7 +211,8 @@ def _validate_output(data: dict) -> tuple[dict | None, list[str]]:
 
 
 def _compose_message(task_id: str, query: str, mode: str, draft_tpl: str,
-                     pages_tpl: str, image_tpl: str, feedbacks: list[str]) -> str:
+                     pages_tpl: str, image_tpl: str, feedbacks: list[str],
+                     combo_section: str = "") -> str:
     lines = "\n".join(f"{i}. {r}" for i, r in enumerate(feedbacks, 1))
     feedback_section = (_FEEDBACK_HEADER.format(feedback_lines=lines)
                         if feedbacks else "")
@@ -195,7 +221,8 @@ def _compose_message(task_id: str, query: str, mode: str, draft_tpl: str,
         task_id=task_id,
         quota_search=settings.mcp_max_web_searches_per_task,
         draft_template=draft_tpl, pages_template=pages_tpl,
-        image_template=image_tpl, feedback_section=feedback_section,
+        image_template=image_tpl,
+        feedback_section=combo_section + feedback_section,
         output_contract=_OUTPUT_CONTRACT)
 
 
@@ -268,6 +295,7 @@ async def node_agent_production(input_data: dict) -> dict:
         task = (await session.execute(
             select(Task).where(Task.id == task_id))).scalar_one()
         query, mode, owner_id = task.query, (task.mode or "general"), task.created_by
+        combo_section = _build_combo_section(task)
 
     # 提示词库仍然后端主管：解析顺序 用户自定义 → admin 系统覆盖 → 代码默认
     draft_tpl = await get_effective_prompt("draft_gen", mode, owner_id)
@@ -289,7 +317,7 @@ async def node_agent_production(input_data: dict) -> dict:
 
     session_id = f"qvp-task-{tid}-{uuid.uuid4().hex[:8]}"
     user_msg = _compose_message(tid, query, mode, draft_tpl, pages_tpl,
-                                image_tpl, feedbacks)
+                                image_tpl, feedbacks, combo_section)
     await bus.publish("agent_progress", {"message": "已连接 Nanobot，开始创作…",
                                          "session_id": session_id}, task_id=tid)
 

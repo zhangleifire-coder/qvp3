@@ -242,3 +242,10 @@ input, select, textarea { font-size: 15px; }
 .row-menu-item:disabled { color: var(--muted); cursor: not-allowed; }
 .row-menu-item.danger:not(:disabled) { color: var(--red); }
 .row-menu-item.danger:not(:disabled):hover { background: #fdeaea; }
+
+/* ── 组合生成导入（任务导入页）── */
+.combo-row { border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+.combo-row-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.combo-grid { display: grid; grid-template-columns: 1.2fr 1fr .7fr; gap: 12px; margin-top: 10px; }
+.btn-danger-ghost { background: none; border: 1px solid var(--red); color: var(--red); }
+.btn-danger-ghost:hover { background: #fdeaea; }

@@ -178,3 +178,22 @@ PYTHONUTF8=1 .venv/Scripts/python scripts/smoke_agent.py "某Query" general
 - 审核闭环：approve→approved；reject→rejected；retry→Agent 带反馈重生成（agent_compare_v1_regen1）
 - 成本明细：/api/admin/costs 按任务/节点/模型三维拆分正常
 - 回退开关：AGENT_PIPELINE_ENABLED=false → /api/meta/nodes 返回 13 节点直连路径
+
+### 组合生成导入（2026-08-24）
+
+第三种导入方式（导入页「组合生成」tab），对应导入设计表：一行 = 原始 query（长情境）
++ 泛化问题池 + 风格条件 + 垂类条件 + 生成条数 N。
+
+- **智能分析**：`POST /api/tasks/analyze_query` → DeepSeek（k3 降级）从原始 query 生成
+  15-20 个泛化补充问题，填入问题池后可手工增删（逗号/分号/顿号/换行分隔均可）
+- **组合导入**：`POST /api/tasks/import_combo` → 每行从池中随机抽 N 个问题（池够大时
+  不重复），各自与原始 query 组合成一条生产任务；重复组合按幂等键自动跳过
+- **数据模型（迁移 007）**：tasks 新增 `source_query`（原始情境）/`supplement_question`
+  （抽中角度，=query）/`gen_style`（风格）/`gen_category`（垂类）；任务列表 query 显示
+  短角度问题，详情抽屉展示组合信息
+- **风格注入**：agent_production 提示词增加【组合创作上下文】——原始情境化用、角度做
+  主线、按风格行文（解读·经验分享/测评实测/攻略教程/避坑指南/观点杂谈，自由文本透传）、
+  垂类贴受众；普通任务不受影响
+- 验证：pytest **145/145**（126+19）；真实验证——analyze_query 实调 82s 出 15 问；
+  组合导入 3 条（随机不重复）→ 中断 2 条（running/queued 各一）→ 保留 1 条真实生产
+  ~5 分钟到 review、风险 green，正文「以我2017款指南者1.4T为例」证明情境+风格注入生效

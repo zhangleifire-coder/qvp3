@@ -100,6 +100,102 @@ async def import_queries(payload: ImportQueriesIn):
             "concurrency": scheduler.limiter.capacity}
 
 
+# ============ 组合生成导入（query × 泛化问题池 × 风格/垂类，2026-08-24） ============
+
+class AnalyzeQueryIn(BaseModel):
+    query: str                # 原始提问（长情境）
+    count: int = 20           # 生成泛化问题数
+
+
+@router.post("/api/tasks/analyze_query")
+async def analyze_query(payload: AnalyzeQueryIn):
+    """智能分析：LLM 从原始 query 生成泛化补充问题池（导入前可人工编辑）。"""
+    from src.gateway.failover import call_with_failover
+    from src.services.combo import analyze_prompt, parse_analyzed_questions
+    query = payload.query.strip()
+    if len(query) < 4:
+        raise HTTPException(status_code=422, detail="query 太短，无法分析")
+    count = max(5, min(payload.count, 30))
+    result = await call_with_failover(analyze_prompt(query, count))
+    questions = parse_analyzed_questions(result["text"])
+    if not questions:
+        raise HTTPException(status_code=502,
+                            detail="模型未返回有效问题列表，请重试或手工填写")
+    return {"query": query, "questions": questions,
+            "model": result.get("model_version")}
+
+
+class ComboRowIn(BaseModel):
+    query: str                          # 原始提问情境
+    supplement_pool: str | list[str]    # 泛化问题池（分隔符文本或列表）
+    gen_style: str = ""                 # 风格条件（解读·经验分享…）
+    gen_category: str = ""              # 垂类条件（家居/汽车…）
+    rounds: int = 3                     # 生成数据条数
+
+
+class ImportComboIn(BaseModel):
+    rows: list[ComboRowIn]
+    content_type: str = "generic"
+    mode: str = "general"
+    actor: str = "anonymous"
+
+
+@router.post("/api/tasks/import_combo")
+async def import_combo(payload: ImportComboIn):
+    """组合生成导入：每行从泛化问题池随机抽 rounds 个问题，各自与原始 query
+    组合成一条生产任务（query=抽中的问题，source_query=原始情境，风格/垂类落库）。"""
+    import random as _random
+    from src.services.combo import parse_pool, pick_rounds
+    if payload.mode not in ("general", "single", "compare"):
+        raise HTTPException(status_code=422, detail="mode 取值无效")
+    created: list[tuple[object, str, str]] = []
+    skipped: list[dict] = []
+    async with SessionLocal() as session:
+        for row in payload.rows:
+            query = row.query.strip()
+            pool = parse_pool(row.supplement_pool)
+            if not query:
+                skipped.append({"query": "", "reason": "原始 query 为空"})
+                continue
+            if not pool:
+                skipped.append({"query": query[:50], "reason": "泛化问题池为空"})
+                continue
+            picked = pick_rounds(pool, row.rounds, rng=_random.Random())
+            for q in picked:
+                key = f"combo|{query}|{q}|{payload.mode}|{payload.content_type}"
+                exists = await session.execute(
+                    select(Task.id).where(Task.idempotency_key == key))
+                if exists.first():
+                    skipped.append({"query": q[:50],
+                                    "reason": "该组合已存在（重复角度自动去重）"})
+                    continue
+                task = Task(
+                    idempotency_key=key, query=q,
+                    content_type=payload.content_type, mode=payload.mode,
+                    status="draft",
+                    source_query=query, supplement_question=q,
+                    gen_style=row.gen_style.strip() or None,
+                    gen_category=row.gen_category.strip() or None)
+                session.add(task)
+                await session.flush()
+                created.append((task.id, q, query))
+        await session.commit()
+    for tid, q, _ in created:
+        await scheduler.enqueue(tid, q)
+    if created:
+        sample = "、".join(q[:20] for _, q, _ in created[:3])
+        await log_action(payload.actor, "import_tasks",
+                         f"组合生成导入 {len(created)} 条任务（模式 {payload.mode}，"
+                         f"风格 {payload.rows[0].gen_style or '默认'}）：{sample}"
+                         + ("…" if len(created) > 3 else ""))
+    return {"imported": len(created),
+            "task_ids": [str(t) for t, _, _ in created],
+            "items": [{"task_id": str(t), "question": q, "source": src[:80]}
+                      for t, q, src in created],
+            "skipped": skipped, "queued": True,
+            "queue_size": scheduler.queue.qsize()}
+
+
 @router.get("/api/tasks")
 async def list_tasks(status: str | None = None, mode: str | None = None,
                      risk_level: str | None = None, q: str | None = None,
@@ -236,6 +332,10 @@ async def task_detail(task_id: str):
                 "sla_hours": task.sla_hours,
                 "priority": task.priority,
                 "status": task.status,
+                "source_query": task.source_query,
+                "supplement_question": task.supplement_question,
+                "gen_style": task.gen_style,
+                "gen_category": task.gen_category,
                 "template_id": str(task.template_id) if task.template_id else None,
                 "created_at": task.created_at.isoformat() if task.created_at else None,
                 "created_by": str(task.created_by) if task.created_by else None,
