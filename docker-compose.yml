@@ -35,6 +35,9 @@ services:
     ports:
       - "8003:8003"
     volumes:
+      # .env 只读挂载：MCP 子进程由 pydantic env_file 读密钥（nanobot 不透传父环境），
+      # 容器内 OS 环境变量优先级更高，DATABASE_URL 等仍以 environment 覆盖为准
+      - ./.env:/app/.env:ro
       - qvp2_generated:/app/static/generated
       - qvp2_exports:/app/exports
     depends_on:
