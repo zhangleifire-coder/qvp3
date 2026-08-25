@@ -6,7 +6,7 @@ name: qvp2
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16        # 服务器本地已有镜像（Docker Hub 直连不通，避免拉取）
     container_name: qvp2-postgres
     environment:
       POSTGRES_USER: qvp
