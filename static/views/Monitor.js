@@ -3,7 +3,10 @@
 // 工作控制台逐行显示，Agent 大节点内部再展开 7 子阶段芯片与流式输出预览。
 // Debug 开关：输入 admin 密码解锁，可看到每个任务会话的完整细节（含 traceback），
 // 并支持下载 Markdown 格式 debug 日志（文件名：日期+时间+debug.md）。
-const AGENT_STEPS = ['检索证据', '风格判定', '正文创作', '分页文案', '搜参考图', '生成配图', 'OCR自检'];
+// 子阶段清单与 Tasks.js 共享（那边用顶层 const 声明 AGENT_STEPS；
+// 这里只读 window.AGENT_STEPS，不再顶层 const，避免两文件同页重复声明）
+const AGENT_STEPS_REF = window.AGENT_STEPS || (window.AGENT_STEPS =
+  ['检索证据', '风格判定', '正文创作', '分页文案', '搜参考图', '生成配图', 'OCR自检']);
 
 const MonitorView = {
   data() {
@@ -322,7 +325,7 @@ const MonitorView = {
 
         <!-- Agent 大节点内部：7 子阶段芯片 -->
         <div v-if="agentStepIdx(t) >= 0" class="agent-substeps">
-          <span v-for="(s, i) in AGENT_STEPS" :key="s" class="stage-chip sm"
+          <span v-for="(s, i) in AGENT_STEPS_REF" :key="s" class="stage-chip sm"
                 :class="{done: i < agentStepIdx(t), doing: i === agentStepIdx(t)}">
             {{ i < agentStepIdx(t) ? '✓ ' : '' }}{{ s }}
           </span>
@@ -392,5 +395,5 @@ const MonitorView = {
       </div>
     </div>
   </app-layout>`,
-  created() { this.AGENT_STEPS = AGENT_STEPS; },
+  created() { this.AGENT_STEPS_REF = AGENT_STEPS_REF; },
 };

@@ -1,5 +1,7 @@
 // Agent 大节点内部子阶段（工作流 7 步，监控用；idx 由 stage_hint 推断）
-const AGENT_STEPS = ['检索证据', '风格判定', '正文创作', '分页文案', '搜参考图', '生成配图', 'OCR自检'];
+// 与 Monitor.js 共享 window.AGENT_STEPS，避免两文件同页加载重复声明
+const AGENT_STEPS = window.AGENT_STEPS || (window.AGENT_STEPS =
+  ['检索证据', '风格判定', '正文创作', '分页文案', '搜参考图', '生成配图', 'OCR自检']);
 
 // 任务中心：列表（筛选/轮询/SSE 实时）+ 详情抽屉（节点进度/明细 + Agent 实时工作台 + 全部产物）
 const TasksView = {
