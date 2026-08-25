@@ -214,3 +214,34 @@ PYTHONUTF8=1 .venv/Scripts/python scripts/smoke_agent.py "某Query" general
 - 验证：pytest **150/150**；真实验证 2 条普通导入（净水器滤芯/客厅收纳）→
   均自动判定 攻略教程 + 分别选中 信息图表/治愈暖彩，视觉模型复核生成图确为
   蓝色模块化信息图表 vs 暖色治愈插画，风格真实生效且任务间有随机差异
+
+## 八、vpstest04 服务器部署（qvp2 独立栈，2026-08-25）
+
+**访问**：`http://117.34.118.115:8003`（账号与本地一致：张三/李四/王五，初始密码 1qaz@WSX）
+
+**独立化**：与服务器上旧栈完全隔离——独立 compose 项目 `qvp2`（目录 `~/qvp2`）、
+独立 docker 网络、独立数据卷（qvp2_pgdata / qvp2_generated / qvp2_exports）、
+独立 Postgres（容器内网络，不对宿主机开端口）。旧栈 qvp:8000 / qvp-test:8001 不受影响。
+
+**架构**（docker-compose.yml + deploy/）：
+- `qvp2-postgres`：postgres:16（服务器本地镜像，Docker Hub 直连不通）
+- `qvp2-app`：后端 + Nanobot(:8900 仅容器内) + qvp_mcp 同容器；entrypoint 依次
+  init_db（迁移 001-008 + 账号）→ Nanobot 守护循环 → uvicorn :8003；对外仅 8003
+- `.env` 只读挂载 /app/.env（**关键**：nanobot 不透传父环境给 MCP 子进程，子进程靠
+  pydantic env_file 读密钥；OS 环境变量优先级更高，DATABASE_URL 仍由 compose 覆盖）
+- 镜像构建走清华 PyPI 源（--build-arg PIP_INDEX_URL 可覆盖）
+
+**服务器适配修复**（跨国网络抖动）：
+- 生图单图 3 次重试 + gather 容错聚合——一张 ReadTimeout 不再炸整批耗尽配额
+- 生图超时 240s / 图下载 120s；服务器 .env `IMAGE_GEN_PARALLEL=1`（串行）
+
+**已知事项**：
+- 服务器到 linkai（direct.linkai.pics）当前限速明显：~5 分钟/张（本地 ~1 分钟），
+  全链任务 ~24 分钟。观察期后可把服务器 .env 调回 IMAGE_GEN_PARALLEL=2 提速
+- 服务器存在一个 7/31 挂起的 dmind2 构建进程（非本项目），建议择机清理
+- 更新部署：本地改码提交 → `git archive HEAD` 打包 → scp 解压到 ~/qvp2 →
+  `docker compose up -d --build`（迁移幂等，entrypoint 自动应用）
+
+**部署验证**：healthz/login/8 节点 ✓；真实任务全链（检索→正文 546 字→6 图→
+风险 green→review）✓；风格自适应服务器同样生效（攻略教程 + 治愈暖彩）✓；
+三栈隔离 200 ✓；公网 8003 可达 ✓。
