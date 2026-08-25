@@ -373,3 +373,73 @@ async def test_export_job_start_empty_404():
     async with _client() as client:
         r = await client.post("/api/export/approved/start")
     assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_export_streaming_events_and_midrun_download():
+    """流式导出：SSE 总线广播 start/task/part/done 事件；分包就绪即可在打包中下载。"""
+    import asyncio
+    import io as _pio
+    from PIL import Image as _PImage
+    from src.stream.bus import bus
+
+    # 12 条 approved（2 包：10+2），每条 1 张图；图抓取放慢拉长运行窗口
+    _buf = _pio.BytesIO()
+    _PImage.new("RGB", (100, 100), (30, 144, 255)).save(_buf, format="PNG")
+    _png = _buf.getvalue()
+
+    async def slow_fetch(url):
+        await asyncio.sleep(0.35)
+        return (_png, "image/png")
+
+    async with SessionLocal() as session:
+        for k in range(12):
+            task = Task(idempotency_key=f"st-{_uniq()}", query=f"流式导出{k}-{_uniq()}",
+                        content_type="generic", mode="general", status="approved")
+            session.add(task)
+            await session.flush()
+            session.add(Draft(task_id=task.id, body=f"正文{k}", version=1,
+                              model_version="m", prompt_version="p"))
+            session.add(Asset(task_id=task.id, page_index=1, source_type="ai_generated",
+                              hash=f"h{k}", image_url=f"https://example.com/{k}.png",
+                              copyright_status="clear", model_version="gpt-image-2",
+                              is_illustration=False))
+        await session.commit()
+
+    q = bus.subscribe()
+    midrun_download = False
+    events = []
+    try:
+        with patch("src.gateway.ocr.fetch_image_bytes", new=slow_fetch):
+            async with _client() as client:
+                r = await client.post("/api/export/approved/start?actor=tester")
+                assert r.status_code == 200
+                job_id = r.json()["job_id"]
+                assert r.json()["parts_expected"] == 2
+                s = {}
+                for _ in range(300):   # 最长 15s
+                    s = (await client.get(f"/api/export/{job_id}")).json()
+                    if s["status"] == "running" and s.get("parts_done") \
+                            and not midrun_download:
+                        d = await client.get(f"/api/export/{job_id}/download/1")
+                        if d.status_code == 200:
+                            midrun_download = True   # 打包未完成，第 1 包已可下载
+                    if s["status"] in ("done", "error"):
+                        break
+                    await asyncio.sleep(0.05)
+        assert s["status"] == "done", s
+        assert s["done"] == 12 and s["total"] == 12
+        assert len(s["parts"]) == 2 and len(s["parts_done"]) == 2
+        assert s["images_done"] == 12
+        assert midrun_download, "分包就绪后应可在打包进行中下载"
+        # 汇总 SSE 事件
+        while not q.empty():
+            events.append(q.get_nowait())
+        exp = [e for e in events if e["type"] == "export_progress"
+               and e["data"].get("job_id") == job_id]
+        phases = {e["data"]["phase"] for e in exp}
+        assert {"start", "task", "task_done", "part", "done"} <= phases
+        assert sum(1 for e in exp if e["data"]["phase"] == "part") == 2
+        assert exp[-1]["data"]["phase"] == "done"
+    finally:
+        bus.unsubscribe(q)

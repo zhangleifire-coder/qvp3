@@ -10,6 +10,9 @@ const TasksView = {
       detail: null, detailError: '', retrying: false,
       exportJob: null, exportTimer: null,   // 任务式导出进度 {id,status,total,done,detail}
       showExport: false,     // 导出弹窗开关（关闭不中断后台打包）
+      exportLog: [],         // 流式控制台日志行 {t, m, k}
+      exportT0: 0,           // 打包开始时间（算用时/预估）
+      exportTick: 0,         // 1s 心跳：驱动用时/速率每秒刷新
       zoom: null,            // 图片放大浏览 {src, title, text}
       search: '',            // 关键词搜索（Query 模糊匹配）
       rowMenu: null,         // 展开操作菜单的行任务 id
@@ -179,24 +182,86 @@ const TasksView = {
       this.error = '';
       try {
         const r = await api.post('/api/export/approved/start?actor=' + encodeURIComponent(this.actorName));
-        this.exportJob = { id: r.job_id, status: 'running', total: r.total, done: 0, detail: '启动打包…' };
+        this.exportJob = { id: r.job_id, status: 'running', total: r.total,
+                           done: 0, detail: '启动打包…', parts: [],
+                           parts_done: [], parts_expected: r.parts_expected || 1,
+                           images_done: 0 };
+        this.exportLog = [];
+        this.exportT0 = Date.now();
+        this._exportLog('info', `开始打包：共 ${r.total} 条已通过内容，预计 ${r.parts_expected || 1} 包`);
         this.showExport = true;
         this.exportTimer = setInterval(this.pollExport, 1000);
       } catch (e) { this.error = e.message; }
     },
+    _exportLog(kind, msg) {
+      // 流式控制台：追加一行并自动滚到底（上限 300 行防长任务爆内存）
+      this.exportLog.push({ t: new Date().toTimeString().slice(0, 8), m: msg, k: kind });
+      if (this.exportLog.length > 300) this.exportLog.splice(0, this.exportLog.length - 300);
+      this.$nextTick(() => {
+        const el = this.$refs.exportConsole;
+        if (el) el.scrollTop = el.scrollHeight;
+      });
+    },
+    onExportStream(d) {
+      // SSE 流式进度（export_progress 事件）：即时刷新，与 1s 轮询互为补充
+      if (!this.exportJob || d.job_id !== this.exportJob.id) return;
+      const j = this.exportJob;
+      if (d.phase === 'start') {
+        j.total = d.total; j.status = 'running';
+      } else if (d.phase === 'task') {
+        this._exportLog('info', `打包 ${d.done + 1}/${d.total}：${d.query}（第 ${d.part} 包）`);
+      } else if (d.phase === 'image') {
+        j.images_done = d.images_done;
+        if (!d.ok) this._exportLog('err', `　└ 图片 ${d.img}/${d.img_total} 下载失败，已写入占位说明`);
+        else if (d.img === d.img_total) this._exportLog('dim', `　└ ${d.img_total} 张配图就绪`);
+      } else if (d.phase === 'task_done') {
+        j.done = d.done; j.total = d.total;
+      } else if (d.phase === 'part') {
+        j.parts_done = [...(j.parts_done || []),
+                        { part: d.part, tasks: d.tasks, size: d.size }];
+        this._exportLog('part', `✓ 第 ${d.part} 包就绪（${d.tasks} 条 · ${this.fmtSize(d.size)}），已可下载`);
+      } else if (d.phase === 'done') {
+        j.status = 'done'; j.parts = d.parts; j.done = d.total;
+        j.detail = d.detail; j.images_done = d.images_done;
+        if (this.exportTimer) { clearInterval(this.exportTimer); this.exportTimer = null; }
+        const secs = Math.round((Date.now() - this.exportT0) / 1000);
+        this._exportLog('done', `打包完成：${d.total} 条 / ${d.parts.length} 包 · 用时 ${secs}s · 共 ${d.images_done} 张配图，逐包下载即可`);
+      } else if (d.phase === 'error') {
+        j.status = 'error';
+        this._exportLog('err', `打包失败：${d.error}`);
+        if (this.exportTimer) { clearInterval(this.exportTimer); this.exportTimer = null; }
+      }
+    },
+    exportElapsedStr() {
+      if (!this.exportT0 || !this.exportJob || this.exportJob.status !== 'running') return '';
+      return Math.round((Date.now() - this.exportT0) / 1000) + 's';
+    },
+    exportSpeed() {
+      // 实时速率 + 剩余预估（基于已打包条数）
+      const j = this.exportJob;
+      if (!this.exportT0 || !j || j.status !== 'running' || !j.done) return '';
+      const secs = Math.max(1, (Date.now() - this.exportT0) / 1000);
+      const eta = Math.round((j.total - j.done) / (j.done / secs));
+      return `${(j.done / secs).toFixed(1)} 条/s · 预计剩余 ${eta}s`;
+    },
     async pollExport() {
       if (!this.exportJob) return;
+      this.exportTick++;   // 心跳：值变化触发重渲染，用时/速率每秒跳动
       try {
         const s = await api.get('/api/export/' + this.exportJob.id);
-        Object.assign(this.exportJob, s);
+        const grew = (s.parts_done || []).length > (this.exportJob.parts_done || []).length;
+        if (grew) this.exportJob.parts_done = s.parts_done;   // SSE 丢帧时兜底补分包状态
+        Object.assign(this.exportJob, { status: s.status, total: s.total,
+                                        done: s.done, detail: s.detail,
+                                        images_done: s.images_done });
         if (s.status === 'done') {
           // 打包完成：展示分包下载按钮，用户逐包下载（不自动触发）
+          this.exportJob.parts = s.parts || [];
+          if (!this.exportLog.some(l => l.k === 'done')) this._exportLog('done', s.detail);
           clearInterval(this.exportTimer); this.exportTimer = null;
         } else if (s.status === 'error') {
           clearInterval(this.exportTimer); this.exportTimer = null;
-          this.error = '导出失败：' + (s.error || '未知错误');
-          this.exportJob = null;
-          this.showExport = false;
+          this._exportLog('err', '导出失败：' + (s.error || '未知错误'));
         }
       } catch (e) { /* 单次轮询失败静默，下轮重试 */ }
     },
@@ -253,6 +318,7 @@ const TasksView = {
       try {
         const d = JSON.parse(ev.data);
         if (d.type === 'agent_progress') this.onAgentProgress();
+        else if (d.type === 'export_progress') this.onExportStream(d.data || {});
         else if (d.type && (d.type.startsWith('task_') || d.type.startsWith('node_'))) this.onSse();
       } catch (e) { /* ping 等非 JSON 帧忽略 */ }
     };
@@ -439,30 +505,52 @@ const TasksView = {
       </div>
     </div>
     <div v-if="showExport && exportJob" class="drawer-mask" @click.self="showExport = false">
-      <div class="export-modal">
+      <div class="export-modal export-modal-lg">
         <div class="drawer-head">
           <h2>📦 导出已通过内容包</h2>
+          <span class="tag" :class="exportJob.status === 'done' ? 'tag-green' : (exportJob.status === 'error' ? 'tag-red' : 'tag-blue')">
+            {{ exportJob.status === 'done' ? '完成' : (exportJob.status === 'error' ? '失败' : '打包中') }}
+          </span>
           <button class="btn btn-outline btn-sm" @click="showExport = false">关闭</button>
         </div>
-        <template v-if="exportJob.status !== 'done'">
-          <div class="export-progress-row">
-            <div class="bar-track"><div class="bar-fill" :style="{width: exportPct + '%'}"></div></div>
-            <span class="bar-count">{{ exportPct }}%</span>
+
+        <div class="export-stats">
+          <span>📊 {{ exportJob.done || 0 }} / {{ exportJob.total }} 条</span>
+          <span>🖼 {{ exportJob.images_done || 0 }} 张配图</span>
+          <span>📦 {{ (exportJob.parts_done || []).length }} / {{ exportJob.parts_expected || '?' }} 包就绪</span>
+          <span v-if="exportJob.status === 'running'">⏱ {{ exportElapsedStr() }} · {{ exportSpeed() }}</span>
+        </div>
+
+        <div class="export-progress-row">
+          <div class="bar-track"><div class="bar-fill bar-anim" :style="{width: exportPct + '%'}"></div></div>
+          <span class="bar-count">{{ exportPct }}%</span>
+        </div>
+
+        <div ref="exportConsole" class="export-console">
+          <div v-for="(l, i) in exportLog" :key="i" class="ec-line" :class="'ec-' + l.k">
+            <span class="ec-ts">{{ l.t }}</span> {{ l.m }}
           </div>
-          <p class="muted export-detail">{{ exportJob.detail }}（{{ exportJob.done }}/{{ exportJob.total }}）</p>
-          <p class="muted">打包在服务器后台进行，关闭本窗口不会中断，可稍后再点开查看。</p>
-        </template>
-        <template v-else>
-          <p class="export-detail">{{ exportJob.detail }}</p>
-          <div class="export-parts">
-            <a v-for="p in exportJob.parts" :key="p.part" class="btn btn-outline btn-sm"
+          <div v-if="exportJob.status === 'running'" class="ec-line ec-dim"><span class="ec-ts">--:--:--</span> <span class="ec-cursor">▊</span></div>
+        </div>
+
+        <div v-if="(exportJob.parts_done || []).length || exportJob.status === 'done'" class="export-parts">
+          <template v-if="exportJob.status === 'done'">
+            <a v-for="p in exportJob.parts" :key="p.part" class="btn btn-primary btn-sm"
                :href="'/api/export/' + exportJob.id + '/download/' + p.part" style="text-decoration:none">⬇ 第{{ p.part }}包（{{ p.tasks }}条 · {{ fmtSize(p.size) }}）</a>
-          </div>
-          <p class="muted">每 10 条打成一个 zip，逐包点击下载；下载进度由浏览器管理。内容包在服务器保留约 1 小时。</p>
-          <div style="text-align:right;margin-top:14px">
-            <button class="btn btn-primary btn-sm" @click="exportJob = null; showExport = false">完成</button>
-          </div>
-        </template>
+          </template>
+          <template v-else>
+            <a v-for="p in exportJob.parts_done" :key="p.part" class="btn btn-outline btn-sm"
+               :href="'/api/export/' + exportJob.id + '/download/' + p.part" style="text-decoration:none">⬇ 第{{ p.part }}包（{{ p.tasks }}条 · {{ fmtSize(p.size) }}）</a>
+            <span class="part-chip pending">第 {{ (exportJob.parts_done || []).length + 1 }} 包打包中…</span>
+            <span v-for="n in Math.max(0, (exportJob.parts_expected || 1) - (exportJob.parts_done || []).length - 1)"
+                  :key="'w' + n" class="part-chip">第 {{ (exportJob.parts_done || []).length + 1 + n }} 包 待生成</span>
+          </template>
+        </div>
+
+        <p class="muted" style="font-size:12.5px">打包在服务器后台进行，分包就绪即可先行下载；关闭本窗口不会中断，可稍后再点开查看。内容包保留约 1 小时。</p>
+        <div v-if="exportJob.status === 'done'" style="text-align:right;margin-top:10px">
+          <button class="btn btn-primary btn-sm" @click="exportJob = null; showExport = false">完成</button>
+        </div>
       </div>
     </div>
     <img-lightbox :img="zoom" @close="zoom=null" />

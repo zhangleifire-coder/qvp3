@@ -663,7 +663,9 @@ async def _build_approved_zips(job: dict | None = None,
 
     part_size 非空时每 part_size 条任务分一个包；任务式导出（job 非空）分包落盘
     exports/，同步导出（job 为空）在内存出单包字节。
-    job 非空时往里写进度（total/done/detail），供进度条轮询。
+    job 非空时往里写进度（total/done/detail），并向 SSE 总线流式广播
+    export_progress 事件（前端导出弹窗实时滚动展示）；每包落盘即广播 part
+    事件，前端可不等整单完成先行下载已就绪分包。
     返回 (parts, 任务数)；part 含 part/tasks/size + file（落盘）或 bytes（内存）。
     """
     import asyncio
@@ -673,6 +675,28 @@ async def _build_approved_zips(job: dict | None = None,
     from src.models.assets import Asset
     from src.gateway.ocr import fetch_image_bytes
     from src.config import settings
+    from src.stream.bus import bus
+
+    # 捕获主事件循环：_flush 在 to_thread 工作线程执行，SSE 发布须回投主循环
+    main_loop = asyncio.get_running_loop()
+
+    def _emit(phase: str, **fields) -> None:
+        """打包进度流式广播（SSE）；总线异常不影响打包本身。线程安全。"""
+        if job is None:
+            return
+        payload = {"job_id": job.get("job_id"), "phase": phase, **fields}
+
+        def _spawn() -> None:
+            main_loop.create_task(bus.publish("export_progress", payload))
+
+        try:
+            asyncio.get_running_loop().create_task(
+                bus.publish("export_progress", payload))
+        except RuntimeError:  # 工作线程：回投主循环
+            try:
+                main_loop.call_soon_threadsafe(_spawn)
+            except RuntimeError:
+                pass
 
     target_size = tuple(int(x) for x in settings.image_size.split("x"))
     async with SessionLocal() as session:
@@ -702,7 +726,10 @@ async def _build_approved_zips(job: dict | None = None,
         assets_by_task.setdefault(a.task_id, []).append(a)
 
     if job is not None:
-        job.update(total=len(tasks), done=0, detail="准备打包…")
+        job.update(total=len(tasks), done=0, detail="准备打包…",
+                   parts_done=[], images_done=0)
+        _emit("start", total=len(tasks),
+              parts_expected=-(-len(tasks) // part_size) if part_size else 1)
     to_disk = job is not None and bool(part_size)
     parts: list[dict] = []
     buf = io.BytesIO()
@@ -724,9 +751,15 @@ async def _build_approved_zips(job: dict | None = None,
             path = _EXPORT_DIR / f"approved_{job['job_id']}_p{idx}.zip"
             path.write_bytes(data)
             part["file"] = str(path)
+            # 落盘即登记：打包进行中前端就能下载该分包
+            job.setdefault("files", []).append(str(path))
         else:
             part["bytes"] = data
         parts.append(part)
+        if job is not None and to_disk:
+            job.setdefault("parts_done", []).append(
+                {"part": idx, "tasks": part_tasks, "size": len(data)})
+            _emit("part", part=idx, tasks=part_tasks, size=len(data))
         buf = io.BytesIO()
         zf = zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED)
         manifest = ["task_id,query,mode,created_at"]
@@ -749,6 +782,8 @@ async def _build_approved_zips(job: dict | None = None,
         part_no = len(parts) + 1
         if job is not None:
             job["detail"] = f"打包第 {i}/{len(tasks)} 条（第 {part_no} 包）：{task.query[:20]}"
+            _emit("task", done=i - 1, total=len(tasks), part=part_no,
+                  query=task.query[:40], images_done=job.get("images_done", 0))
         dirname = f"{i:03d}_" + re.sub(r'[\\/:*?"<>|\s]+', "_", task.query)[:20]
         manifest.append(f"{task.id},{task.query},{task.mode},{task.created_at}")
         draft = drafts.get(task.id)
@@ -762,6 +797,11 @@ async def _build_approved_zips(job: dict | None = None,
             if job is not None:
                 job["detail"] = (f"打包第 {i}/{len(tasks)} 条（第 {part_no} 包）："
                                  f"{task.query[:20]}（图片 {j}/{len(task_assets)}）")
+                job["images_done"] = job.get("images_done", 0) + (0 if err else 1)
+                _emit("image", done=i, total=len(tasks), part=part_no,
+                      img=j, img_total=len(task_assets),
+                      query=task.query[:40], ok=err is None,
+                      images_done=job["images_done"])
             if err is None:
                 await asyncio.to_thread(
                     zf.writestr, f"{dirname}/图片/P{a.page_index}.png", data)
@@ -771,6 +811,8 @@ async def _build_approved_zips(job: dict | None = None,
         part_tasks += 1
         if job is not None:
             job["done"] = i
+            _emit("task_done", done=i, total=len(tasks), part=part_no,
+                  query=task.query[:40])
         if part_size and part_tasks >= part_size:
             await asyncio.to_thread(_flush)
     await asyncio.to_thread(_flush)
@@ -805,6 +847,7 @@ def _sweep_export_jobs() -> None:
 
 async def _run_export_job(job_id: str, actor: str) -> None:
     job = _EXPORT_JOBS[job_id]
+    from src.stream.bus import bus
     try:
         parts, n = await _build_approved_zips(job, part_size=_EXPORT_PART_SIZE)
         job["parts"] = [{"part": p["part"], "tasks": p["tasks"], "size": p["size"]}
@@ -812,12 +855,18 @@ async def _run_export_job(job_id: str, actor: str) -> None:
         job["files"] = [p["file"] for p in parts]
         job["status"] = "done"
         job["detail"] = f"打包完成：{n} 条 / {len(parts)} 包，可逐包下载"
+        await bus.publish("export_progress", {
+            "job_id": job_id, "phase": "done", "total": n,
+            "detail": job["detail"],
+            "parts": job["parts"], "images_done": job.get("images_done", 0)})
         await log_action(actor, "export_approved",
                          f"导出已通过内容包 ZIP（{n} 条任务 / {len(parts)} 包，任务式导出）")
     except Exception as e:  # noqa: BLE001
         job["status"] = "error"
         job["error"] = str(e)
         job["detail"] = "打包失败"
+        await bus.publish("export_progress", {
+            "job_id": job_id, "phase": "error", "error": str(e)})
 
 
 @router.post("/api/export/approved/start")
@@ -837,9 +886,11 @@ async def start_approved_export(actor: str = "anonymous"):
     _EXPORT_JOBS[job_id] = {"status": "running", "total": n, "done": 0,
                             "detail": "启动打包…", "error": None,
                             "job_id": job_id, "files": [], "parts": [],
+                            "parts_done": [], "images_done": 0,
                             "created": time.time()}
     asyncio.create_task(_run_export_job(job_id, actor))
-    return {"job_id": job_id, "total": n}
+    return {"job_id": job_id, "total": n,
+            "parts_expected": -(-n // _EXPORT_PART_SIZE)}
 
 
 @router.get("/api/export/{job_id}")
@@ -847,7 +898,8 @@ async def export_job_status(job_id: str):
     job = _EXPORT_JOBS.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="export job not found")
-    return {k: job.get(k) for k in ("status", "total", "done", "detail", "error", "parts")}
+    return {k: job.get(k) for k in ("status", "total", "done", "detail", "error",
+                                    "parts", "parts_done", "images_done")}
 
 
 @router.get("/api/export/{job_id}/download/{part}")
@@ -855,9 +907,10 @@ async def download_export_part(job_id: str, part: int):
     from fastapi.responses import FileResponse
     job = _EXPORT_JOBS.get(job_id)
     files = (job or {}).get("files") or []
-    if not job or job.get("status") != "done" or not (1 <= part <= len(files)):
-        raise HTTPException(status_code=400, detail="导出尚未完成或已过期")
-    tasks_in_part = job["parts"][part - 1]["tasks"]
+    # 打包进行中即可下载已落盘的分包（part <= 已就绪数），不必等整单完成
+    if not job or not files or not (1 <= part <= len(files)):
+        raise HTTPException(status_code=400, detail="该分包尚未就绪或导出已过期")
+    tasks_in_part = (job.get("parts_done") or job.get("parts") or [{}])[part - 1]["tasks"]
     return FileResponse(
         files[part - 1], media_type="application/zip",
         filename=f"已通过内容包_第{part}包_{tasks_in_part}条.zip")

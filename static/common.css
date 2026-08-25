@@ -249,3 +249,28 @@ input, select, textarea { font-size: 15px; }
 .combo-grid { display: grid; grid-template-columns: 1.2fr 1fr .7fr; gap: 12px; margin-top: 10px; }
 .btn-danger-ghost { background: none; border: 1px solid var(--red); color: var(--red); }
 .btn-danger-ghost:hover { background: #fdeaea; }
+
+/* ── 导出弹窗：流式控制台 + 动效进度条 + 分包实时就绪（2026-08-25）── */
+.export-modal-lg { width: min(720px, 94vw); }
+.export-stats { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 10px 0 8px;
+  font-size: 13.5px; color: var(--muted); }
+.export-stats span { white-space: nowrap; }
+.bar-anim { background-image: linear-gradient(45deg, rgba(255,255,255,.18) 25%, transparent 25%,
+  transparent 50%, rgba(255,255,255,.18) 50%, rgba(255,255,255,.18) 75%, transparent 75%);
+  background-size: 22px 22px; animation: bar-move 0.9s linear infinite; }
+@keyframes bar-move { from { background-position: 0 0; } to { background-position: 22px 0; } }
+.export-console { margin: 10px 0 4px; background: #101622; border-radius: 8px;
+  padding: 10px 12px; height: 240px; overflow-y: auto; font-family: Consolas, Menlo, monospace;
+  font-size: 12.5px; line-height: 1.75; color: #c8d3e8; }
+.ec-line { white-space: pre-wrap; word-break: break-all; }
+.ec-ts { color: #5b6b88; margin-right: 8px; }
+.ec-info { color: #c8d3e8; }
+.ec-dim { color: #6d7d9c; }
+.ec-part { color: #7ec8ff; }
+.ec-done { color: #6fe3a5; font-weight: 600; }
+.ec-err  { color: #ff8f8f; }
+.ec-cursor { animation: ec-blink 1s step-end infinite; color: #6fe3a5; }
+@keyframes ec-blink { 50% { opacity: 0; } }
+.part-chip { font-size: 12.5px; padding: 4px 12px; border-radius: 14px;
+  background: #eef0f4; color: var(--muted); }
+.part-chip.pending { background: #e8f1ff; color: #2b6cb0; animation: pulse 1.2s infinite; }
