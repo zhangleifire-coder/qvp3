@@ -354,10 +354,11 @@ async def node_agent_production(input_data: dict) -> dict:
     last_emit_len = 0
 
     def _on_delta(piece: str, total: str):
-        # 流式过程按 300 字节流上报监控：字符数 + token 估算 + 输出尾部
-        # （token=字符/1.7 与 nanobot_client 的成本估算口径一致）
+        # 流式过程按 120 字符节流上报监控：字符数 + token 估算 + 输出尾部
+        # （120 字符/帧 ≈ 每 1-2 秒一帧，兼顾实时感与事件量；
+        # token=字符/1.7 与 nanobot_client 的成本估算口径一致）
         nonlocal last_emit_len
-        if len(total) - last_emit_len >= 300:
+        if len(total) - last_emit_len >= 120:
             last_emit_len = len(total)
             import asyncio as _a
             try:

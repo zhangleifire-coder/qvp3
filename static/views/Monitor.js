@@ -1,13 +1,19 @@
-// 实时监控：SSE 事件流 + 进行中任务的逐节点动态
+// 实时监控：SSE 事件流 + 进行中任务的逐节点动态 + 全量工作日志流
+// 设计：所有工作细节（节点/工具/流式输出/入队完成失败…）实时追加到任务卡片内的
+// 工作控制台逐行显示，Agent 大节点内部再展开 7 子阶段芯片与流式输出预览。
 // Debug 开关：输入 admin 密码解锁，可看到每个任务会话的完整细节（含 traceback），
 // 并支持下载 Markdown 格式 debug 日志（文件名：日期+时间+debug.md）。
+const AGENT_STEPS = ['检索证据', '风格判定', '正文创作', '分页文案', '搜参考图', '生成配图', 'OCR自检'];
+
 const MonitorView = {
   data() {
     return {
       counts: {}, limiter: {}, tasks: [], events: [],
       connected: false, es: null, nodes: [],
       debugOn: false, showPw: false, pw: '', pwError: '', pwLoading: false,
-      cancelling: '',   // 正在中断的 task_id（按钮防抖）
+      cancelling: '',      // 正在中断的 task_id（按钮防抖）
+      taskLogs: {},        // task_id -> [{t,k,m}] 工作日志（逐行追加，上限 200）
+      openLog: {},         // task_id -> bool 工作日志展开（默认进行中展开）
     };
   },
   computed: {
@@ -56,6 +62,41 @@ const MonitorView = {
       }
       return node || '启动中…';
     },
+    agentStepIdx(t) {
+      // 由 stage_hint 推断 Agent 内部子阶段位置（-1 = 非 Agent 生产中）
+      if (t.status !== 'processing' || t.current_node !== 'agent_production') return -1;
+      const s = t.stage_hint || '';
+      if (s.includes('OCR')) return 6;
+      if (s.includes('配图')) return 5;
+      if (s.includes('参考图')) return 4;
+      if (s.includes('检索')) return 0;
+      if (s) return 1;
+      return 1;
+    },
+    // ── 工作日志：所有细节逐行追加 ──
+    pushLog(tid, kind, msg) {
+      const arr = this.taskLogs[tid] || (this.taskLogs[tid] = []);
+      arr.push({ t: new Date().toLocaleTimeString('zh-CN', { hour12: false }), k: kind, m: msg });
+      if (arr.length > 200) arr.splice(0, arr.length - 200);
+      if (this.openLog[tid] === undefined) this.openLog[tid] = true;
+      this.$nextTick(() => {
+        const el = document.getElementById('mlog-' + tid);
+        if (el) el.scrollTop = el.scrollHeight;
+      });
+    },
+    seedLogs() {
+      // 快照加载：把内存 debug（最近节点事件）铺进工作日志，让历史轮也能回看
+      for (const t of this.shownTasks) {
+        if (!this.taskLogs[t.id] && t.debug && t.debug.length) {
+          const arr = t.debug.slice(-8).map(d => ({
+            t: d.ts, k: d.phase === 'error' ? 'err' : 'dim',
+            m: `[${this.nodeLabel(d.node)}] ${d.phase === 'error' ? '✗ ' : ''}${d.msg || ''}`,
+          }));
+          this.taskLogs[t.id] = arr;
+        }
+      }
+    },
+    logOf(t) { return this.taskLogs[t.id] || []; },
     eventText(e) {
       const label = e.node ? this.nodeLabel(e.node) : '';
       const q = e.task_id ? this.queryOf(e.task_id) : '';
@@ -147,6 +188,7 @@ const MonitorView = {
       try {
         const d = await api.get('/api/stream/state');
         this.counts = d.counts; this.limiter = d.limiter; this.tasks = d.tasks || [];
+        this.seedLogs();
       } catch (e) { /* 静默，等 SSE */ }
     },
     applyAgentEvent(d) {
@@ -173,19 +215,58 @@ const MonitorView = {
             if (d.type === 'snapshot') this.loadSnapshot();
             return;
           }
-          // 流式输出事件按 1500 字里程碑进事件流（避免刷屏），流式框实时更新
+          const tid = d.task_id;
           if (d.type === 'agent_progress') {
             this.applyAgentEvent(d);
-            if ((d.chars || 0) % 1500 >= 300) return;
-          } else if (d.type === 'agent_tool') {
+            // 全量流式：每帧工作日志累计一行（不重拉快照）
+            if (d.chars && tid) {
+              const t = this.tasks.find(x => x.id === tid);
+              const last = (this.taskLogs[tid] || []).slice(-1)[0];
+              const line = { t: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
+                             k: 'stream',
+                             m: `流式输出 ${d.chars} 字 ≈ ${d.tokens_est || 0} token` };
+              if (last && last.k === 'stream') Object.assign(last, line);
+              else this.pushLog(tid, 'stream', line.m);
+              if (t) t.stream = { chars: d.chars, tokens: d.tokens_est || 0, tail: d.preview || '' };
+            } else if (tid && d.message) {
+              this.pushLog(tid, 'info', d.message);
+            }
+            return;
+          }
+          if (d.type === 'agent_tool') {
             this.applyAgentEvent(d);
-          } else if (d.type.startsWith('task_') || d.type.startsWith('node_')) {
+            if (tid) this.pushLog(tid, 'tool', this._toolLog(d));
+            return;
+          }
+          if (d.type.startsWith('task_') || d.type.startsWith('node_')) {
+            if (tid) this.pushLog(tid, d.type.includes('failed') ? 'err' : 'info',
+                                  this._nodeLog(d));
             this.loadSnapshot();
           }
           this.events.unshift({ ts: new Date().toLocaleTimeString('zh-CN', { hour12: false }), ...d });
           if (this.events.length > 100) this.events.pop();
         } catch (e) { /* 非 JSON 帧忽略 */ }
       };
+    },
+    _toolLog(d) {
+      const tool = d.tool || '';
+      if (tool === 'web_search') return `工具：检索证据（${d.count || ''} 条结果）`;
+      if (tool === 'image_search') return '工具：搜索实景参考图';
+      if (tool === 'image_gen_progress') return `工具：生成配图 P${d.page}/${d.total || '?'}`;
+      if (tool === 'image_gen') return `工具：配图生成完成（共 ${d.pages || d.total || ''} 张）`;
+      if (tool === 'ocr') return '工具：OCR 图文自检';
+      return `工具：${tool}`;
+    },
+    _nodeLog(d) {
+      const map = { task_enqueued: '任务入队', task_started: '开始生产',
+                    task_finished: '✓ 生产完成', task_failed: '✗ 生产失败',
+                    task_cancelled: '人工中断', node_started: `节点开始：${this.nodeLabel(d.node)}`,
+                    node_finished: `节点完成：${this.nodeLabel(d.node)}`,
+                    node_failed: `节点失败：${this.nodeLabel(d.node)}` };
+      let s = map[d.type] || d.type;
+      if (d.elapsed != null) s += `（${d.elapsed}s）`;
+      if (d.msg) s += ` · ${d.msg}`;
+      return s;
     },
   },
   async mounted() {
@@ -238,12 +319,37 @@ const MonitorView = {
           <span class="muted" style="font-size:12.5px">阶段：</span>
           <span v-for="n in nodes" :key="'s'+n.name" class="stage-chip" :class="nodeState(t, n.name)">{{ n.label }}</span>
         </div>
+
+        <!-- Agent 大节点内部：7 子阶段芯片 -->
+        <div v-if="agentStepIdx(t) >= 0" class="agent-substeps">
+          <span v-for="(s, i) in AGENT_STEPS" :key="s" class="stage-chip sm"
+                :class="{done: i < agentStepIdx(t), doing: i === agentStepIdx(t)}">
+            {{ i < agentStepIdx(t) ? '✓ ' : '' }}{{ s }}
+          </span>
+        </div>
+
+        <!-- 流式输出实时预览（全量透传，逐字符） -->
         <div v-if="t.stream && t.status === 'processing'" class="stream-box">
           <div class="stream-head">
             <span class="live-dot"></span> 流式输出 · {{ t.stream.chars }} 字 · 约 {{ t.stream.tokens }} token
+            <span class="ec-cursor">▊</span>
           </div>
           <pre class="stream-text">{{ t.stream.tail || '等待模型输出…' }}</pre>
         </div>
+
+        <!-- 工作日志：所有细节逐行（进行中默认展开） -->
+        <div class="mlog-head" @click="openLog[t.id] = !openLog[t.id]">
+          <span class="mlog-toggle">{{ openLog[t.id] ? '▾' : '▸' }}</span>
+          工作日志（{{ logOf(t).length }} 条）
+          <span v-if="t.status === 'processing'" class="live-dot" style="margin-left:6px"></span>
+        </div>
+        <div v-if="openLog[t.id]" :id="'mlog-' + t.id" class="mlog-console">
+          <div v-for="(l, i) in logOf(t)" :key="i" class="ec-line" :class="'ec-' + l.k">
+            <span class="ec-ts">{{ l.t }}</span> {{ l.m }}
+          </div>
+          <div v-if="t.status === 'processing'" class="ec-line ec-dim"><span class="ec-ts">--:--:--</span> <span class="ec-cursor">▊</span></div>
+        </div>
+
         <template v-if="debugOn">
           <div v-if="t.error" class="form-error" style="margin-top:8px">错误：{{ t.error }}</div>
           <div v-if="t.preview" class="muted" style="margin-top:6px;font-size:13px;white-space:pre-wrap">{{ t.preview }}</div>
@@ -260,11 +366,6 @@ const MonitorView = {
           </div>
           <div v-else class="muted" style="margin-top:6px;font-size:13px">暂无节点细节</div>
         </template>
-        <div v-else-if="t.debug && t.debug.length" class="monitor-debug">
-          <div v-for="(d, i) in t.debug.slice(-3)" :key="i" class="muted">
-            {{ d.ts }} [{{ nodeLabel(d.node) }}] {{ d.phase === 'error' ? '✗' : '✓' }} {{ d.msg }}
-          </div>
-        </div>
       </div>
     </div>
 
@@ -291,4 +392,5 @@ const MonitorView = {
       </div>
     </div>
   </app-layout>`,
+  created() { this.AGENT_STEPS = AGENT_STEPS; },
 };

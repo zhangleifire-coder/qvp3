@@ -280,3 +280,17 @@ input, select, textarea { font-size: 15px; }
   border-radius: var(--radius); background: #fbfcfe; }
 .tl-table { font-size: 13px; }
 .tl-table td, .tl-table th { padding: 7px 10px; }
+
+/* ── 实时监控：Agent 子阶段 + 任务工作日志控制台 ── */
+.agent-substeps { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.stage-chip.sm { font-size: 12px; padding: 1px 9px; }
+.mlog-head { margin-top: 10px; font-size: 13px; color: var(--muted); cursor: pointer;
+  user-select: none; display: flex; align-items: center; gap: 4px; }
+.mlog-head:hover { color: var(--text); }
+.mlog-toggle { font-size: 11px; }
+.mlog-console { margin-top: 6px; background: #101622; border-radius: 8px;
+  padding: 8px 12px; height: 200px; overflow-y: auto; font-family: Consolas, Menlo, monospace;
+  font-size: 12.5px; line-height: 1.7; color: #c8d3e8; }
+.ec-tool { color: #7ec8ff; }
+.ec-stream { color: #8fb7f0; }
+.ec-info { color: #c8d3e8; }
