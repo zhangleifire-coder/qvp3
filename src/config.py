@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     nanobot_model: str = ""              # 留空 = 用 nanobot 默认模型/主备预设
     nanobot_request_timeout_seconds: float = 1800.0  # 全链一次跑 15-25 分钟，读超时给足
     # MCP 工具进程 → 后端的成本回调
-    mcp_callback_base_url: str = "http://127.0.0.1:8000"
+    mcp_callback_base_url: str = "http://127.0.0.1:8003"
     internal_callback_token: str = "qvp-internal-dev"
     # MCP 工具配额（按 task_id 计，防 Agent 失控烧钱的硬限制）
     mcp_max_images_per_task: int = 8     # 6 张交付 + 2 张去重重生余量（¥0.2/张）

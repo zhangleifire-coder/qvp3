@@ -5,7 +5,7 @@ import time
 
 import httpx
 
-BASE = "http://127.0.0.1:8000"
+BASE = "http://127.0.0.1:8003"
 QUERY = sys.argv[1] if len(sys.argv) > 1 else "手机碎屏险有必要买吗"
 MODE = sys.argv[2] if len(sys.argv) > 2 else "general"
 

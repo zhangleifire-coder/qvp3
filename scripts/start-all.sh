@@ -12,7 +12,7 @@ set -u
 cd "$(dirname "$0")/.."
 
 ACTION="${1:-start}"
-BACKEND_PORT=8000
+BACKEND_PORT=8003
 NANOBOT_PORT=8900
 PG_CONTAINER=qvp-postgres
 DOCKER_DESKTOP="/c/Program Files/Docker/Docker/Docker Desktop.exe"

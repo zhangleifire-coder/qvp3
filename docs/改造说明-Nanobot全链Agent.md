@@ -117,8 +117,8 @@ DATABASE_URL="postgresql+asyncpg://qvp:qvp@localhost:5433/qvp" \
 # 3. 起 Nanobot 网关（:8900，加载 nanobot/config.json + qvp_mcp 工具）
 bash nanobot/start-nanobot.sh        # 前台；后台加 > nanobot/nanobot.log 2>&1 &
 
-# 4. 起后端（:8000，.env 需含 AGENT_PIPELINE_ENABLED=true）
-.venv/Scripts/python -m uvicorn src.api.main:app --host 127.0.0.1 --port 8000
+# 4. 起后端（:8003，.env 需含 AGENT_PIPELINE_ENABLED=true）
+.venv/Scripts/python -m uvicorn src.api.main:app --host 127.0.0.1 --port 8003
 
 # 5. 测试 / 冒烟
 DATABASE_URL="postgresql+asyncpg://qvp:qvp@localhost:5433/qvp" \

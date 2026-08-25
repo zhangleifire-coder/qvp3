@@ -7,7 +7,7 @@ import time
 
 import httpx
 
-BASE = "http://127.0.0.1:8000"
+BASE = "http://127.0.0.1:8003"
 c = httpx.Client(base_url=BASE, timeout=30, headers={"Connection": "close"},
                  limits=httpx.Limits(max_keepalive_connections=0))
 

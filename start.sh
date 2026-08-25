@@ -78,9 +78,9 @@ IP=$(ipconfig getifaddr en0 2>/dev/null || echo "127.0.0.1")
 echo ""
 echo "=============================================="
 echo "  服务启动中..."
-echo "  本机访问:   http://localhost:8000"
-echo "  局域网访问: http://$IP:8000"
+echo "  本机访问:   http://localhost:8003"
+echo "  局域网访问: http://$IP:8003"
 echo "  登录账号:   张三 / 李四 / 王五（密码 1qaz@WSX）"
 echo "=============================================="
 echo ""
-uv run uvicorn src.api.main:app --host 0.0.0.0 --port 8000
+uv run uvicorn src.api.main:app --host 0.0.0.0 --port 8003

@@ -16,7 +16,7 @@ docker compose up -d --build
 
 ## 访问
 
-- 本机：`http://localhost:8000`
+- 本机：`http://localhost:8003`
 - 登录账号：`张三` / `李四` / `王五`（密码均为 `1qaz@WSX`）
 
 ## 常用命令
