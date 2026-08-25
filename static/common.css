@@ -274,3 +274,9 @@ input, select, textarea { font-size: 15px; }
 .part-chip { font-size: 12.5px; padding: 4px 12px; border-radius: 14px;
   background: #eef0f4; color: var(--muted); }
 .part-chip.pending { background: #e8f1ff; color: #2b6cb0; animation: pulse 1.2s infinite; }
+
+/* ── 任务详情：Agent 实时工作台 + 节点明细表 ── */
+.agent-live { margin: 12px 0 4px; padding: 12px 14px; border: 1px solid var(--border);
+  border-radius: var(--radius); background: #fbfcfe; }
+.tl-table { font-size: 13px; }
+.tl-table td, .tl-table th { padding: 7px 10px; }

@@ -321,6 +321,37 @@ async def task_detail(task_id: str):
             select(RejectMark).where(RejectMark.task_id == tid,
                                      RejectMark.status == "open")
             .order_by(RejectMark.page_index))).scalars().all()
+        # 节点时间线：每节点最新一轮事件的 状态/耗时/成本/模型/错误（历史细节，
+        # 直连/Agent 两路径通用——大节点改造后在这里看得到每个环节的明细）
+        latest: dict[str, NodeEvent] = {}
+        for e in events:
+            latest[e.node_name] = e      # events 按时间升序，后写覆盖即最新
+        node_timeline = []
+        for name, e in latest.items():
+            if e.error_class is not None:
+                st = "failed"
+            elif e.finished_at is not None:
+                st = "done"
+            elif e.started_at is not None:
+                st = "running"
+            else:
+                st = "pending"
+            dur = (round((e.finished_at - e.started_at).total_seconds(), 1)
+                   if e.started_at and e.finished_at else None)
+            node_timeline.append({
+                "node": name, "status": st,
+                "started_at": e.started_at.isoformat() if e.started_at else None,
+                "finished_at": e.finished_at.isoformat() if e.finished_at else None,
+                "duration_s": dur,
+                "cost_cny": float(e.cost_estimate_cny)
+                if e.cost_estimate_cny is not None else None,
+                "model_version": e.model_version,
+                "prompt_version": e.prompt_version,
+                "error": e.error_class,
+            })
+        from src.stream.progress import node_order
+        _order = {n: i for i, n in enumerate(node_order())}
+        node_timeline.sort(key=lambda x: _order.get(x["node"], 99))
         return {
             "task": {
                 "id": str(task.id),
@@ -343,6 +374,7 @@ async def task_detail(task_id: str):
             },
             "completed_nodes": completed_nodes,
             "current_node": current_node,
+            "node_timeline": node_timeline,
             "draft": {"body": draft.body, "model_version": draft.model_version,
                       "prompt_version": draft.prompt_version} if draft else None,
             "page_copies": [{"page_index": p.page_index, "body": p.body} for p in page_copies],

@@ -208,3 +208,19 @@ async def test_agent_presets_style_not_overwritten(agent_path):
             select(Task).where(Task.id == task_id))).scalar_one()
         assert task_row.gen_style == "解读·经验分享"   # 显式风格未被 Agent 判定覆盖
         assert task_row.gen_image_style == "真实摄影"  # 图片风格始终记录本轮判定
+
+
+async def test_detail_node_timeline(agent_path):
+    """任务详情节点时间线：每节点最新一轮 状态/耗时/成本/模型（两路径通用细节）。"""
+    from src.api.tasks import task_detail
+    task_id = await _create_task("general")
+    await run_pipeline(task_id)
+    d = await task_detail(str(task_id))
+    tl = d["node_timeline"]
+    assert len(tl) == len(NODES_AGENT)
+    assert [e["node"] for e in tl] == list(NODES_AGENT)   # 按节点顺序排列
+    assert all(e["status"] == "done" for e in tl)
+    assert all(e["duration_s"] is not None and e["duration_s"] >= 0 for e in tl)
+    ap = next(e for e in tl if e["node"] == "agent_production")
+    assert ap["model_version"].startswith("nanobot:")
+    assert ap["cost_cny"] and ap["cost_cny"] > 0

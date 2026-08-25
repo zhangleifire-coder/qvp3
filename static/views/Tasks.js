@@ -1,4 +1,7 @@
-// 任务中心：列表（筛选/轮询/SSE 实时）+ 详情抽屉（13 节点进度 + 全部产物 + debug 日志）
+// Agent 大节点内部子阶段（工作流 7 步，监控用；idx 由 stage_hint 推断）
+const AGENT_STEPS = ['检索证据', '风格判定', '正文创作', '分页文案', '搜参考图', '生成配图', 'OCR自检'];
+
+// 任务中心：列表（筛选/轮询/SSE 实时）+ 详情抽屉（节点进度/明细 + Agent 实时工作台 + 全部产物）
 const TasksView = {
   data() {
     return {
@@ -38,6 +41,18 @@ const TasksView = {
     },
     canRetry() {
       return this.detailTask && ['failed', 'rejected', 'cancelled'].includes(this.detailTask.status);
+    },
+    agentStepIdx() {
+      // 由实时 stage_hint 推断 Agent 内部走到第几步（-1 = 非 Agent 生产中）
+      const lv = this.liveOfDetail;
+      if (!lv || lv.status !== 'processing') return -1;
+      const s = lv.stage_hint || '';
+      if (s.includes('OCR')) return 6;
+      if (s.includes('配图')) return 5;
+      if (s.includes('参考图')) return 4;
+      if (s.includes('检索')) return 0;
+      if (s) return 1;                       // 其它工具阶段归入风格/正文段
+      return lv.current_node === 'agent_production' ? 1 : -1;
     },
     retryLabel() {
       if (!this.detailTask) return '';
@@ -424,6 +439,48 @@ const TasksView = {
           <h3>生产进度</h3>
           <steps-bar :nodes="nodes" :completed="detail.completed_nodes" :current="detailTask.status === 'failed' ? detail.current_node : (liveOfDetail && liveOfDetail.current_node) || detail.current_node" :failed="detailTask.status === 'failed'"></steps-bar>
 
+          <!-- Agent 实时工作台：大节点内部子阶段 + 流式输出（生产中随时可看细节） -->
+          <div v-if="agentStepIdx >= 0" class="agent-live">
+            <div class="stage-row">
+              <span v-for="(s, i) in AGENT_STEPS" :key="s"
+                    class="stage-chip" :class="{done: i < agentStepIdx, doing: i === agentStepIdx}">
+                {{ i < agentStepIdx ? '✓ ' : '' }}{{ s }}
+              </span>
+            </div>
+            <p class="muted" style="margin:8px 0 0; font-size:13px">
+              当前子阶段：<b>{{ liveOfDetail.stage_hint || '创作输出中…' }}</b>
+              <template v-if="liveOfDetail.stream">
+               　·　已输出 {{ liveOfDetail.stream.chars || 0 }} 字符 ≈ {{ liveOfDetail.stream.tokens_est || 0 }} tokens
+              </template>
+            </p>
+            <div v-if="liveOfDetail.stream && liveOfDetail.stream.preview" class="stream-box">
+              <div class="stream-head">Agent 流式输出（尾部实时预览）<span class="ec-cursor">▊</span></div>
+              <p class="stream-text">{{ liveOfDetail.stream.preview }}</p>
+            </div>
+          </div>
+
+          <!-- 节点明细：每个环节的状态/耗时/成本/模型/错误（两路径通用） -->
+          <template v-if="detail.node_timeline && detail.node_timeline.length">
+            <h3 style="margin-top:16px">节点明细</h3>
+            <table class="table tl-table">
+              <thead><tr><th>节点</th><th>状态</th><th>耗时</th><th>成本(¥)</th><th>模型/提示词</th></tr></thead>
+              <tbody>
+                <tr v-for="e in detail.node_timeline" :key="e.node">
+                  <td>{{ nodeLabels[e.node] || e.node }}</td>
+                  <td>
+                    <span class="tag" :class="{done:'tag-green', failed:'tag-red', running:'tag-blue'}[e.status] || ''">
+                      {{ {done:'完成', failed:'失败', running:'进行中', pending:'待开始'}[e.status] || e.status }}
+                    </span>
+                    <span v-if="e.error" class="muted" style="font-size:12px">　{{ e.error }}</span>
+                  </td>
+                  <td>{{ e.duration_s != null ? e.duration_s + 's' : '—' }}</td>
+                  <td>{{ e.cost_cny != null ? e.cost_cny.toFixed(3) : '—' }}</td>
+                  <td class="muted" style="font-size:12px">{{ e.model_version || '—' }}{{ e.prompt_version ? ' · ' + e.prompt_version : '' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </template>
+
           <div v-if="canRetry" style="margin:12px 0">
             <button class="btn btn-primary" :disabled="retrying" @click="retry">{{ retrying ? '处理中…' : retryLabel }}</button>
           </div>
@@ -583,5 +640,5 @@ const TasksView = {
       </div>
     </div>
   </app-layout>`,
-  created() { this.STATUS = STATUS; this.MODE = MODE; },
+  created() { this.STATUS = STATUS; this.MODE = MODE; this.AGENT_STEPS = AGENT_STEPS; },
 };
