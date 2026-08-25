@@ -1,43 +1,48 @@
-services:
-  app:
-    build: .
-    ports: ["8003:8000"]
-    env_file: .env
-    environment:
-      DATABASE_URL: postgresql+asyncpg://qvp:qvp@postgres:5432/qvp
-      REDIS_URL: redis://redis:6379/0
-      OPENSERP_BASE_URL: http://openserp:7000
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_started
+# qvp2：图文生产平台（Nanobot 全链 Agent 版）独立栈
+# 与服务器上旧栈（qvp :8000 / qvp-test :8001）完全隔离：
+# 独立 compose 项目 qvp2、独立网络、独立数据卷、独立 Postgres（不对宿主机开端口）。
+# 对外仅暴露 8003；Nanobot :8900 与 MCP 仅在应用容器内部回环可达。
+name: qvp2
 
+services:
   postgres:
-    image: postgres:16
+    image: postgres:16-alpine
+    container_name: qvp2-postgres
     environment:
       POSTGRES_USER: qvp
       POSTGRES_PASSWORD: qvp
       POSTGRES_DB: qvp
-    ports: ["5432:5432"]
-    volumes: ["pg_data:/var/lib/postgresql/data"]
-    command: ["postgres", "-c", "wal_level=replica"]
+    volumes:
+      - qvp2_pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U qvp -d qvp"]
       interval: 5s
       timeout: 3s
-      retries: 10
+      retries: 24
+    restart: unless-stopped
 
-  redis:
-    image: redis:7.4
-    ports: ["6379:6379"]
-    volumes: ["redis_data:/data"]
-
-  openserp:
-    image: karust/openserp:latest
-    command: ["serve", "-a", "0.0.0.0", "-p", "7000"]
-    ports: ["7001:7000"]
+  app:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+    container_name: qvp2-app
+    env_file: .env
+    environment:
+      # 容器内服务发现（覆盖 .env 里的本机地址）
+      DATABASE_URL: postgresql+asyncpg://qvp:qvp@qvp2-postgres:5432/qvp
+      MCP_CALLBACK_BASE_URL: http://127.0.0.1:8003
+      NANOBOT_MAX_CONCURRENT_REQUESTS: "4"
+    ports:
+      - "8003:8003"
+    volumes:
+      - qvp2_generated:/app/static/generated
+      - qvp2_exports:/app/exports
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
-  pg_data:
-  redis_data:
+  qvp2_pgdata:
+  qvp2_generated:
+  qvp2_exports:
