@@ -224,3 +224,17 @@ async def test_detail_node_timeline(agent_path):
     ap = next(e for e in tl if e["node"] == "agent_production")
     assert ap["model_version"].startswith("nanobot:")
     assert ap["cost_cny"] and ap["cost_cny"] > 0
+
+
+async def test_garble_regen_loop(agent_path):
+    """P0-2：图上文字扭曲时换构图重生（mock 生图路径直接放行，验证不阻断）。"""
+    from unittest.mock import patch as _patch
+    from src.config import settings as _s
+    with _patch.object(_s, "mock_image_gen", True):
+        task_id = await _create_task("general")
+        await run_pipeline(task_id)
+    async with SessionLocal() as session:
+        ai = (await session.execute(
+            select(Asset).where(Asset.task_id == task_id,
+                                Asset.source_type == "ai_generated"))).scalars().all()
+        assert len(ai) == 6   # mock 路径跳过扭曲质检，产物照常落库

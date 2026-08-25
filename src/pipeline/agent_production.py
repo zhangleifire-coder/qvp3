@@ -94,6 +94,9 @@ _AGENT_INSTRUCTIONS = """你是「图文生产平台」的创作 Agent，负责�
 1. 禁用词：绝对、100%、最、第一、唯一、永久、终身、安全、无害、无副作用、治疗、疗效、保证。
    注意「最」含一切搭配（最重要/最关键/最好…），请改用「很/十分/更/相对」等表述。
 2. 字数：正文（不计空白字符）必须落在 400-700 字之间，写完自查一遍再输出。
+3. 图上文字（严重）：配图渲染中文极易出错，文字必须极简——封面主标题 12-20 字，
+   要点页整页 25-50 字且只保留一个核心信息点，结尾页 20-40 字；宁可短不可长，
+   次要信息一律留在正文不要上图。系统会逐页 OCR 校验文字是否正确，出错会自动重生成。
 
 【分页规范（系统提示词，必须遵守）】
 {pages_template}
@@ -314,6 +317,84 @@ async def _fallback_ocr(rows: list[tuple]) -> tuple[list, float]:
     return [o for o, _ in outs], round(sum(c for _, c in outs), 6)
 
 
+# ── P0-2：图上文字扭曲机器质检 + 有限重生成（2026-08-26）────────────
+# gpt-image-2 渲染中文不可靠：出图后逐页跑 OCR，与分页文案做字符级相似度，
+# 低于阈值换构图重生成（最多 2 次），仍失败打 text_garble 标记进审核队列。
+_GARBLE_THRESHOLD = 0.82   # 字符集相似度阈值（OCR 噪声大，不过度严苛）
+_GARBLE_MAX_REGEN = 2      # 每页最多换构图重生 2 次
+
+
+def _text_similarity(a: str, b: str) -> float:
+    """字符级相似度：文案中每个字符在 OCR 结果里能找到的比例（忽略空白与标点）。
+
+    a=OCR 识别文本，b=分页文案（应出现在图上的文字）。按 b 的字符命中数计：
+    扭曲字（净氺/滤蕊）命中不了 → 相似度低；OCR 多识别出的内容不扣分。
+    """
+    import re
+    clean = lambda s: re.sub(r"\s|[，。！？、：；""''（）()…—-]", "", s or "")
+    A, B = clean(a), clean(b)
+    if not B:
+        return 1.0           # 文案本就无字 → 不算扭曲
+    if not A:
+        return 0.0           # 该有字却识别不出 → 视为失败
+    common = sum(1 for ch in B if ch in A)
+    return common / len(B)
+
+
+async def _garble_check_and_regen(task_id, pages: list[str], localized: list[dict],
+                                  image_tpl: str, mode: str) -> tuple[list[dict], dict[int, str]]:
+    """对每页配图 OCR 判定文字是否扭曲；不合格换构图重生（配额内 2 次）。
+
+    返回 (更新后的 localized, {page_index: 'text_garble'} 需进审核队列的页)。
+    """
+    from src.gateway.ocr import ocr_image, fetch_image_bytes as _fetch_bytes
+    from src.gateway.image_gen import generate_image
+    from src.pipeline.nodes import _persist_image
+    garbled: dict[int, str] = {}
+    if settings.mock_image_gen:
+        return localized, garbled
+    for img in localized:
+        idx = img.get("page_index")
+        # 防御：Agent 给的 page_index 可能越界（0/>6/缺失），跳过该页不整链失败
+        if not isinstance(idx, int) or not (1 <= idx <= len(pages)):
+            continue
+        page_text = pages[idx - 1]
+        try:
+            r = await ocr_image(img["image_url"])
+            sim = _text_similarity(r["raw_text"], page_text)
+        except Exception:  # noqa: BLE001
+            sim = 1.0        # OCR 本身失败不误杀（cross_check 兜底）
+        if sim >= _GARBLE_THRESHOLD:
+            continue
+        # 换构图重生（最多 _GARBLE_MAX_REGEN 次）：提示词换布局 + 强调少字
+        ok = False
+        for attempt in range(1, _GARBLE_MAX_REGEN + 1):
+            try:
+                regen_prompt = (
+                    image_tpl.replace("{page_body}", page_text)
+                    + f"（重新排版：文字只保留最核心的一句，不超过20字，"
+                      f"换一个与之前不同的构图与配色，避免文字出错）")
+                r2 = await generate_image(regen_prompt)
+                data, ctype = await _fetch_bytes(r2["image_url"])
+                local_url = _persist_image(task_id, idx, "p", data, ctype)
+                try:
+                    r3 = await ocr_image(local_url)
+                    sim2 = _text_similarity(r3["raw_text"], page_text)
+                except Exception:  # noqa: BLE001
+                    sim2 = 1.0
+                if sim2 >= _GARBLE_THRESHOLD:
+                    img["image_url"] = local_url
+                    img["hash"] = hashlib.md5(data).hexdigest()
+                    img["prompt_used"] = (img.get("prompt_used", "") + "|regen").strip("|")
+                    ok = True
+                    break
+            except Exception:  # noqa: BLE001
+                traceback.print_exc()
+        if not ok:
+            garbled[idx] = "text_garble"
+    return localized, garbled
+
+
 async def node_agent_production(input_data: dict) -> dict:
     task_id = input_data["task_id"]
     from src.stream.bus import bus
@@ -409,6 +490,10 @@ async def node_agent_production(input_data: dict) -> dict:
         localized.append({**img, "image_url": local_url, "hash": content_hash,
                           "origin_url": origin, "size_ok": size_ok})
 
+    # ── P0-2：图上文字扭曲机器质检 + 有限重生成（OCR 字符级对撞）──
+    localized, garbled = await _garble_check_and_regen(
+        task_id, out["pages"], localized, image_tpl, mode)
+
     # 参考图（compare/single）：本地化后存 official 素材，供审核追溯与图生图复核
     refs_localized = []
     for i, ref in enumerate(out["references"], start=1):
@@ -443,6 +528,15 @@ async def node_agent_production(input_data: dict) -> dict:
                 hash=hashlib.md5(ref["image_url"].encode()).hexdigest(),
                 image_url=ref["image_url"], origin_url=ref.get("image_url"),
                 model_version=ref.get("engine") or "search", is_illustration=False))
+        # P0-2：文字扭曲重生仍失败的页 → 打 open 标记进审核队列（机器先拦，人再复核）
+        if garbled:
+            from src.models.review import RejectMark
+            for page_idx in garbled:
+                session.add(RejectMark(
+                    task_id=task_id, role="系统质检", item_type="image",
+                    page_index=page_idx,
+                    reason="图上文字扭曲：OCR 与分页文案相似度不足，换构图重生成 2 次仍不合格，请人工复核",
+                    status="open"))
         max_v = (await session.execute(
             select(func.max(Draft.version)).where(
                 Draft.task_id == task_id))).scalar() or 0
