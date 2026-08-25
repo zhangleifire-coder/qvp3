@@ -62,7 +62,7 @@ class Settings(BaseSettings):
     nanobot_base_url: str = "http://127.0.0.1:8900/v1"  # OpenAI 兼容地址（含 /v1）
     nanobot_api_key: str = ""            # 仅 bind 非 localhost 时需要（Bearer）
     nanobot_model: str = ""              # 留空 = 用 nanobot 默认模型/主备预设
-    nanobot_request_timeout_seconds: float = 1800.0  # 全链一次跑 15-25 分钟，读超时给足
+    nanobot_request_timeout_seconds: float = 3000.0  # compare 模式（搜图+图生图）在慢网需 ~30-40 分钟，读超时给足
     # MCP 工具进程 → 后端的成本回调
     mcp_callback_base_url: str = "http://127.0.0.1:8003"
     internal_callback_token: str = "qvp-internal-dev"
