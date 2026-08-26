@@ -294,3 +294,9 @@ input, select, textarea { font-size: 15px; }
 .ec-tool { color: #7ec8ff; }
 .ec-stream { color: #8fb7f0; }
 .ec-info { color: #c8d3e8; }
+
+/* ── 创作 Agent 数据流（跨任务滚动区）── */
+.agent-feed-row { padding: 5px 0; border-bottom: 1px dashed #eef0f4; font-size: 13px; }
+.af-stream { color: #2b6cb0; }
+.af-tool { color: #805ad5; }
+.af-info { color: var(--text); }
