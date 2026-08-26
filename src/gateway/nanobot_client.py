@@ -60,7 +60,8 @@ async def call_agent(user_message: str, *, session_id: str,
         body["model"] = settings.nanobot_model
 
     start = time.time()
-    text_parts: list[str] = []
+    text_parts: list[str] = []      # 最终正文（只收 content，供 JSON 解析）
+    thinking_parts: list[str] = []  # 推理过程（reasoning_content，仅供监控展示）
     usage = {"prompt_tokens": 0, "completion_tokens": 0}
     model_version = ""
 
@@ -92,14 +93,22 @@ async def call_agent(user_message: str, *, session_id: str,
                         usage["completion_tokens"] = u.get("completion_tokens") or usage["completion_tokens"]
                     for choice in chunk.get("choices", []):
                         delta = choice.get("delta") or {}
-                        piece = delta.get("content") or ""
-                        if piece:
-                            text_parts.append(piece)
-                            if on_delta:
-                                try:
-                                    on_delta(piece, "".join(text_parts))
-                                except Exception:  # noqa: BLE001
-                                    pass  # 监控回调异常不影响主流程
+                        # 正文 content → 最终输出；推理 reasoning_content → 监控展示
+                        # （deepseek 等模型工具调用阶段的输出全在推理字段里，漏了它
+                        # 监控页就一直是 0 字；推理内容不进正文，防 JSON 解析污染）
+                        content_piece = delta.get("content") or ""
+                        think_piece = delta.get("reasoning_content") or ""
+                        if content_piece:
+                            text_parts.append(content_piece)
+                        if think_piece:
+                            thinking_parts.append(think_piece)
+                        if on_delta and (content_piece or think_piece):
+                            try:
+                                # 监控流式显示 正文+推理 合计进度（用户要看全部工作数据流）
+                                total = "".join(text_parts) + "".join(thinking_parts)
+                                on_delta(content_piece or think_piece, total)
+                            except Exception:  # noqa: BLE001
+                                pass  # 监控回调异常不影响主流程
     except httpx.ConnectError as e:
         raise NanobotUnavailableError(
             f"Nanobot 不可达（{settings.nanobot_base_url}）：{e}") from e

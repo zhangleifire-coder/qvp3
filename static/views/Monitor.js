@@ -241,16 +241,15 @@ const MonitorView = {
               if (last && last.k === 'stream') Object.assign(last, line);
               else this.pushLog(tid, 'stream', line.m);
               if (t) t.stream = { chars: d.chars, tokens: d.tokens_est || 0, tail: d.preview || '' };
-              // 创作 Agent 数据流：文本增量滚动（预览尾部实时显示）
+              // 创作 Agent 数据流：只显示文本增量（流式预览），工具调用在卡片工作日志里
               this._pushAgentFeed('stream', `${this._taskName(tid)} 流式 ${d.chars} 字 ≈ ${d.tokens_est || 0} token`);
             } else if (tid && d.message) {
               this.pushLog(tid, 'info', d.message);
-              this._pushAgentFeed('info', `${this._taskName(tid)} ${d.message}`);
             }
           } else if (d.type === 'agent_tool') {
             this.applyAgentEvent(d);
+            // 工具调用只进任务卡片工作日志（创作 Agent 数据流只放文本增量，避免重复）
             if (tid) this.pushLog(tid, 'tool', this._toolLog(d));
-            this._pushAgentFeed('tool', `${this._taskName(tid)} ${this._toolLog(d)}`);
           } else if (d.type.startsWith('task_') || d.type.startsWith('node_')) {
             if (tid) this.pushLog(tid, d.type.includes('failed') ? 'err' : 'info',
                                   this._nodeLog(d));
