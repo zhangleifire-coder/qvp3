@@ -13,8 +13,12 @@ class Settings(BaseSettings):
     dashscope_api_key: str = "sk-zzz"     # DashScope API key
     dashscope_base_url: str = "https://ws-7349xztoo3gwseol.cn-beijing.maas.aliyuncs.com/api/v1"
     # 图片生成（gpt-image-2，OpenAI 兼容 Images API，经转发机）
-    openai_image_base_url: str = ""      # OpenAI 兼容地址（含 /v1，如 https://api.openox.net/v1）
-    openai_image_api_key: str = "sk-xxx" # OpenAI 图生 key
+    openai_image_base_url: str = ""      # 通道1：LinkAI（OpenAI 兼容，含 /v1）
+    openai_image_api_key: str = "sk-xxx" # 通道1 key
+    # 通道2：Moacode gpt-image-2（OpenAI Responses API，SSE 流式，返回 base64）
+    moacode_api_key: str = ""            # cr_... ；空则该通道不可用
+    moacode_base_url: str = "https://moacode.org/v1"
+    image_gen_channels: str = "linkai,moacode"  # 双通道轮询负载均衡（可只配 linkai）
     image_model: str = "gpt-image-2"
     image_size: str = "1152x1536"        # 竖版（1152x1536，3:4）
     mock_image_gen: bool = False         # 开发阶段模拟生图（不调 API、不花钱）
