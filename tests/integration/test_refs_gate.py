@@ -145,3 +145,46 @@ async def test_style_kb_crud_and_injection():
     await delete_style(row["id"], actor="张三")
     await delete_style(next(i["id"] for i in (await list_styles())["items"]
                             if i["style_name"] == "测试暖木"), actor="张三")
+
+
+async def test_refs_board_and_research():
+    """审图板块：awaiting 列表 + 驳回重搜（清空候选重搜集）。"""
+    import hashlib
+    from src.api.tasks import RefsResearchIn, list_refs_awaiting, research_refs
+    from src.pipeline.ref_collect import node_ref_collect
+
+    def _loc(tag):
+        from pathlib import Path
+        h = hashlib.md5(tag.encode()).hexdigest()[:10]
+        d = Path("static/generated"); d.mkdir(parents=True, exist_ok=True)
+        f = d / f"reftest2_{h}.svg"
+        f.write_text(f"<svg xmlns='http://www.w3.org/2000/svg' width='576' height='768'><text>{h}</text></svg>",
+                     encoding="utf-8")
+        return f"/static/generated/{f.name}"
+
+    task_id = await _create()
+    async def fake_search(q, count=6):
+        return [{"image_url": _loc(f"{q}-{i}"), "title": "t", "engine": "bing"} for i in range(6)]
+    with patch("src.gateway.image_search.search_image", new=fake_search):
+        await node_ref_collect({"task_id": task_id})
+    async with SessionLocal() as session:
+        task = (await session.execute(select(Task).where(Task.id == task_id))).scalar_one()
+        task.status = "awaiting_refs"
+        await session.commit()
+
+    # awaiting 列表
+    lst = await list_refs_awaiting()
+    assert any(i["id"] == str(task_id) for i in lst["items"])
+
+    # 驳回重搜（带补充关键词）：候选清空重搜集
+    with patch("src.gateway.image_search.search_image", new=fake_search):
+        r = await research_refs(str(task_id),
+                                RefsResearchIn(extra_query="新关键词实拍", actor="张三"))
+    assert r["ok"] and r["candidates"] == 6   # 重搜词不含连接词→单一主体 6 张
+    async with SessionLocal() as session:
+        task = (await session.execute(select(Task).where(Task.id == task_id))).scalar_one()
+        assert task.status == "awaiting_refs"   # 重搜后仍挂起等确认
+        cands = list((await session.execute(
+            select(Asset).where(Asset.task_id == task_id,
+                                Asset.selection_status == "candidate"))).scalars().all())
+        assert len(cands) == 6

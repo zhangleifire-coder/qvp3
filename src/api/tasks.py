@@ -381,7 +381,8 @@ async def task_detail(task_id: str):
             "assets": [{"page_index": a.page_index, "source_type": a.source_type,
                         "image_url": a.image_url, "id": str(a.id),
                         "selection_status": a.selection_status,
-                        "ocr_hit": a.ocr_hit,
+                        "ocr_hit": a.ocr_hit, "prompt_used": a.prompt_used,
+                        "is_history": a.is_history, "edit_note": a.edit_note,
                         "display_url": f"/api/assets/{a.id}/image"} for a in assets],
             "claims": [{"claim_text": c.claim_text, "risk_level": c.risk_level,
                         "verification_status": c.verification_status} for c in claims],
@@ -565,6 +566,79 @@ async def confirm_refs(task_id: str, payload: RefsConfirmIn):
     await log_action(payload.actor, "refs_confirm",
                      f"确认参考图 {kept} 张（剔除 {len(cands) - kept} 张），继续生产", task_id=tid)
     return {"ok": True, "kept": kept, "rejected": len(cands) - kept, "queued": True}
+
+
+@router.get("/api/tasks/refs/awaiting")
+async def list_refs_awaiting():
+    """审图板块：待人工确认的参考图任务列表（含候选张数）。"""
+    async with SessionLocal() as session:
+        tasks = list((await session.execute(
+            select(Task).where(Task.status == "awaiting_refs")
+            .order_by(Task.created_at))).scalars().all())
+        from src.models.assets import Asset
+        items = []
+        for t in tasks:
+            n = (await session.execute(
+                select(func.count(Asset.id)).where(
+                    Asset.task_id == t.id, Asset.source_type == "official",
+                    Asset.selection_status == "candidate"))).scalar() or 0
+            items.append({"id": str(t.id), "query": t.query, "mode": t.mode,
+                          "candidates": n,
+                          "created_at": t.created_at.isoformat() if t.created_at else None})
+        return {"items": items, "total": len(items)}
+
+
+class RefsResearchIn(BaseModel):
+    extra_query: str = ""          # 追加关键词（空=用任务 query 换序重搜）
+    count: int = 12
+    actor: str = "anonymous"
+
+
+@router.post("/api/tasks/{task_id}/refs/research")
+async def research_refs(task_id: str, payload: RefsResearchIn):
+    """驳回重搜：清空现有候选，按新关键词重新搜集并 OCR 初筛（最少 12 张）。
+
+    用于审图板块「这批图不合适，重新搜」；仍挂起 awaiting_refs 等人工确认。
+    """
+    try:
+        tid = uuid.UUID(task_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid task_id")
+    async with SessionLocal() as session:
+        task = (await session.execute(select(Task).where(Task.id == tid))).scalars().first()
+        if not task:
+            raise HTTPException(status_code=404, detail="task not found")
+        if task.status != "awaiting_refs":
+            raise HTTPException(status_code=400,
+                                detail=f"仅待确认参考图状态可重搜，当前: {task.status}")
+    from src.models.assets import Asset
+    from src.pipeline.ref_collect import node_ref_collect
+    async with SessionLocal() as session:
+        await session.execute(delete(Asset).where(
+            Asset.task_id == tid, Asset.source_type == "official",
+            Asset.selection_status == "candidate"))
+        await session.commit()
+    # 直接调搜集节点（带 extra_query 覆写时，任务 query 临时替换）
+    if payload.extra_query.strip():
+        orig = None
+        async with SessionLocal() as session:
+            t = (await session.execute(select(Task).where(Task.id == tid))).scalar_one()
+            orig, t.query = t.query, payload.extra_query.strip()
+            await session.commit()
+        try:
+            r = await node_ref_collect({"task_id": tid})
+        finally:
+            async with SessionLocal() as session:
+                t = (await session.execute(select(Task).where(Task.id == tid))).scalar_one()
+                t.query = orig
+                await session.commit()
+    else:
+        r = await node_ref_collect({"task_id": tid})
+    await log_action(payload.actor, "refs_research",
+                     f"驳回重搜实景图：{payload.extra_query[:40] or '换序重搜'}"
+                     f"（新增候选 {r.get('candidates', 0)} 张）", task_id=tid)
+    return {"ok": True, "candidates": r.get("candidates", 0),
+            "ocr_hits": r.get("ocr_hits", 0)}
 
 
 @router.post("/api/tasks/{task_id}/cancel")

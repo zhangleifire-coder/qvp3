@@ -315,3 +315,12 @@ input, select, textarea { font-size: 15px; }
 .ref-check { display: flex; align-items: center; gap: 6px; padding: 4px 2px 0; font-size: 12px; }
 .style-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .style-form input { min-width: 160px; }
+
+/* ── 审图板块（实景参考图筛选工作台）── */
+.refs-layout { display: flex; gap: 16px; align-items: flex-start; }
+.refs-list { width: 300px; flex-shrink: 0; }
+.refs-item { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; cursor: pointer; }
+.refs-item:hover { border-color: var(--primary); }
+.refs-item.on { border-color: var(--primary); background: #f5f9ff; }
+.research-bar { display: flex; gap: 8px; margin: 8px 0 12px; align-items: center; }

@@ -10,6 +10,7 @@ const router = createRouter({
     { path: '/import', component: ImportView },
     { path: '/tasks', component: TasksView },
     { path: '/monitor', component: MonitorView },
+    { path: '/refs', component: RefsBoardView },
     { path: '/review', component: ReviewView },
     { path: '/sample', component: SampleView },
     { path: '/settings', component: SettingsView },

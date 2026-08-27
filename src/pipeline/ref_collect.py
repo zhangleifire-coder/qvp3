@@ -79,10 +79,16 @@ async def node_ref_collect(input_data: dict) -> dict:
         except Exception:  # noqa: BLE001
             traceback.print_exc()   # OpenSERP 不可达等：留空候选，由人工兜底
 
-    for s in subjects:
-        await _search(s, _PER_SUBJECT)
-    if len(collected) < _TARGET_MIN:
-        await _search(query, _PER_SUBJECT)
+    try:
+        for s in subjects:
+            await _search(s, _PER_SUBJECT)
+        if len(collected) < _TARGET_MIN:
+            await _search(query, _PER_SUBJECT)
+    except Exception:  # noqa: BLE001
+        # 搜索通道整体故障：不挂起，放行降级（Agent 自行容错纯文生图）
+        traceback.print_exc()
+        return {"ref_gate": False, "candidates": 0,
+                "reason": "搜图通道故障，跳过确认直接生产"}
     collected = collected[:_MAX_CANDIDATES]
 
     # 2) 下载本地化 + OCR 关键词初筛（命中的排前面供人工确认）
