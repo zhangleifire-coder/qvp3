@@ -11,6 +11,7 @@ const AppLayout = {
         { path: '/textcheck', icon: '✍️', label: '文字核查', badge: 'text' },
         { path: '/refs', icon: '🖼️', label: '实景审图', badge: 'refs' },
         { path: '/review', icon: '📋', label: '任务审核', badge: 'review' },
+        { path: '/tasks', icon: '🗂️', label: '任务中心' },
         { path: '/users', icon: '👥', label: '用户管理', admin: true },
         { path: '/admin', icon: '⚙️', label: '系统管理', admin: true },
       ];

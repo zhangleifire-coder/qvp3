@@ -7,7 +7,6 @@ const DashboardView = {
   },
   computed: {
     // 惰性取组件：Dashboard.js 先于 Tasks/Monitor 加载，渲染时才解析（顺序无关）
-    tasksComp() { return typeof TasksView !== 'undefined' ? TasksView : null; },
     monitorComp() { return typeof MonitorView !== 'undefined' ? MonitorView : null; },
     statusList() {
       const bs = (this.stats && this.stats.by_status) || {};
@@ -60,7 +59,7 @@ const DashboardView = {
     // 旧书签直达：#/?tab=tasks / monitor
     const q = new URLSearchParams(location.hash.split('?')[1] || '');
     const t = q.get('tab');
-    if (t === 'tasks' || t === 'monitor') this.tab = t;
+    if (t === 'monitor') this.tab = t;
   },
   async mounted() {
     this.load();
@@ -72,10 +71,8 @@ const DashboardView = {
   <app-layout title="工作台">
     <div class="tabs" style="margin-bottom:14px">
       <button class="tab" :class="{on: tab==='overview'}" @click="tab='overview'">📊 总览</button>
-      <button class="tab" :class="{on: tab==='tasks'}" @click="tab='tasks'">🗂️ 任务中心</button>
       <button class="tab" :class="{on: tab==='monitor'}" @click="tab='monitor'">📡 实时监控</button>
     </div>
-    <component :is="tasksComp" v-show="tab==='tasks'" />
     <component :is="monitorComp" v-show="tab==='monitor'" />
     <template v-if="tab==='overview'">
     <p v-if="error" class="form-error">{{ error }}</p>

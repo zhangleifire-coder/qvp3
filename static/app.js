@@ -8,7 +8,7 @@ const router = createRouter({
     { path: '/login', component: LoginView, meta: { public: true } },
     { path: '/', component: DashboardView },
     { path: '/import', component: ImportView },
-    { path: '/tasks', redirect: '/?tab=tasks' },
+    { path: '/tasks', component: TasksView },
     { path: '/monitor', redirect: '/?tab=monitor' },
     { path: '/textcheck', component: TextCheckView },
     { path: '/refs', component: RefsBoardView },
