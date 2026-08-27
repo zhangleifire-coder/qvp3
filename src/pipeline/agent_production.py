@@ -575,7 +575,8 @@ async def node_agent_production(input_data: dict) -> dict:
                 source_type="ai_generated", copyright_status="clear",
                 hash=img["hash"], image_url=img["image_url"],
                 origin_url=img["origin_url"] or None,
-                model_version=mv, is_illustration=False))
+                model_version=mv, is_illustration=False,
+                prompt_used=img.get("prompt_used") or None))   # 定点修改/AI审核要复用原提示词
         await session.flush()
         # OCR：Agent 自检结果优先；Agent 未覆盖的页由后端兜底补齐
         # （cross_check 按全页 OCR 对撞，缺页会被判「识别失败」拉高风险分级）

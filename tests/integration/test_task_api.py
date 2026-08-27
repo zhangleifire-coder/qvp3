@@ -513,3 +513,40 @@ async def test_export_recycle_flow():
         assert _purge_recycle_expired() == 1
         rc4 = (await client.get("/api/export/recycle")).json()
         assert len(rc4["items"]) == 0
+
+
+@pytest.mark.asyncio
+async def test_image_edit_history_flow():
+    """定点修改：后台重新生产 + 老图存历史 + 现行图替换（新旧对比数据就绪）。"""
+    from src.api.tasks import ImageEditIn, _do_image_edit
+    from src.models.assets import Asset
+    task = await _make_task(status="review", mode="general", query=f"定点修改-{_uniq()}")
+    async with SessionLocal() as session:
+        a = Asset(task_id=task.id, page_index=1, subject=task.query,
+                  source_type="ai_generated", copyright_status="clear",
+                  hash="h1", image_url="/static/generated/p1.png",
+                  model_version="gpt-image-2", is_illustration=False,
+                  prompt_used="原提示词")
+        session.add(a)
+        await session.commit()
+        aid = a.id
+
+    async def fake_gen(prompt, reference_image_urls=None):
+        return {"image_url": "/static/generated/p1.png",
+                "model_version": "gpt-image-2@moacode"}
+    from unittest.mock import patch as _p
+    with _p("src.gateway.image_gen.generate_image", new=fake_gen):
+        await _do_image_edit(aid, "原提示词（修改要求：换构图）", [], "换构图", "张三")
+    async with SessionLocal() as session:
+        cur = list((await session.execute(
+            select(Asset).where(Asset.task_id == task.id,
+                                Asset.source_type == "ai_generated",
+                                Asset.is_history.is_(False)))).scalars().all())
+        hist = list((await session.execute(
+            select(Asset).where(Asset.task_id == task.id,
+                                Asset.is_history.is_(True)))).scalars().all())
+        assert len(cur) == 1 and len(hist) == 1
+        assert "修改要求" in (cur[0].prompt_used or "")
+        assert cur[0].edit_note == "换构图"
+        assert cur[0].model_version == "gpt-image-2@moacode"
+        assert hist[0].id == aid          # 老图存历史

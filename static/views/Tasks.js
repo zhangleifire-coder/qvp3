@@ -22,6 +22,7 @@ const TasksView = {
       showRecycle: false,    // 回收站展开开关
       refKeep: {},           // 参考图勾选 {assetId: true}
       confirmingRefs: false, // 确认中防抖
+      imgEdit: null,         // 定点修改弹窗 {asset, instruction, busy}
       zoom: null,            // 图片放大浏览 {src, title, text}
       search: '',            // 关键词搜索（Query 模糊匹配）
       rowMenu: null,         // 展开操作菜单的行任务 id
@@ -203,6 +204,22 @@ const TasksView = {
       return d ? (d.msg || '') : '';
     },
     isAdmin() { const u = getUser(); return u && u.role === 'admin'; },
+    historyOf(page) {
+      return ((this.detail && this.detail.history_assets) || [])
+        .filter(a => a.page_index === page);
+    },
+    async submitImgEdit() {
+      const e = this.imgEdit;
+      if (!e || e.busy) return;
+      e.busy = true;
+      try {
+        await api.post(`/api/assets/${e.asset.id}/edit_image`,
+          { instruction: e.instruction.trim(), actor: this.actorName });
+        this.imgEdit = null;
+        await this.open({ id: this.detailTask.id });
+        this.load();
+      } catch (err) { alert('修改失败：' + err.message); e.busy = false; }
+    },
     refCandidates() {
       // 待确认参考图候选（awaiting_refs 状态展示）
       return ((this.detail && this.detail.assets) || [])
@@ -614,11 +631,24 @@ const TasksView = {
           </template>
 
           <template v-if="genAssets.length">
-            <h3>交付配图（{{ genAssets.length }}）</h3>
+            <h3>交付配图（{{ genAssets.length }}）<span class="muted" style="font-weight:normal;font-size:13px">不满意的图可点「修改」定点重新生产，老图存历史可对比</span></h3>
             <div class="img-grid">
               <figure v-for="a in genAssets" :key="a.page_index">
                 <img :src="a.display_url || a.image_url" loading="lazy" alt="" @click="openZoom(a, false)">
-                <figcaption class="muted">P{{ a.page_index }} · AI 生成</figcaption>
+                <figcaption class="muted">
+                  P{{ a.page_index }} · AI 生成
+                  <button class="btn btn-outline btn-sm" style="margin-left:6px"
+                          @click.stop="imgEdit = { asset: a, instruction: '', busy: false }">✎ 修改</button>
+                  <span v-if="historyOf(a.page_index).length" class="tag tag-yellow" style="margin-left:4px;font-size:11px">历史 {{ historyOf(a.page_index).length }}</span>
+                </figcaption>
+                <!-- 新旧对比：该页历史图 -->
+                <div v-if="historyOf(a.page_index).length" class="hist-strip">
+                  <span v-for="h in historyOf(a.page_index)" :key="h.id" class="hist-item"
+                        @click="openZoom(h, false)">
+                    <img :src="h.display_url || h.image_url" loading="lazy" alt="" title="旧版（点击查看大图对比）">
+                    <span class="muted" style="font-size:10px">旧</span>
+                  </span>
+                </div>
               </figure>
             </div>
           </template>
@@ -741,6 +771,26 @@ const TasksView = {
         </div>
       </div>
     </div>
+    <div v-if="imgEdit" class="drawer-mask" @click.self="imgEdit=null">
+      <div class="card" style="width:480px;margin:14vh auto 0">
+        <h2>定点修改 P{{ imgEdit.asset.page_index }} 配图</h2>
+        <p class="muted" style="font-size:13px;margin:4px 0 10px">老图将存入历史（可在图上对比新旧）。重新生产沿用原提示词 + 你的修改意见。</p>
+        <div style="display:flex;gap:10px;margin-bottom:10px">
+          <img :src="imgEdit.asset.display_url || imgEdit.asset.image_url" style="width:96px;border-radius:8px">
+          <div style="flex:1">
+            <label>修改意见（可选，留空=换构图重生成）</label>
+            <textarea v-model="imgEdit.instruction" rows="3"
+              placeholder="如：把标题改成「吸力实测对比」；构图换俯视；文字少一点"></textarea>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button class="btn btn-outline btn-sm" @click="imgEdit=null">取消</button>
+          <button class="btn btn-primary" :disabled="imgEdit.busy"
+                  @click="submitImgEdit">{{ imgEdit.busy ? '重新生产中…' : '↻ 重新生产该图' }}</button>
+        </div>
+      </div>
+    </div>
+
     <img-lightbox :img="zoom" @close="zoom=null" />
 
     <div v-if="editForm" class="drawer-mask" @click.self="editForm=null">

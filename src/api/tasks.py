@@ -1,4 +1,5 @@
 import csv
+import hashlib
 import io
 import uuid
 from pathlib import Path
@@ -273,7 +274,10 @@ async def task_detail(task_id: str):
             select(PageCopy).where(PageCopy.task_id == tid)
             .order_by(PageCopy.page_index))).scalars().all()
         assets = (await session.execute(
-            select(Asset).where(Asset.task_id == tid)
+            select(Asset).where(Asset.task_id == tid, Asset.is_history.is_(False))
+            .order_by(Asset.page_index))).scalars().all()   # 交付层只看现行图（历史图单独取）
+        history_assets = (await session.execute(
+            select(Asset).where(Asset.task_id == tid, Asset.is_history.is_(True))
             .order_by(Asset.page_index))).scalars().all()
         claims = (await session.execute(
             select(Claim).where(Claim.task_id == tid)
@@ -384,6 +388,11 @@ async def task_detail(task_id: str):
                         "ocr_hit": a.ocr_hit, "prompt_used": a.prompt_used,
                         "is_history": a.is_history, "edit_note": a.edit_note,
                         "display_url": f"/api/assets/{a.id}/image"} for a in assets],
+            "history_assets": [{"page_index": a.page_index, "id": str(a.id),
+                                "image_url": a.image_url, "edit_note": a.edit_note,
+                                "created_at": a.created_at.isoformat() if a.created_at else None,
+                                "display_url": f"/api/assets/{a.id}/image"}
+                               for a in history_assets],
             "claims": [{"claim_text": c.claim_text, "risk_level": c.risk_level,
                         "verification_status": c.verification_status} for c in claims],
             "evidences": [{"source_url": e.source_url, "excerpt": e.excerpt,
@@ -639,6 +648,88 @@ async def research_refs(task_id: str, payload: RefsResearchIn):
                      f"（新增候选 {r.get('candidates', 0)} 张）", task_id=tid)
     return {"ok": True, "candidates": r.get("candidates", 0),
             "ocr_hits": r.get("ocr_hits", 0)}
+
+
+class ImageEditIn(BaseModel):
+    instruction: str = ""          # 修改意见（如：文字换成「吸力对比」、换构图）
+    actor: str = "anonymous"
+
+
+async def _do_image_edit(aid, prompt: str, ref_urls: list, instr: str, actor: str) -> None:
+    """后台执行定点生图：老图转历史 + 新图落库 + 驳回标记解决。"""
+    from src.gateway.image_gen import generate_image
+    from src.gateway.ocr import fetch_image_bytes
+    from src.pipeline.nodes import _persist_image
+    from src.models.assets import Asset
+    from src.models.review import RejectMark
+    try:
+        async with SessionLocal() as session:
+            old = (await session.execute(select(Asset).where(Asset.id == aid))).scalar_one()
+            tid, q, page_index = old.task_id, old.subject, old.page_index
+        r = await generate_image(prompt, reference_image_urls=ref_urls or None)
+        data, ctype = await fetch_image_bytes(r["image_url"])
+        new_url = _persist_image(tid, page_index, "p", data, ctype)
+        async with SessionLocal() as session:
+            old = (await session.execute(select(Asset).where(Asset.id == aid))).scalar_one()
+            old.is_history = True          # 老图存历史（详情新旧对比）
+            session.add(Asset(
+                task_id=tid, page_index=page_index, subject=q,
+                source_type="ai_generated", copyright_status="clear",
+                hash=hashlib.md5(data).hexdigest(), image_url=new_url,
+                origin_url=r["image_url"] if not str(r["image_url"]).startswith("data:") else None,
+                model_version=r.get("model_version", "gpt-image-2"),
+                is_illustration=False, prompt_used=prompt,
+                edit_note=instr or "定点重新生产"))
+            for m in (await session.execute(
+                    select(RejectMark).where(RejectMark.task_id == tid,
+                                             RejectMark.page_index == page_index,
+                                             RejectMark.item_type == "image",
+                                             RejectMark.status == "open"))).scalars().all():
+                m.status = "resolved"
+            await session.commit()
+        await log_action(actor, "image_edit",
+                         f"定点修改 P{page_index} 配图（意见：{instr[:30] or '重新生产'}）", task_id=tid)
+    except Exception:  # noqa: BLE001
+        traceback.print_exc()
+
+
+@router.post("/api/assets/{asset_id}/edit_image")
+async def edit_image(asset_id: str, payload: ImageEditIn):
+    """定点修改已生成图片（后台异步）：保留老图存历史，按修改意见重新生产单页，
+    详情里新旧图对比。立即返回，前端稍后刷新看新图。
+    """
+    from src.models.assets import Asset
+    from src.models.drafts import PageCopy
+    from src.gateway.prompt_versions import get_image_prompt
+    try:
+        aid = uuid.UUID(asset_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid asset_id")
+    async with SessionLocal() as session:
+        old = (await session.execute(select(Asset).where(Asset.id == aid))).scalars().first()
+        if not old:
+            raise HTTPException(status_code=404, detail="asset not found")
+        if old.source_type != "ai_generated":
+            raise HTTPException(status_code=400, detail="仅交付配图可定点修改")
+        task = (await session.execute(select(Task).where(Task.id == old.task_id))).scalar_one()
+        page = (await session.execute(
+            select(PageCopy).where(PageCopy.task_id == old.task_id,
+                                   PageCopy.page_index == old.page_index))).scalars().first()
+        base_prompt = (old.prompt_used
+                       or get_image_prompt(task.mode or "general",
+                                           page.body if page else task.query,
+                                           old.page_index))
+        ref_urls = [a.image_url for a in (await session.execute(
+            select(Asset).where(Asset.task_id == old.task_id,
+                                Asset.source_type == "official",
+                                Asset.selection_status == "confirmed"))).scalars().all()]
+    instr = payload.instruction.strip()
+    prompt = base_prompt + (f"（修改要求：{instr}）" if instr else
+                            "（重新排版：换一个与之前不同的构图与配色，文字保持正确）")
+    import asyncio as _a
+    _a.create_task(_do_image_edit(aid, prompt, ref_urls, instr, payload.actor))
+    return {"ok": True, "page_index": old.page_index, "status": "regenerating",
+            "note": "后台重新生产中（约 1 分钟），稍后刷新看新图"}
 
 
 @router.post("/api/tasks/{task_id}/cancel")
