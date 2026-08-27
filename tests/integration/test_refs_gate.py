@@ -196,10 +196,15 @@ async def test_text_gate_suspend_and_confirm():
     from src.api.tasks import TextConfirmIn, confirm_text, list_text_awaiting
     task_id = await _create(mode="general")
 
-    fake = {"text": '{"query_clean": {"issues": ["绝对化表述：最高"], '
-                    '"suggested": "戴森吸尘器和小米吸尘器怎么选性价比高"}, '
-                    '"pages_draft": ["P1封面", "P2要点", "P3要点", "P4要点", "P5要点", "P6结尾"], '
-                    '"image_prompt_draft": ["d1", "d2", "d3", "d4", "d5", "d6"]}',
+    import json as _j
+    _body = "这是正文第一段，包含最好的表述。" + "内容补充说明。" * 60
+    fake = {"text": _j.dumps({
+                "query_clean": {"issues": ["绝对化表述：最高"],
+                                "suggested": "戴森吸尘器和小米吸尘器怎么选性价比高"},
+                "body_draft": _body,
+                "pages_draft": ["P1封面", "P2要点", "P3要点", "P4要点", "P5要点", "P6结尾"],
+                "image_prompt_draft": ["d1", "d2", "d3", "d4", "d5", "d6"]},
+                ensure_ascii=False),
             "model_version": "m", "cost_cny": 0, "degraded": False}
     with patch("src.pipeline.text_check.call_with_failover", return_value=fake):
         r = await run_text_check(task_id)
@@ -210,6 +215,8 @@ async def test_text_gate_suspend_and_confirm():
         assert task.status == "awaiting_text"
         assert task.text_review["query_clean"]["issues"]
         assert len(task.text_review["pages_draft"]) == 6
+        assert task.text_review["body_draft"]          # 正文草稿已存
+        assert any("最" in i for i in task.text_review["body_issues"])  # 禁词自动检查
 
     lst = await list_text_awaiting()
     assert any(i["id"] == str(task_id) for i in lst["items"])
@@ -218,6 +225,7 @@ async def test_text_gate_suspend_and_confirm():
     with patch("src.api.tasks.scheduler.enqueue", new=AsyncMock()) as enq:
         out = await confirm_text(str(task_id), TextConfirmIn(
             query="戴森吸尘器和小米吸尘器怎么选性价比高",
+            body="人工核定正文。",
             pages=["P1", "P2", "P3", "P4", "P5", "P6"],
             image_prompts=["d1", "d2", "d3", "d4", "d5", "d6"], actor="张三"))
     assert out["ok"] and "query" in out["overridden"] and enq.called
@@ -226,6 +234,7 @@ async def test_text_gate_suspend_and_confirm():
         assert task.status == "draft"
         eff = effective_texts(task)
         assert eff["query"] == "戴森吸尘器和小米吸尘器怎么选性价比高"
+        assert eff["body"] == "人工核定正文。"       # 人工正文优先
         assert eff["pages"][0] == "P1"
 
 

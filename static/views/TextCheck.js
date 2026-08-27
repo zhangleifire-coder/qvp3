@@ -11,7 +11,9 @@ const TextCheckView = {
     awaitingCount() { return this.total; },
     review() { return (this.detail && this.detail.task.text_review) || {}; },
     issues() { return (this.review.query_clean || {}).issues || []; },
+    bodyIssues() { return this.review.body_issues || []; },
     autoOk() { return this.review.auto_ok; },
+    bodyChars() { return (this.form && this.form.body || '').replace(/\s/g, '').length; },
   },
   methods: {
     async load() {
@@ -36,6 +38,7 @@ const TextCheckView = {
         this.form = {
           query: ov.query || (rv.query_clean && rv.query_clean.suggested && this.issues.length
                               ? rv.query_clean.suggested : (rv.query || t.query)),
+          body: ov.body || rv.body_draft || '',
           pages: ov.pages || (rv.pages_draft || []).slice(0, 6),
           image_prompts: ov.image_prompts || (rv.image_prompt_draft || []).slice(0, 6),
         };
@@ -48,6 +51,7 @@ const TextCheckView = {
       try {
         await api.post(`/api/tasks/${this.cur.id}/text/confirm`, {
           query: this.form.query,
+          body: this.form.body,
           pages: this.form.pages,
           image_prompts: this.form.image_prompts,
           actor: (getUser() || {}).name,
@@ -87,10 +91,11 @@ const TextCheckView = {
           </span>
         </h2>
 
-        <div v-if="issues.length" class="alert-warn">
+        <div v-if="issues.length || bodyIssues.length" class="alert-warn">
           <b>自查问题：</b>
           <ul class="plain-list" style="margin:4px 0 0">
-            <li v-for="(i, idx) in issues" :key="idx">· {{ i }}</li>
+            <li v-for="(i, idx) in issues" :key="'q'+idx">· {{ i }}</li>
+            <li v-for="(i, idx) in bodyIssues" :key="'b'+idx">· 正文：{{ i }}</li>
           </ul>
           <p v-if="review.query_clean && review.query_clean.suggested" class="muted" style="margin-top:6px">
             建议修正：{{ review.query_clean.suggested }}
@@ -100,7 +105,10 @@ const TextCheckView = {
         <h3>① Query（最终生效）</h3>
         <textarea v-model="form.query" rows="2" class="tc-field"></textarea>
 
-        <h3>② 图上文案（6 页，最终生效）</h3>
+        <h3>② 正文（{{ bodyChars }} 字，最终生效——生图不再重写）</h3>
+        <textarea v-model="form.body" rows="12" class="tc-field"></textarea>
+
+        <h3>③ 图上文案（6 页，最终生效）</h3>
         <div class="tc-grid">
           <div v-for="(_, i) in 6" :key="i">
             <label class="muted">P{{ i + 1 }}{{ i === 0 ? ' 封面' : (i === 5 ? ' 结尾' : ' 要点') }}</label>
@@ -108,7 +116,7 @@ const TextCheckView = {
           </div>
         </div>
 
-        <h3>③ 生图描述（6 页，最终生效）</h3>
+        <h3>④ 生图描述（6 页，最终生效）</h3>
         <div class="tc-grid">
           <div v-for="(_, i) in 6" :key="'ip' + i">
             <label class="muted">P{{ i + 1 }} 生图描述</label>

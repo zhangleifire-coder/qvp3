@@ -753,6 +753,7 @@ async def list_text_awaiting():
 
 class TextConfirmIn(BaseModel):
     query: str | None = None               # 人工修正后的 query（空=用自查/原样）
+    body: str | None = None                # 人工修正后的正文（空=用自查草稿）
     pages: list[str] | None = None         # 人工修正后的 6 页文案（空=用草稿）
     image_prompts: list[str] | None = None # 人工修正后的生图描述（空=用草稿）
     actor: str = "anonymous"
@@ -776,6 +777,8 @@ async def confirm_text(task_id: str, payload: TextConfirmIn):
         ov = {}
         if payload.query is not None:
             ov["query"] = payload.query.strip()
+        if payload.body is not None and payload.body.strip():
+            ov["body"] = payload.body.strip()[:5000]
         if payload.pages is not None:
             pages = [str(p).strip() for p in payload.pages if str(p).strip()]
             if pages and len(pages) != 6:

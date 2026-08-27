@@ -412,6 +412,10 @@ async def node_agent_production(input_data: dict) -> dict:
                                 Asset.source_type == "official",
                                 Asset.selection_status == "confirmed")
             .order_by(Asset.page_index))).scalars().all())
+        # 人工核定正文（文字核查关卡产出）：生图时直接使用，Agent 不再重写
+        from src.pipeline.text_check import effective_texts
+        eff = effective_texts(task)
+        confirmed_body = eff.get("body") or ""
 
     # 提示词库仍然后端主管：解析顺序 用户自定义 → admin 系统覆盖 → 代码默认
     draft_tpl = await get_effective_prompt("draft_gen", mode, owner_id)
@@ -431,6 +435,11 @@ async def node_agent_production(input_data: dict) -> dict:
     from src.gateway.tool_ledger import task_quotas
     await task_quotas.reset(tid)
 
+    body_section = ""
+    if confirmed_body:
+        body_section = (
+            "【正文（人工核定版，必须原样作为 draft 输出，不要重写、不要增删改）】\n"
+            + confirmed_body[:3000] + "\n\n")
     refs_section = ""
     if confirmed_refs:
         # 阶段2（人工确认后重跑）：参考图已确认，注入指令直接使用，跳过搜图
@@ -447,7 +456,8 @@ async def node_agent_production(input_data: dict) -> dict:
     from src.api.styles import style_library_text
     kb_text = await style_library_text()
     user_msg = _compose_message(tid, query, mode, draft_tpl, pages_tpl,
-                                image_tpl, feedbacks, combo_section + refs_section,
+                                image_tpl, feedbacks,
+                                body_section + combo_section + refs_section,
                                 fixed_style=fixed_style, style_kb_text=kb_text)
     await bus.publish("agent_progress", {"message": "已连接 Nanobot，开始创作…",
                                          "session_id": session_id}, task_id=tid)
