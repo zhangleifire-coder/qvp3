@@ -343,3 +343,8 @@ input, select, textarea { font-size: 15px; }
 .menu-badge { margin-left: auto; background: #e84545; color: #fff; font-size: 11px;
   min-width: 18px; height: 18px; line-height: 18px; text-align: center; border-radius: 9px;
   padding: 0 5px; font-weight: 600; }
+
+/* ── 用户区设置入口 ── */
+.user-setting { color: var(--muted); font-size: 12.5px; text-decoration: none;
+  padding: 2px 8px; border-radius: 6px; white-space: nowrap; }
+.user-setting:hover { color: var(--primary); background: #f1f4f9; }

@@ -11,9 +11,8 @@ const AppLayout = {
         { path: '/tasks', icon: '🗂️', label: '任务中心' },
         { path: '/monitor', icon: '📡', label: '实时监控' },
         { path: '/textcheck', icon: '✍️', label: '文字核查', badge: 'text' },
-        { path: '/refs', icon: '🖼️', label: '审图', badge: 'refs' },
+        { path: '/refs', icon: '🖼️', label: '实景审图', badge: 'refs' },
         { path: '/review', icon: '📋', label: '任务审核', badge: 'review' },
-        { path: '/settings', icon: '🔑', label: '我的设置' },
         { path: '/users', icon: '👥', label: '用户管理', admin: true },
         { path: '/admin', icon: '⚙️', label: '系统管理', admin: true },
       ];
@@ -43,6 +42,7 @@ const AppLayout = {
         <div class="user-box" v-if="user">
           <span class="role-badge">{{ user.role }}</span>
           <span class="name">{{ user.name }} · {{ roleName(user.role) }}</span>
+          <router-link to="/settings" class="user-setting" title="我的设置（提示词库/风格库/改密）">⚙️ 设置</router-link>
           <button class="logout" @click="doLogout">退出</button>
         </div>
       </div>
