@@ -13,7 +13,6 @@ const AppLayout = {
         { path: '/textcheck', icon: '✍️', label: '文字核查', badge: 'text' },
         { path: '/refs', icon: '🖼️', label: '审图', badge: 'refs' },
         { path: '/review', icon: '📋', label: '任务审核', badge: 'review' },
-        { path: '/sample', icon: '🎲', label: '随机抽查' },
         { path: '/settings', icon: '🔑', label: '我的设置' },
         { path: '/users', icon: '👥', label: '用户管理', admin: true },
         { path: '/admin', icon: '⚙️', label: '系统管理', admin: true },

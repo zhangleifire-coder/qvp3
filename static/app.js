@@ -13,7 +13,6 @@ const router = createRouter({
     { path: '/textcheck', component: TextCheckView },
     { path: '/refs', component: RefsBoardView },
     { path: '/review', component: ReviewView },
-    { path: '/sample', component: SampleView },
     { path: '/settings', component: SettingsView },
     { path: '/prompts', redirect: '/settings' },
     { path: '/users', component: UsersView },
