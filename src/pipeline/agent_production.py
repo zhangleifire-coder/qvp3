@@ -514,6 +514,40 @@ async def node_agent_production(input_data: dict) -> dict:
     localized, garbled = await _garble_check_and_regen(
         task_id, out["pages"], localized, image_tpl, mode)
 
+    # ── 项4：AI 双重审核（文字正确性 + 实景协调性），不达标自动调提示词重生成 ──
+    # 对 OCR 判定有问题的页/需要实景嵌入的页做视觉二次审核（compare/single 全页，
+    # general 仅问题页）；两轮仍败打标记进人工审核。
+    ai_review_flags: dict[int, list[str]] = {k: [v] for k, v in garbled.items()}
+    ref_urls = [a.image_url for a in confirmed_refs]
+    ref_mode = mode in ("compare", "single")
+    try:
+        from src.pipeline.ai_review import _gen_one_with_review
+        from src.gateway.ocr import fetch_image_bytes as _fb2
+        from src.pipeline.nodes import _persist_image as _pi2
+        pages = out["pages"]
+        for img in localized:
+            idx = img["page_index"]
+            if idx not in ai_review_flags and not ref_mode:
+                continue   # general 未命中扭曲的页已由 OCR 把关，跳过视觉审核省成本
+            base_prompt = (img.get("prompt_used")
+                           or image_tpl.replace("{page_body}", pages[idx - 1]))
+            new_url, model, review = await _gen_one_with_review(
+                task_id, idx, pages[idx - 1], base_prompt, ref_urls, ref_mode)
+            if new_url != img["image_url"]:
+                img["image_url"] = new_url
+                try:
+                    data, _ = await _fb2(new_url)
+                    img["hash"] = hashlib.md5(data).hexdigest()
+                except Exception:  # noqa: BLE001
+                    pass
+                img["prompt_used"] = (img.get("prompt_used", "") + "|ai_review").strip("|")
+            if not review["pass"]:
+                ai_review_flags[idx] = review.get("flagged") or ["AI 审核未通过"]
+    except Exception:  # noqa: BLE001
+        traceback.print_exc()   # AI 审核通道故障不误杀（人工审核兜底）
+    # 合并标记：AI 审核仍不通过的页一并进人工审核
+    garbled = ai_review_flags
+
     # 参考图（compare/single）：本地化后存 official 素材，供审核追溯与图生图复核
     refs_localized = []
     for i, ref in enumerate(out["references"], start=1):
@@ -551,11 +585,13 @@ async def node_agent_production(input_data: dict) -> dict:
         # P0-2：文字扭曲重生仍失败的页 → 打 open 标记进审核队列（机器先拦，人再复核）
         if garbled:
             from src.models.review import RejectMark
-            for page_idx in garbled:
+            for page_idx, flags in garbled.items():
+                reason = ("图上文字扭曲：OCR 与分页文案相似度不足，换构图重生成 2 次仍不合格，请人工复核"
+                          if isinstance(flags, str)
+                          else f"AI 审核未通过：{'；'.join(flags)[:120]}，请人工复核")
                 session.add(RejectMark(
-                    task_id=task_id, role="系统质检", item_type="image",
-                    page_index=page_idx,
-                    reason="图上文字扭曲：OCR 与分页文案相似度不足，换构图重生成 2 次仍不合格，请人工复核",
+                    task_id=task_id, role="AI审核" if isinstance(flags, list) else "系统质检",
+                    item_type="image", page_index=page_idx, reason=reason,
                     status="open"))
         max_v = (await session.execute(
             select(func.max(Draft.version)).where(
