@@ -73,7 +73,7 @@ const DashboardView = {
       <button class="tab" :class="{on: tab==='overview'}" @click="tab='overview'">📊 总览</button>
       <button class="tab" :class="{on: tab==='monitor'}" @click="tab='monitor'">📡 实时监控</button>
     </div>
-    <component :is="monitorComp" v-show="tab==='monitor'" />
+    <div v-show="tab==='monitor'"><component :is="monitorComp" /></div>
     <template v-if="tab==='overview'">
     <p v-if="error" class="form-error">{{ error }}</p>
     <div :class="metricGridClass">

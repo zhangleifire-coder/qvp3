@@ -290,7 +290,7 @@ const MonitorView = {
   },
   beforeUnmount() { if (this.es) this.es.close(); },
   template: `
-  <app-layout title="实时监控">
+  <app-layout title="实时监控" inline>
     <div class="grid grid-5">
       <div class="stat"><div class="n">{{ counts.queued || 0 }}</div><div class="l">排队中</div></div>
       <div class="stat"><div class="n" style="color:var(--primary)">{{ counts.processing || 0 }}</div><div class="l">生产中</div></div>

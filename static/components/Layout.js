@@ -1,6 +1,6 @@
 // 主框架：侧边栏 + 顶栏 + 内容插槽
 const AppLayout = {
-  props: { title: { type: String, default: '' } },
+  props: { title: { type: String, default: '' }, inline: { type: Boolean, default: false } },
   data() { return { counts: {}, _t: null }; },
   computed: {
     user() { return getUser(); },
@@ -30,6 +30,8 @@ const AppLayout = {
   beforeUnmount() { clearInterval(this._t); },
   template: `
   <div>
+    <template v-if="inline"><slot /></template>
+    <template v-else>
     <aside class="sidebar">
       <div class="brand"><img src="/static/logo.png" alt="logo" class="brand-logo">图文生产平台</div>
       <div class="menu-label">功能菜单</div>
@@ -48,5 +50,6 @@ const AppLayout = {
     </aside>
     <div class="topbar"><div class="page-title">{{ title }}</div></div>
     <div class="content"><slot /></div>
+    </template>
   </div>`,
 };
