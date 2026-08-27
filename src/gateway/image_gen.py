@@ -20,6 +20,8 @@ def _channels() -> list[str]:
             avail.append("linkai")
         elif c == "moacode" and settings.moacode_api_key:
             avail.append("moacode")
+        elif c == "fusion" and settings.fusionai_api_key:
+            avail.append("fusion")
     return avail or ["linkai"]  # 兜底防全不可用
 
 
@@ -76,7 +78,10 @@ async def generate_image(prompt: str, size: str = None,
         try:
             if reference_image_urls:
                 try:
-                    # 图生图按通道路由：moacode=垫图(input_image) / linkai=images/edits
+                    # 图生图按通道路由：fusion=主(edits multipart b64) /
+                    # moacode=垫图(input_image) / linkai=images/edits
+                    if channel == "fusion":
+                        return await _edit_fusion(prompt, reference_image_urls, size)
                     if channel == "moacode":
                         return await _edit_moacode(prompt, reference_image_urls, size)
                     return await _edit_with_references(prompt, reference_image_urls, size)
@@ -108,10 +113,64 @@ async def generate_image(prompt: str, size: str = None,
 
 
 async def _generate_by_channel(prompt: str, size: str, channel: str) -> dict:
-    """按通道路由生图：linkai=OpenAI Images API / moacode=Responses API SSE。"""
+    """按通道路由生图：fusion=主通道(Images API b64) / moacode=Responses API
+    SSE / linkai=Images API url。"""
+    if channel == "fusion":
+        return await _generate_fusion(prompt, size)
     if channel == "moacode":
         return await _generate_moacode(prompt, size)
     return await _generate(prompt, size)
+
+
+def _fusion_headers() -> dict:
+    return {"Authorization": f"Bearer {settings.fusionai_api_key}"}
+
+
+async def _generate_fusion(prompt: str, size: str) -> dict:
+    """FusionAI 通道（主）：POST /images/generations，返回 b64_json → data URI。
+    生图可能数分钟（官方口径），读超时 600s。"""
+    url = f"{settings.fusionai_base_url.rstrip('/')}/images/generations"
+    payload = {"model": IMAGE_MODEL, "prompt": prompt, "size": size, "n": 1}
+    async with httpx.AsyncClient(timeout=httpx.Timeout(connect=15.0, read=600.0,
+                                                       write=30.0, pool=10.0)) as client:
+        resp = await client.post(url, json=payload, headers=_fusion_headers())
+        if resp.status_code >= 400:
+            raise RuntimeError(f"fusion gen failed ({resp.status_code}): {resp.text[:300]}"
+                               f" [X-Request-Id: {resp.headers.get('X-Request-Id', '-')}]")
+        data = resp.json()
+    item = (data.get("data") or [{}])[0]
+    b64 = item.get("b64_json")
+    if not b64:
+        raise RuntimeError(f"fusion 响应缺 b64_json: {str(data)[:200]}")
+    return {"image_url": f"data:image/png;base64,{b64}",
+            "hash": hashlib.md5(b64.encode()).hexdigest(),
+            "model_version": f"{IMAGE_MODEL}@fusion"}
+
+
+async def _edit_fusion(prompt: str, reference_image_urls: list[str], size: str) -> dict:
+    """FusionAI 图生图：/images/edits multipart，参考图压缩上传，b64_json 返回。"""
+    url = f"{settings.fusionai_base_url.rstrip('/')}/images/edits"
+    files = []
+    for i, ref_url in enumerate(reference_image_urls[:3]):
+        content, ctype = await _download_image_bytes(ref_url)
+        ext = {"image/png": "png", "image/jpeg": "jpg",
+               "image/webp": "webp"}.get(ctype, "png")
+        files.append(("image[]", (f"ref_{i}.{ext}", content, ctype)))
+    data = {"model": IMAGE_MODEL, "prompt": prompt, "size": size, "n": "1"}
+    async with httpx.AsyncClient(timeout=httpx.Timeout(connect=15.0, read=600.0,
+                                                       write=60.0, pool=10.0)) as client:
+        resp = await client.post(url, data=data, files=files, headers=_fusion_headers())
+        if resp.status_code >= 400:
+            raise RuntimeError(f"fusion edit failed ({resp.status_code}): {resp.text[:300]}"
+                               f" [X-Request-Id: {resp.headers.get('X-Request-Id', '-')}]")
+        j = resp.json()
+    item = (j.get("data") or [{}])[0]
+    b64 = item.get("b64_json")
+    if not b64:
+        raise RuntimeError(f"fusion 编辑响应缺 b64_json: {str(j)[:200]}")
+    return {"image_url": f"data:image/png;base64,{b64}",
+            "hash": hashlib.md5(b64.encode()).hexdigest(),
+            "model_version": f"{IMAGE_MODEL}@fusion"}
 
 
 async def _generate_moacode(prompt: str, size: str,

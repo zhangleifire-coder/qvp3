@@ -1,9 +1,14 @@
-// 总览：产能指标 + 任务状态 + 审核积压 + 失败 Top5 + 节点完成数
+// 工作台（合并入口）：总览 / 任务中心 / 实时监控 三个平行栏目（tab 切换，
+// v-show 保持各自的轮询与 SSE 连接不中断；旧路由 /tasks /monitor 重定向到对应 tab）
 const DashboardView = {
   data() {
-    return { metrics: null, stats: null, nodes: [], timer: null, error: '', updatedAt: '' };
+    return { tab: 'overview',
+             metrics: null, stats: null, nodes: [], timer: null, error: '', updatedAt: '' };
   },
   computed: {
+    // 惰性取组件：Dashboard.js 先于 Tasks/Monitor 加载，渲染时才解析（顺序无关）
+    tasksComp() { return typeof TasksView !== 'undefined' ? TasksView : null; },
+    monitorComp() { return typeof MonitorView !== 'undefined' ? MonitorView : null; },
     statusList() {
       const bs = (this.stats && this.stats.by_status) || {};
       return Object.keys(STATUS).map(k => ({ key: k, count: bs[k] || 0, label: STATUS[k].label, cls: STATUS[k].cls }));
@@ -51,6 +56,12 @@ const DashboardView = {
       } catch (e) { this.error = e.message; }
     },
   },
+  created() {
+    // 旧书签直达：#/?tab=tasks / monitor
+    const q = new URLSearchParams(location.hash.split('?')[1] || '');
+    const t = q.get('tab');
+    if (t === 'tasks' || t === 'monitor') this.tab = t;
+  },
   async mounted() {
     this.load();
     this.timer = setInterval(this.load, 15000);
@@ -59,6 +70,14 @@ const DashboardView = {
   beforeUnmount() { clearInterval(this.timer); },
   template: `
   <app-layout title="工作台">
+    <div class="tabs" style="margin-bottom:14px">
+      <button class="tab" :class="{on: tab==='overview'}" @click="tab='overview'">📊 总览</button>
+      <button class="tab" :class="{on: tab==='tasks'}" @click="tab='tasks'">🗂️ 任务中心</button>
+      <button class="tab" :class="{on: tab==='monitor'}" @click="tab='monitor'">📡 实时监控</button>
+    </div>
+    <component :is="tasksComp" v-show="tab==='tasks'" />
+    <component :is="monitorComp" v-show="tab==='monitor'" />
+    <template v-if="tab==='overview'">
     <p v-if="error" class="form-error">{{ error }}</p>
     <div :class="metricGridClass">
       <div v-for="c in metricCards" :key="c.l" class="stat"><div class="n">{{ c.n }}</div><div class="l">{{ c.l }}</div></div>
@@ -97,5 +116,6 @@ const DashboardView = {
         <span class="bar-count">{{ b.count }}</span>
       </div>
     </div>
+    </template>
   </app-layout>`,
 };

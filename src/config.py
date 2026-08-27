@@ -18,7 +18,11 @@ class Settings(BaseSettings):
     # 通道2：Moacode gpt-image-2（OpenAI Responses API，SSE 流式，返回 base64）
     moacode_api_key: str = ""            # cr_... ；空则该通道不可用
     moacode_base_url: str = "https://moacode.org/v1"
-    image_gen_channels: str = "linkai,moacode"  # 双通道轮询负载均衡（可只配 linkai）
+    # 通道3（主）：FusionAI gpt-image-2（Images API 生成+编辑，返回 b64_json，
+    # 1K/2K/4K，支持 6 图并发；生图可能数分钟，读超时给足）
+    fusionai_api_key: str = ""           # sk-fusion-... ；空则该通道不可用
+    fusionai_base_url: str = "https://api.fusionaix.cn/v1"
+    image_gen_channels: str = "fusion,linkai,moacode"  # fusion 主通道轮询优先
     image_model: str = "gpt-image-2"
     image_size: str = "1152x1536"        # 竖版（1152x1536，3:4）
     mock_image_gen: bool = False         # 开发阶段模拟生图（不调 API、不花钱）
