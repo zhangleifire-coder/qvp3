@@ -300,3 +300,11 @@ input, select, textarea { font-size: 15px; }
 .af-stream { color: #2b6cb0; }
 .af-tool { color: #805ad5; }
 .af-info { color: var(--text); }
+
+/* ── 导出：分包删除/一键清理 + 回收站（admin）── */
+.part-btn-wrap { display: inline-flex; align-items: center; gap: 4px; }
+.part-del { padding: 3px 8px; font-size: 12px; }
+.recycle-box { margin-top: 10px; border-top: 1px dashed var(--border); padding-top: 8px; }
+.recycle-list { max-height: 180px; overflow-y: auto; }
+.recycle-row { display: flex; align-items: center; gap: 10px; padding: 5px 2px;
+  border-bottom: 1px dashed #eef0f4; }

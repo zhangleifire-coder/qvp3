@@ -688,6 +688,75 @@ _EXPORT_DIR = Path(__file__).resolve().parent.parent.parent / "exports"
 _EXPORT_TTL = 3600      # 打包结果保留 1 小时
 _EXPORT_PART_SIZE = 10  # 每包最多任务数（逐包下载，避免单包过大）
 
+# ============ 导出文件回收站（2026-08-27）============
+# 分包手动删除/一键清理 → 移入 exports/recycle/（sidecar JSON 记元数据），
+# 仅 admin 可见（前端角色控制，与平台惯例一致）；超 72h 惰性自动清理。
+_RECYCLE_DIR = _EXPORT_DIR / "recycle"
+_RECYCLE_TTL_HOURS = 72
+
+
+def _purge_recycle_expired() -> int:
+    """清理回收站中超过 72h 的项（惰性触发：访问回收站/删除/清理时执行）。"""
+    import json as _json
+    import time as _time
+    if not _RECYCLE_DIR.exists():
+        return 0
+    n = 0
+    for meta in _RECYCLE_DIR.glob("*.json"):
+        try:
+            m = _json.loads(meta.read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001
+            continue
+        if _time.time() - m.get("deleted_ts", 0) > _RECYCLE_TTL_HOURS * 3600:
+            meta.unlink(missing_ok=True)
+            meta.with_suffix("").unlink(missing_ok=True)   # sidecar X.json → 数据 X
+            n += 1
+    return n
+
+
+def _find_part_file(job: dict, part_no: int) -> str | None:
+    """按包号定位分包文件路径（zip 名内嵌 _p{N}.zip；删除后位置索引会错位）。"""
+    suffix = f"_p{part_no}.zip"
+    for f in job.get("files") or []:
+        if f.endswith(suffix):
+            return f
+    return None
+
+
+def _part_meta(job: dict, part_no: int) -> dict:
+    """取某包的元信息（条数等），parts_done（运行中）/parts（完成）合并找。"""
+    for p in (job.get("parts_done") or []) + (job.get("parts") or []):
+        if p.get("part") == part_no:
+            return p
+    return {}
+
+
+def _recycle_part(job: dict, part_no: int, actor: str) -> dict:
+    """把某分包移入回收站（文件改名保留 + sidecar 元数据），并从 job 下载列表移除。"""
+    import json as _json
+    import time as _time
+    target = _find_part_file(job, part_no)
+    if not target:
+        raise HTTPException(status_code=400, detail="该分包不存在或已删除")
+    src = Path(target)
+    tasks_in_part = _part_meta(job, part_no).get("tasks")
+    _RECYCLE_DIR.mkdir(parents=True, exist_ok=True)
+    dst = _RECYCLE_DIR / src.name
+    src.rename(dst)
+    now = _time.time()
+    meta = {"job_id": job.get("job_id"), "part": part_no, "filename": src.name,
+            "tasks": tasks_in_part, "size": dst.stat().st_size,
+            "deleted_by": actor or "anonymous", "deleted_ts": now,
+            "expires_ts": now + _RECYCLE_TTL_HOURS * 3600}
+    (dst.parent / (dst.name + ".json")).write_text(
+        _json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+    # 按包号（非位置）从三个列表移除，防删除后错位
+    job["files"] = [f for f in (job.get("files") or []) if f != str(src)]
+    job["parts_done"] = [p for p in (job.get("parts_done") or [])
+                         if p.get("part") != part_no]
+    job["parts"] = [p for p in (job.get("parts") or []) if p.get("part") != part_no]
+    return meta
+
 
 async def _build_approved_zips(job: dict | None = None,
                                part_size: int | None = None) -> tuple[list[dict], int]:
@@ -867,8 +936,9 @@ async def export_approved(actor: str = "anonymous"):
 
 
 def _sweep_export_jobs() -> None:
-    """惰性清理：过期任务记录与分包 ZIP 文件。"""
+    """惰性清理：过期任务记录与分包 ZIP 文件（回收站过期项一并清）。"""
     import time
+    _purge_recycle_expired()
     now = time.time()
     for jid, job in list(_EXPORT_JOBS.items()):
         if now - job.get("created", 0) > _EXPORT_TTL:
@@ -925,6 +995,41 @@ async def start_approved_export(actor: str = "anonymous"):
             "parts_expected": -(-n // _EXPORT_PART_SIZE)}
 
 
+@router.get("/api/export/recycle")
+async def list_export_recycle():
+    """回收站列表（前端仅 admin 角色展示；访问时惰性清理过期项）。"""
+    import json as _json
+    import time as _time
+    purged = _purge_recycle_expired()
+    items = []
+    if _RECYCLE_DIR.exists():
+        now = _time.time()
+        for meta in sorted(_RECYCLE_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime,
+                           reverse=True):
+            try:
+                m = _json.loads(meta.read_text(encoding="utf-8"))
+            except Exception:  # noqa: BLE001
+                continue
+            m["expires_in_hours"] = round(max(0, (m.get("expires_ts", 0) - now) / 3600), 1)
+            items.append(m)
+    return {"items": items, "ttl_hours": _RECYCLE_TTL_HOURS, "purged": purged}
+
+
+@router.delete("/api/export/recycle/{filename}")
+async def purge_recycle_item(filename: str):
+    """永久删除回收站单项（前端仅 admin 展示入口）。"""
+    import re
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+", filename or ""):
+        raise HTTPException(status_code=400, detail="非法文件名")
+    data = _RECYCLE_DIR / filename
+    sidecar = _RECYCLE_DIR / (filename + ".json")
+    if not data.exists() and not sidecar.exists():
+        raise HTTPException(status_code=404, detail="回收站项不存在")
+    data.unlink(missing_ok=True)
+    sidecar.unlink(missing_ok=True)
+    return {"ok": True, "purged": filename}
+
+
 @router.get("/api/export/{job_id}")
 async def export_job_status(job_id: str):
     job = _EXPORT_JOBS.get(job_id)
@@ -938,13 +1043,15 @@ async def export_job_status(job_id: str):
 async def download_export_part(job_id: str, part: int):
     from fastapi.responses import FileResponse
     job = _EXPORT_JOBS.get(job_id)
-    files = (job or {}).get("files") or []
-    # 打包进行中即可下载已落盘的分包（part <= 已就绪数），不必等整单完成
-    if not job or not files or not (1 <= part <= len(files)):
-        raise HTTPException(status_code=400, detail="该分包尚未就绪或导出已过期")
-    tasks_in_part = (job.get("parts_done") or job.get("parts") or [{}])[part - 1]["tasks"]
+    if not job:
+        raise HTTPException(status_code=404, detail="export job not found")
+    # 按包号定位（非位置索引：删除某包后位置会错位）；打包进行中即可下载已落盘分包
+    target = _find_part_file(job, part)
+    if not target:
+        raise HTTPException(status_code=400, detail="该分包尚未就绪、已删除或已过期")
+    tasks_in_part = _part_meta(job, part).get("tasks", "")
     return FileResponse(
-        files[part - 1], media_type="application/zip",
+        target, media_type="application/zip",
         filename=f"已通过内容包_第{part}包_{tasks_in_part}条.zip")
 
 
@@ -952,3 +1059,39 @@ async def download_export_part(job_id: str, part: int):
 async def download_export(job_id: str):
     """兼容入口：下载第 1 包。"""
     return await download_export_part(job_id, 1)
+
+
+@router.delete("/api/export/{job_id}/part/{part}")
+async def delete_export_part(job_id: str, part: int, actor: str = "anonymous"):
+    """手动删除单个分包：文件移入回收站（admin 可见，72h 自动清理）。"""
+    job = _EXPORT_JOBS.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="export job not found")
+    _purge_recycle_expired()
+    meta = _recycle_part(job, part, actor)
+    return {"ok": True, "recycled": meta["filename"],
+            "expires_hours": _RECYCLE_TTL_HOURS}
+
+
+@router.post("/api/export/{job_id}/clear")
+async def clear_export_parts(job_id: str, actor: str = "anonymous"):
+    """一键清理：该导出单的全部已就绪分包移入回收站。"""
+    import re as _re
+    job = _EXPORT_JOBS.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="export job not found")
+    _purge_recycle_expired()
+    # 从文件名解析包号（位置索引在部分删除后会错位）
+    part_nos = []
+    for f in list(job.get("files") or []):
+        m = _re.search(r"_p(\d+)\.zip$", f)
+        if m:
+            part_nos.append(int(m.group(1)))
+    n = 0
+    for pn in part_nos:
+        _recycle_part(job, pn, actor)
+        n += 1
+    await log_action(actor, "export_clear", f"一键清理导出分包 {n} 个（已入回收站）")
+    return {"ok": True, "recycled": n, "expires_hours": _RECYCLE_TTL_HOURS}
+
+

@@ -443,3 +443,73 @@ async def test_export_streaming_events_and_midrun_download():
         assert exp[-1]["data"]["phase"] == "done"
     finally:
         bus.unsubscribe(q)
+
+
+@pytest.mark.asyncio
+async def test_export_recycle_flow():
+    """导出回收站：单包删除→回收站可见→一键清理→admin 列表→永久删除→72h 过期清理。"""
+    import asyncio
+    import shutil
+    from src.api.tasks import _RECYCLE_DIR, _purge_recycle_expired
+
+    shutil.rmtree(_RECYCLE_DIR, ignore_errors=True)   # 清掉历史残留，隔离本用例
+
+    async with SessionLocal() as session:
+        for k in range(11):
+            task = Task(idempotency_key=f"rc-{_uniq()}", query=f"回收站测试{k}-{_uniq()}",
+                        content_type="generic", mode="general", status="approved")
+            session.add(task)
+            await session.flush()
+            session.add(Draft(task_id=task.id, body=f"正文{k}", version=1,
+                              model_version="m", prompt_version="p"))
+        await session.commit()
+
+    async with _client() as client:
+        r = await client.post("/api/export/approved/start?actor=tester")
+        job_id = r.json()["job_id"]
+        s = {}
+        for _ in range(300):
+            s = (await client.get(f"/api/export/{job_id}")).json()
+            if s["status"] in ("done", "error"):
+                break
+            await asyncio.sleep(0.05)
+        assert s["status"] == "done" and len(s["parts"]) == 2
+
+        # 1) 手动删除第 1 包 → 进回收站，下载列表即时移除
+        d = await client.delete(f"/api/export/{job_id}/part/1?actor=张三")
+        assert d.status_code == 200 and d.json()["ok"]
+        s2 = (await client.get(f"/api/export/{job_id}")).json()
+        assert len(s2["parts"]) == 1 and s2["parts"][0]["part"] == 2
+        dl = await client.get(f"/api/export/{job_id}/download/1")
+        assert dl.status_code == 400          # 已删不可下载
+
+        # 2) 回收站列表（admin 视图）：1 项，含元数据与剩余时间
+        rc = (await client.get("/api/export/recycle")).json()
+        assert len(rc["items"]) == 1
+        item = rc["items"][0]
+        assert item["part"] == 1 and item["deleted_by"] == "张三"
+        assert 0 < item["expires_in_hours"] <= 72
+
+        # 3) 一键清理：剩余包全部入回收站
+        c = await client.post(f"/api/export/{job_id}/clear?actor=tester")
+        assert c.status_code == 200 and c.json()["recycled"] == 1
+        rc2 = (await client.get("/api/export/recycle")).json()
+        assert len(rc2["items"]) == 2
+
+        # 4) 永久删除第 1 项
+        pd = await client.delete("/api/export/recycle/" + item["filename"])
+        assert pd.status_code == 200
+        rc3 = (await client.get("/api/export/recycle")).json()
+        assert len(rc3["items"]) == 1
+
+        # 5) 72h 过期自动清理：把剩余项元数据时间改到 73h 前再访问
+        import json as _j
+        import time as _t
+        sidecars = list(_RECYCLE_DIR.glob("*.json"))
+        assert len(sidecars) == 1
+        meta = _j.loads(sidecars[0].read_text(encoding="utf-8"))
+        meta["deleted_ts"] = _t.time() - 73 * 3600
+        sidecars[0].write_text(_j.dumps(meta), encoding="utf-8")
+        assert _purge_recycle_expired() == 1
+        rc4 = (await client.get("/api/export/recycle")).json()
+        assert len(rc4["items"]) == 0

@@ -18,6 +18,8 @@ const TasksView = {
       exportLog: [],         // 流式控制台日志行 {t, m, k}
       exportT0: 0,           // 打包开始时间（算用时/预估）
       exportTick: 0,         // 1s 心跳：驱动用时/速率每秒刷新
+      recycleItems: [],      // 导出回收站（仅 admin 可见）
+      showRecycle: false,    // 回收站展开开关
       zoom: null,            // 图片放大浏览 {src, title, text}
       search: '',            // 关键词搜索（Query 模糊匹配）
       rowMenu: null,         // 展开操作菜单的行任务 id
@@ -194,6 +196,49 @@ const TasksView = {
       if (!lv || lv.status !== 'processing' || !lv.debug || !lv.debug.length) return '';
       const d = lv.debug[lv.debug.length - 1];
       return d ? (d.msg || '') : '';
+    },
+    isAdmin() { const u = getUser(); return u && u.role === 'admin'; },
+    async deleteExportPart(jobId, part) {
+      if (!confirm(`确定删除第 ${part} 包？\n删除后进入回收站（仅管理员可见，72 小时后自动清理）。`)) return;
+      try {
+        await api.delete(`/api/export/${jobId}/part/${part}?actor=` + encodeURIComponent(this.actorName));
+        const j = this.exportJob;
+        if (j) {
+          j.parts_done = (j.parts_done || []).filter(p => p.part !== part);
+          j.parts = (j.parts || []).filter(p => p.part !== part);
+          this._exportLog('part', `第 ${part} 包已删除（进入回收站，72h 后自动清理）`);
+          if (!(j.parts_done || []).length && !(j.parts || []).length && j.status === 'done') {
+            this.exportJob = null; this.showExport = false;
+          }
+        }
+        if (this.isAdmin) this.loadRecycle();
+      } catch (e) { alert('删除失败：' + e.message); }
+    },
+    async clearExportParts() {
+      const j = this.exportJob;
+      if (!j) return;
+      const n = (j.parts_done || []).length || (j.parts || []).length;
+      if (!n || !confirm(`确定一键清理全部 ${n} 个分包？\n清理后进入回收站（仅管理员可见，72 小时后自动清理）。`)) return;
+      try {
+        const r = await api.post(`/api/export/${j.id}/clear?actor=` + encodeURIComponent(this.actorName));
+        j.parts_done = []; j.parts = [];
+        this._exportLog('part', `已一键清理 ${r.recycled} 个分包（进入回收站，72h 后自动清理）`);
+        if (j.status === 'done') { this.exportJob = null; this.showExport = false; }
+        if (this.isAdmin) this.loadRecycle();
+      } catch (e) { alert('清理失败：' + e.message); }
+    },
+    async loadRecycle() {
+      try {
+        const r = await api.get('/api/export/recycle');
+        this.recycleItems = r.items || [];
+      } catch (e) { /* 静默 */ }
+    },
+    async purgeRecycleItem(f) {
+      if (!confirm(`彻底删除「${f}」？\n彻底删除后不可恢复（回收站 72h 自动清理前的手动清理）。`)) return;
+      try {
+        await api.delete('/api/export/recycle/' + encodeURIComponent(f));
+        this.loadRecycle();
+      } catch (e) { alert('删除失败：' + e.message); }
     },
     async startExport() {
       this.error = '';
@@ -592,21 +637,51 @@ const TasksView = {
           <div v-if="exportJob.status === 'running'" class="ec-line ec-dim"><span class="ec-ts">--:--:--</span> <span class="ec-cursor">▊</span></div>
         </div>
 
-        <div v-if="(exportJob.parts_done || []).length || exportJob.status === 'done'" class="export-parts">
+        <div v-if="(exportJob.parts_done || []).length || (exportJob.status === 'done' && (exportJob.parts || []).length)" class="export-parts">
+          <div v-if="(exportJob.parts_done || []).length || (exportJob.parts || []).length"
+               style="width:100%;display:flex;justify-content:flex-end;margin-bottom:2px">
+            <button class="btn btn-outline btn-sm" @click="clearExportParts">🧹 一键清理全部分包（入回收站）</button>
+          </div>
           <template v-if="exportJob.status === 'done'">
-            <a v-for="p in exportJob.parts" :key="p.part" class="btn btn-primary btn-sm"
-               :href="'/api/export/' + exportJob.id + '/download/' + p.part" style="text-decoration:none">⬇ 第{{ p.part }}包（{{ p.tasks }}条 · {{ fmtSize(p.size) }}）</a>
+            <span v-for="p in exportJob.parts" :key="p.part" class="part-btn-wrap">
+              <a class="btn btn-primary btn-sm"
+                 :href="'/api/export/' + exportJob.id + '/download/' + p.part" style="text-decoration:none">⬇ 第{{ p.part }}包（{{ p.tasks }}条 · {{ fmtSize(p.size) }}）</a>
+              <button class="btn btn-sm btn-danger-ghost part-del" title="删除该包（进入回收站）"
+                      @click="deleteExportPart(exportJob.id, p.part)">✕</button>
+            </span>
           </template>
           <template v-else>
-            <a v-for="p in exportJob.parts_done" :key="p.part" class="btn btn-outline btn-sm"
-               :href="'/api/export/' + exportJob.id + '/download/' + p.part" style="text-decoration:none">⬇ 第{{ p.part }}包（{{ p.tasks }}条 · {{ fmtSize(p.size) }}）</a>
+            <span v-for="p in exportJob.parts_done" :key="p.part" class="part-btn-wrap">
+              <a class="btn btn-outline btn-sm"
+                 :href="'/api/export/' + exportJob.id + '/download/' + p.part" style="text-decoration:none">⬇ 第{{ p.part }}包（{{ p.tasks }}条 · {{ fmtSize(p.size) }}）</a>
+              <button class="btn btn-sm btn-danger-ghost part-del" title="删除该包（进入回收站）"
+                      @click="deleteExportPart(exportJob.id, p.part)">✕</button>
+            </span>
             <span class="part-chip pending">第 {{ (exportJob.parts_done || []).length + 1 }} 包打包中…</span>
             <span v-for="n in Math.max(0, (exportJob.parts_expected || 1) - (exportJob.parts_done || []).length - 1)"
                   :key="'w' + n" class="part-chip">第 {{ (exportJob.parts_done || []).length + 1 + n }} 包 待生成</span>
           </template>
         </div>
 
-        <p class="muted" style="font-size:12.5px">打包在服务器后台进行，分包就绪即可先行下载；关闭本窗口不会中断，可稍后再点开查看。内容包保留约 1 小时。</p>
+        <!-- 回收站（仅 admin）：删除/清理的分包在此暂存，72h 自动清理 -->
+        <div v-if="isAdmin" class="recycle-box">
+          <div class="mlog-head" @click="showRecycle = !showRecycle; if (showRecycle) loadRecycle()">
+            <span class="mlog-toggle">{{ showRecycle ? '▾' : '▸' }}</span>
+            🗑 回收站（{{ recycleItems.length }} 项 · 仅管理员可见 · 72 小时自动清理）
+          </div>
+          <div v-if="showRecycle" class="recycle-list">
+            <div v-if="!recycleItems.length" class="muted" style="padding:8px 2px">回收站为空</div>
+            <div v-for="r in recycleItems" :key="r.filename" class="recycle-row">
+              <span class="muted" style="font-size:12px">{{ new Date(r.deleted_ts * 1000).toLocaleString('zh-CN', {hour12:false}) }}</span>
+              <span style="font-size:13px">{{ r.filename }}</span>
+              <span class="muted" style="font-size:12px">{{ r.tasks }}条 · {{ fmtSize(r.size) }} · 删于{{ r.deleted_by }}</span>
+              <span class="tag tag-yellow" style="font-size:11px">剩 {{ r.expires_in_hours }}h</span>
+              <button class="btn btn-sm btn-danger-ghost" style="margin-left:auto" @click="purgeRecycleItem(r.filename)">彻底删除</button>
+            </div>
+          </div>
+        </div>
+
+        <p class="muted" style="font-size:12.5px">打包在服务器后台进行，分包就绪即可先行下载；关闭本窗口不会中断，可稍后再点开查看。内容包保留约 1 小时；删除/清理的分包进回收站（仅管理员可见，72h 自动清理）。</p>
         <div v-if="exportJob.status === 'done'" style="text-align:right;margin-top:10px">
           <button class="btn btn-primary btn-sm" @click="exportJob = null; showExport = false">完成</button>
         </div>
