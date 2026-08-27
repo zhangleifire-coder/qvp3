@@ -531,8 +531,15 @@ async def test_image_edit_history_flow():
         await session.commit()
         aid = a.id
 
+    import io as _pio
+    from PIL import Image as _PImage
+    _buf = _pio.BytesIO()
+    _PImage.new("RGB", (100, 100), (255, 200, 0)).save(_buf, format="PNG")
+    _png = _buf.getvalue()
+
     async def fake_gen(prompt, reference_image_urls=None):
-        return {"image_url": "/static/generated/p1.png",
+        import base64 as _b
+        return {"image_url": "data:image/png;base64," + _b.b64encode(_png).decode(),
                 "model_version": "gpt-image-2@moacode"}
     from unittest.mock import patch as _p
     with _p("src.gateway.image_gen.generate_image", new=fake_gen):
