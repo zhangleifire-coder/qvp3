@@ -416,6 +416,12 @@ async def node_agent_production(input_data: dict) -> dict:
         from src.pipeline.text_check import effective_texts
         eff = effective_texts(task)
         confirmed_body = eff.get("body") or ""
+        # 标杆交付规范（81 条成功案例共性提炼，scripts/analyze_benchmark.py 产出）
+        from sqlalchemy import text as _txt
+        bench_rule = (await session.execute(_txt(
+            "SELECT content FROM prompt_templates WHERE stage = :s "
+            "AND owner_id IS NULL AND is_active ORDER BY updated_at DESC LIMIT 1"),
+            {"s": f"bench_{mode}"})).scalar() or ""
 
     # 提示词库仍然后端主管：解析顺序 用户自定义 → admin 系统覆盖 → 代码默认
     draft_tpl = await get_effective_prompt("draft_gen", mode, owner_id)
@@ -455,9 +461,10 @@ async def node_agent_production(input_data: dict) -> dict:
     # 风格关键词库（用户"知识训练"数据）：非空时替代内置风格库供 Agent 自动匹配
     from src.api.styles import style_library_text
     kb_text = await style_library_text()
+    bench_section = (bench_rule + "\n\n") if bench_rule else ""
     user_msg = _compose_message(tid, query, mode, draft_tpl, pages_tpl,
                                 image_tpl, feedbacks,
-                                body_section + combo_section + refs_section,
+                                bench_section + body_section + combo_section + refs_section,
                                 fixed_style=fixed_style, style_kb_text=kb_text)
     await bus.publish("agent_progress", {"message": "已连接 Nanobot，开始创作…",
                                          "session_id": session_id}, task_id=tid)
@@ -542,7 +549,8 @@ async def node_agent_production(input_data: dict) -> dict:
             base_prompt = (img.get("prompt_used")
                            or image_tpl.replace("{page_body}", pages[idx - 1]))
             new_url, model, review = await _gen_one_with_review(
-                task_id, idx, pages[idx - 1], base_prompt, ref_urls, ref_mode)
+                task_id, idx, pages[idx - 1], base_prompt, ref_urls, ref_mode,
+                mode=mode)
             if new_url != img["image_url"]:
                 img["image_url"] = new_url
                 try:

@@ -25,26 +25,51 @@ _VL_REVIEW_PROMPT = """你是图文交付质量审核员。下面是第 {page} �
 审核项：
 1. text_ok：图中文字是否正确（有无伪汉字/异体变形/乱码/明显错字）；
 2. text_amount_ok：图中文字数量是否协调（是否信息过载堆太多字，或该有的字缺失）；
-3. ref_ok：实景图嵌入是否协调（大小/位置/对比度/不遮挡主体；无实景图时此项给 true）。
+3. ref_ok：实景图嵌入是否协调（大小/位置/对比度/不遮挡主体；无实景图时此项给 true）；
+4. bench_ok：与第二张「标杆案例」对照，本图的整体质感/排版层次/信息密度是否
+   达到同类交付水准（不要求一模一样，判断差距是否明显）。
 
 输出 JSON：{{"text_ok": true/false, "text_amount_ok": true/false, "ref_ok": true/false,
+  "bench_ok": true/false,
   "issues": ["问题1"], "suggest": "一句具体的生图调整建议（怎么改提示词）"}}"""
 
 
-async def _vl_review(image_url: str, page_text: str, page: int, ref_mode: bool) -> dict:
-    """qwen-vl 视觉审核一页配图，返回结构化判定（失败默认通过不误杀）。"""
+async def get_benchmark_shot(mode: str) -> str | None:
+    """随机取一条同类标杆案例首页截图（本地文件 → data URI；无则 None）。"""
+    import random as _random
+    from sqlalchemy import select as _sel, text as _text
+    from src.db.session import SessionLocal as _SL
+    try:
+        async with _SL() as session:
+            rows = (await session.execute(_text(
+                "SELECT shot_path FROM benchmark_cases "
+                "WHERE mode = :m AND shot_path IS NOT NULL"), {"m": mode})).all()
+        if not rows:
+            return None
+        shot = _random.choice(rows)[0]
+        data, ctype = await fetch_image_bytes(shot)
+        mime = ctype if ctype.startswith("image/") else "image/jpeg"
+        return f"data:{mime};base64," + base64.b64encode(data).decode()
+    except Exception:  # noqa: BLE001
+        return None
+
+
+async def _vl_review(image_url: str, page_text: str, page: int, ref_mode: bool,
+                     bench_url: str | None = None) -> dict:
+    """qwen-vl 视觉审核一页配图（可附标杆案例图对照），失败默认通过不误杀。"""
     try:
         data, ctype = await fetch_image_bytes(image_url)
         mime = ctype if ctype.startswith("image/") else "image/png"
         data_url = f"data:{mime};base64," + base64.b64encode(data).decode()
+        content = [{"type": "image_url", "image_url": {"url": data_url}}]
+        if bench_url:
+            content.append({"type": "image_url", "image_url": {"url": bench_url}})
+        content.append({"type": "text", "text": _VL_REVIEW_PROMPT.format(
+            page=page, page_text=page_text[:120],
+            ref_mode="是" if ref_mode else "否")})
         payload = {
             "model": settings.ocr_model,
-            "messages": [{"role": "user", "content": [
-                {"type": "image_url", "image_url": {"url": data_url}},
-                {"type": "text", "text": _VL_REVIEW_PROMPT.format(
-                    page=page, page_text=page_text[:120],
-                    ref_mode="是" if ref_mode else "否")},
-            ]}],
+            "messages": [{"role": "user", "content": content}],
             "max_tokens": 600,
         }
         async with httpx.AsyncClient(timeout=90) as client:
@@ -57,10 +82,11 @@ async def _vl_review(image_url: str, page_text: str, page: int, ref_mode: bool) 
             content = resp.json()["choices"][0]["message"]["content"].strip()
         raw = content.strip("`").lstrip("json").strip()
         j = json.loads(raw[raw.index("{"):raw.rindex("}") + 1])
-        ok = all(j.get(k, True) for k in ("text_ok", "text_amount_ok", "ref_ok"))
+        keys = ("text_ok", "text_amount_ok", "ref_ok") + (("bench_ok",) if bench_url else ())
+        ok = all(j.get(k, True) for k in keys)
         return {"pass": ok, "issues": [str(i)[:100] for i in j.get("issues", [])],
                 "suggest": str(j.get("suggest", ""))[:200],
-                "flags": {k: j.get(k, True) for k in ("text_ok", "text_amount_ok", "ref_ok")}}
+                "flags": {k: j.get(k, True) for k in keys}}
     except Exception:  # noqa: BLE001
         return {"pass": True, "issues": [], "suggest": ""}
 
@@ -73,7 +99,8 @@ async def _image_to_data_url_local(image_url: str) -> str:
 
 async def _gen_one_with_review(task_id, page_index: int, page_text: str,
                                base_prompt: str, ref_urls: list[str],
-                               ref_mode: bool) -> tuple[str, str, dict]:
+                               ref_mode: bool,
+                               mode: str = "general") -> tuple[str, str, dict]:
     """生成 + AI 双重审核 + 自动重生成；返回 (local_url, model_version, review_info)。
 
     两轮内仍不达标：返回最新图但 review_info.flagged 标问题（进人工审核）。
@@ -89,6 +116,7 @@ async def _gen_one_with_review(task_id, page_index: int, page_text: str,
         local_url = _persist_image(task_id, page_index, "p", data, ctype)
         return local_url, r.get("model_version", "gpt-image-2"), data, ctype
 
+    bench_url = await get_benchmark_shot(mode or ("compare" if ref_mode else "general"))
     last_prompt = base_prompt
     review: dict = {"pass": True, "issues": [], "suggest": "", "rounds": 0, "flagged": []}
     best: tuple | None = None
@@ -102,7 +130,7 @@ async def _gen_one_with_review(task_id, page_index: int, page_text: str,
         except Exception:  # noqa: BLE001
             text_ok = True
         # ② 实景协调性（qwen-vl）
-        vl = await _vl_review(local_url, page_text, page_index, ref_mode)
+        vl = await _vl_review(local_url, page_text, page_index, ref_mode, bench_url)
         review = {"pass": text_ok and vl["pass"], "issues": vl.get("issues", []),
                   "suggest": vl.get("suggest", ""), "rounds": rnd,
                   "flagged": ([] if text_ok else ["文字扭曲"])
