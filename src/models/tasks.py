@@ -1,4 +1,6 @@
 from sqlalchemy import Column, Integer, Text, TIMESTAMP
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_base
 import uuid
@@ -24,6 +26,12 @@ class Task(Base):
     gen_style = Column(Text)
     gen_category = Column(Text)
     gen_image_style = Column(Text)   # Agent 自适应判定的图片整体视觉风格（008）
+    # 文字自查+人工核查（012）：自动自查草稿 / 人工修改后的最终版
+    text_review = Column(JSONB)
+    text_override = Column(JSONB)
+    # 文字自查+人工核查（012）：自动自查草稿 / 人工修改后的最终版
+    text_review = Column(JSONB)
+    text_override = Column(JSONB)
     template_id = Column(UUID(as_uuid=True))
     created_at = Column(TIMESTAMP(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     created_by = Column(UUID(as_uuid=True))

@@ -188,3 +188,54 @@ async def test_refs_board_and_research():
             select(Asset).where(Asset.task_id == task_id,
                                 Asset.selection_status == "candidate"))).scalars().all())
         assert len(cands) == 6
+
+
+async def test_text_gate_suspend_and_confirm():
+    """文字核查：text_check 自查 → awaiting_text → 人工确认（override）→ 入队续跑。"""
+    from src.pipeline.text_check import run_text_check, effective_texts
+    from src.api.tasks import TextConfirmIn, confirm_text, list_text_awaiting
+    task_id = await _create(mode="general")
+
+    fake = {"text": '{"query_clean": {"issues": ["绝对化表述：最高"], '
+                    '"suggested": "戴森吸尘器和小米吸尘器怎么选性价比高"}, '
+                    '"pages_draft": ["P1封面", "P2要点", "P3要点", "P4要点", "P5要点", "P6结尾"], '
+                    '"image_prompt_draft": ["d1", "d2", "d3", "d4", "d5", "d6"]}',
+            "model_version": "m", "cost_cny": 0, "degraded": False}
+    with patch("src.pipeline.text_check.call_with_failover", return_value=fake):
+        r = await run_text_check(task_id)
+    assert r["issues"] == 1 and r["auto_ok"] is False
+
+    async with SessionLocal() as session:
+        task = (await session.execute(select(Task).where(Task.id == task_id))).scalar_one()
+        assert task.status == "awaiting_text"
+        assert task.text_review["query_clean"]["issues"]
+        assert len(task.text_review["pages_draft"]) == 6
+
+    lst = await list_text_awaiting()
+    assert any(i["id"] == str(task_id) for i in lst["items"])
+
+    # 人工确认（修正 query + 草稿）
+    with patch("src.api.tasks.scheduler.enqueue", new=AsyncMock()) as enq:
+        out = await confirm_text(str(task_id), TextConfirmIn(
+            query="戴森吸尘器和小米吸尘器怎么选性价比高",
+            pages=["P1", "P2", "P3", "P4", "P5", "P6"],
+            image_prompts=["d1", "d2", "d3", "d4", "d5", "d6"], actor="张三"))
+    assert out["ok"] and "query" in out["overridden"] and enq.called
+    async with SessionLocal() as session:
+        task = (await session.execute(select(Task).where(Task.id == task_id))).scalar_one()
+        assert task.status == "draft"
+        eff = effective_texts(task)
+        assert eff["query"] == "戴森吸尘器和小米吸尘器怎么选性价比高"
+        assert eff["pages"][0] == "P1"
+
+
+async def test_text_gate_effective_fallback():
+    """人工未修正时 effective_texts 回退自动草稿。"""
+    from src.pipeline.text_check import effective_texts
+    from types import SimpleNamespace
+    t = SimpleNamespace(query="原query",
+                        text_review={"query": "原query", "pages_draft": ["p1"] * 6,
+                                     "image_prompt_draft": ["d1"] * 6},
+                        text_override=None)
+    eff = effective_texts(t)
+    assert eff["query"] == "原query" and eff["pages"] == ["p1"] * 6

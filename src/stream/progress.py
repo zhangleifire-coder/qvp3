@@ -25,10 +25,11 @@ NODE_ORDER = [
 
 # Nanobot 创作大节点路径（8 节点）：创作段六节点收敛为 agent_production
 NODE_ORDER_AGENT = [
-    "task_import", "ref_collect", "agent_production", "rule_check", "cross_check",
-    "risk_classify", "review_queue", "batch_signoff", "publish_snapshot",
+    "task_import", "text_check", "ref_collect", "agent_production", "rule_check",
+    "cross_check", "risk_classify", "review_queue", "batch_signoff", "publish_snapshot",
 ]
 NODE_LABEL["ref_collect"] = "参考图确认"
+NODE_LABEL["text_check"] = "文字自查"
 
 
 def node_order() -> list:

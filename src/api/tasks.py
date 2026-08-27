@@ -359,6 +359,8 @@ async def task_detail(task_id: str):
         return {
             "task": {
                 "id": str(task.id),
+                "text_review": task.text_review,
+                "text_override": task.text_override,
                 "idempotency_key": task.idempotency_key,
                 "query": task.query,
                 "content_type": task.content_type,
@@ -732,6 +734,71 @@ async def edit_image(asset_id: str, payload: ImageEditIn):
             "note": "后台重新生产中（约 1 分钟），稍后刷新看新图"}
 
 
+@router.get("/api/tasks/text/awaiting")
+async def list_text_awaiting():
+    """文字核查板块：待人工核查任务列表（含自动自查结果摘要）。"""
+    async with SessionLocal() as session:
+        tasks = list((await session.execute(
+            select(Task).where(Task.status == "awaiting_text")
+            .order_by(Task.created_at))).scalars().all())
+        items = []
+        for t in tasks:
+            rv = t.text_review or {}
+            items.append({"id": str(t.id), "query": t.query, "mode": t.mode,
+                          "auto_ok": rv.get("auto_ok"),
+                          "issues": (rv.get("query_clean") or {}).get("issues", []),
+                          "created_at": t.created_at.isoformat() if t.created_at else None})
+        return {"items": items, "total": len(items)}
+
+
+class TextConfirmIn(BaseModel):
+    query: str | None = None               # 人工修正后的 query（空=用自查/原样）
+    pages: list[str] | None = None         # 人工修正后的 6 页文案（空=用草稿）
+    image_prompts: list[str] | None = None # 人工修正后的生图描述（空=用草稿）
+    actor: str = "anonymous"
+
+
+@router.post("/api/tasks/{task_id}/text/confirm")
+async def confirm_text(task_id: str, payload: TextConfirmIn):
+    """人工最终核查放行：存 text_override（人工修正版）→ 任务回 draft 入队，
+    进入生产（审图 → agent 生图用人工核定的文案/生图描述）。"""
+    try:
+        tid = uuid.UUID(task_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid task_id")
+    async with SessionLocal() as session:
+        task = (await session.execute(select(Task).where(Task.id == tid))).scalars().first()
+        if not task:
+            raise HTTPException(status_code=404, detail="task not found")
+        if task.status != "awaiting_text":
+            raise HTTPException(status_code=400,
+                                detail=f"仅待人工核查状态可确认，当前: {task.status}")
+        ov = {}
+        if payload.query is not None:
+            ov["query"] = payload.query.strip()
+        if payload.pages is not None:
+            pages = [str(p).strip() for p in payload.pages if str(p).strip()]
+            if pages and len(pages) != 6:
+                raise HTTPException(status_code=422, detail="pages 需恰好 6 条非空文案")
+            ov["pages"] = pages or None
+        if payload.image_prompts is not None:
+            ips = [str(p).strip() for p in payload.image_prompts if str(p).strip()]
+            if ips and len(ips) != 6:
+                raise HTTPException(status_code=422, detail="image_prompts 需恰好 6 条")
+            ov["image_prompts"] = ips or None
+        task.text_override = ov
+        task.status = "draft"
+        await session.commit()
+        query = task.query
+    from src.stream.scheduler import scheduler
+    await scheduler.enqueue(tid, query)
+    await log_action(payload.actor, "text_confirm",
+                     f"文字核查放行（query 修正: {'是' if ov.get('query') else '否'}，"
+                     f"文案/生图描述修正: {'是' if ov.get('pages') or ov.get('image_prompts') else '否'}）",
+                     task_id=tid)
+    return {"ok": True, "queued": True, "overridden": sorted(ov.keys())}
+
+
 @router.post("/api/tasks/{task_id}/cancel")
 async def cancel_task(task_id: str, actor: str = "anonymous"):
     """手工中断任务：排队中→直接出队；生产中→取消执行协程（幂等可重试）。
@@ -748,7 +815,7 @@ async def cancel_task(task_id: str, actor: str = "anonymous"):
         task = (await session.execute(select(Task).where(Task.id == tid))).scalars().first()
         if not task:
             raise HTTPException(status_code=404, detail="task not found")
-        if task.status not in ("draft", "processing", "awaiting_refs"):
+        if task.status not in ("draft", "processing", "awaiting_refs", "awaiting_text"):
             raise HTTPException(
                 status_code=400,
                 detail=f"只有排队中/生产中/待确认参考图的任务可以中断，当前状态: {task.status}")

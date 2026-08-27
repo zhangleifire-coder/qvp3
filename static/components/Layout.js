@@ -9,6 +9,7 @@ const AppLayout = {
         { path: '/import', icon: '📥', label: '任务导入' },
         { path: '/tasks', icon: '🗂️', label: '任务中心' },
         { path: '/monitor', icon: '📡', label: '实时监控' },
+        { path: '/textcheck', icon: '✍️', label: '文字核查' },
         { path: '/refs', icon: '🖼️', label: '审图' },
         { path: '/review', icon: '📋', label: '任务审核' },
         { path: '/sample', icon: '🎲', label: '随机抽查' },

@@ -178,7 +178,7 @@ class TaskScheduler:
                             _sel(Task.status).where(Task.id == task_id))).scalar()
                 except Exception:  # noqa: BLE001
                     _st = None
-                if _st == "awaiting_refs":
+                if _st in ("awaiting_refs", "awaiting_text"):
                     self._meta[tid]["status"] = "awaiting_refs"
                     await self.limiter.report(success=True, throttled=False)
                     await bus.publish("task_refs_awaiting",
@@ -240,7 +240,9 @@ class TaskScheduler:
         async with SessionLocal() as session:
             task = (await session.execute(
                 select(Task).where(Task.id == task_id))).scalar_one()
-            task.status = "review"
+            # 人审关卡挂起（文字核查/参考图确认）保持挂起状态，不覆盖为 review
+            if task.status not in ("awaiting_text", "awaiting_refs"):
+                task.status = "review"
             await session.commit()
 
     def snapshot(self) -> dict:

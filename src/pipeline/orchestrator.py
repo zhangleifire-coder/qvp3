@@ -26,9 +26,25 @@ NODE_FN = {
 # ref_collect（2026-08-27）：compare/single 的参考图人工确认关卡——
 # 搜图≥10张 → OCR 初筛 → 挂起 awaiting_refs 等人工确认后才继续生图。
 NODES_AGENT = [
-    "task_import", "ref_collect", "agent_production", "rule_check", "cross_check",
-    "risk_classify", "review_queue", "batch_signoff", "publish_snapshot",
+    "task_import", "text_check", "ref_collect", "agent_production", "rule_check",
+    "cross_check", "risk_classify", "review_queue", "batch_signoff", "publish_snapshot",
 ]
+
+
+async def _node_text_check(input_data: dict) -> dict:
+    """文字自查+人工核查关卡（2026-08-27）：query 中文自查 + 文案/生图描述起草
+    → 挂起 awaiting_text 等人工最终核查放行。确认后重跑此节点幂等跳过。"""
+    from src.pipeline.text_check import run_text_check
+    task_id = input_data["task_id"]
+    from sqlalchemy import select as _sel
+    from src.db.session import SessionLocal
+    from src.models.tasks import Task
+    async with SessionLocal() as session:
+        t = (await session.execute(_sel(Task).where(Task.id == task_id))).scalar_one()
+        if t.text_override is not None or t.text_review is not None:
+            return {"skipped": True, "reason": "已完成文字自查/核查"}
+    r = await run_text_check(task_id)
+    return {"text_gate": True, **r}
 
 
 async def _node_ref_collect(input_data: dict) -> dict:
@@ -42,6 +58,7 @@ async def _node_agent_production(input_data: dict) -> dict:
 
 
 NODE_FN_AGENT = {
+    "text_check": _node_text_check,
     "ref_collect": _node_ref_collect,
     "agent_production": _node_agent_production,
     "rule_check": node_rule_check,
@@ -51,6 +68,25 @@ NODE_FN_AGENT = {
     "batch_signoff": node_batch_signoff,
     "publish_snapshot": node_publish_snapshot,
 }
+
+
+async def _suspend_for_text(task_id, r: dict) -> None:
+    """文字核查关卡：任务挂起 awaiting_text（编排器/调度器识别）。"""
+    from sqlalchemy import select as _select
+    from src.db.session import SessionLocal
+    from src.models.tasks import Task
+    from src.stream.bus import bus
+    async with SessionLocal() as session:
+        t = (await session.execute(
+            _select(Task).where(Task.id == task_id))).scalar_one()
+        t.status = "awaiting_text"
+        await session.commit()
+    await bus.publish("node_finished", {
+        "node": "text_check", "label": "文字自查",
+        "msg": (f"文案 {r.get('candidates_pages', 0)} 页 + 生图描述起草完成"
+                + (f"，发现 {r.get('issues', 0)} 个问题待核查"
+                   if r.get("issues") else "，自查通过")
+                + "，等待人工最终核查放行")}, task_id=str(task_id))
 
 
 async def _suspend_for_refs(task_id, r: dict) -> None:
@@ -95,5 +131,8 @@ async def run_pipeline(task_id, node_inputs: dict | None = None) -> list:
         # ref_collect 已完成会幂等跳过，agent_production 用确认后的参考图）
         if isinstance(r, dict) and r.get("ref_gate"):
             await _suspend_for_refs(task_id, r)
+            break
+        if isinstance(r, dict) and r.get("text_gate"):
+            await _suspend_for_text(task_id, r)
             break
     return results

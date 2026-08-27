@@ -1,0 +1,132 @@
+// 文字核查：query 中文自查 + 文案/生图描述人工最终核查（独立板块，2026-08-27）
+// 流程：导入任务 → text_check 自动自查起草 → 此处人工核查/修正 → 放行进入生产。
+const TextCheckView = {
+  data() {
+    return {
+      items: [], total: 0, loading: false, error: '',
+      cur: null, detail: null, form: null, confirming: false, timer: null,
+    };
+  },
+  computed: {
+    awaitingCount() { return this.total; },
+    review() { return (this.detail && this.detail.task.text_review) || {}; },
+    issues() { return (this.review.query_clean || {}).issues || []; },
+    autoOk() { return this.review.auto_ok; },
+  },
+  methods: {
+    async load() {
+      this.loading = true; this.error = '';
+      try {
+        const r = await api.get('/api/tasks/text/awaiting');
+        this.items = r.items || []; this.total = r.total || 0;
+        if (this.cur) {
+          const still = this.items.find(i => i.id === this.cur.id);
+          if (!still) { this.cur = null; this.detail = null; }
+        }
+      } catch (e) { this.error = e.message; }
+      finally { this.loading = false; }
+    },
+    async pick(t) {
+      this.cur = t; this.detail = null;
+      try {
+        this.detail = await api.get(`/api/tasks/${t.id}/detail`);
+        const rv = this.review;
+        // 表单初始值：人工修改版 > 自动草稿
+        const ov = this.detail.task.text_override || {};
+        this.form = {
+          query: ov.query || (rv.query_clean && rv.query_clean.suggested && this.issues.length
+                              ? rv.query_clean.suggested : (rv.query || t.query)),
+          pages: ov.pages || (rv.pages_draft || []).slice(0, 6),
+          image_prompts: ov.image_prompts || (rv.image_prompt_draft || []).slice(0, 6),
+        };
+      } catch (e) { this.error = e.message; }
+    },
+    async confirm() {
+      if (this.confirming || !this.detail) return;
+      if (!confirm('确认放行该任务进入生产？（将使用你核定的 query / 文案 / 生图描述）')) return;
+      this.confirming = true;
+      try {
+        await api.post(`/api/tasks/${this.cur.id}/text/confirm`, {
+          query: this.form.query,
+          pages: this.form.pages,
+          image_prompts: this.form.image_prompts,
+          actor: (getUser() || {}).name,
+        });
+        this.cur = null; this.detail = null; this.form = null;
+        this.load();
+      } catch (e) { alert('确认失败：' + e.message); }
+      finally { this.confirming = false; }
+    },
+  },
+  async mounted() {
+    this.load();
+    this.timer = setInterval(this.load, 8000);
+  },
+  beforeUnmount() { clearInterval(this.timer); },
+  template: `
+  <app-layout title="文字核查 · 人工最终审核">
+    <div class="refs-layout">
+      <div class="card refs-list">
+        <h2>待核查任务 <span class="tag tag-yellow">{{ awaitingCount }}</span></h2>
+        <div v-if="!items.length" class="empty" style="padding:18px 0">
+          暂无待核查任务——导入的任务经「文字自查」后在这里等你最终审核
+        </div>
+        <div v-for="t in items" :key="t.id" class="refs-item" :class="{on: cur && cur.id === t.id}"
+             @click="pick(t)">
+          <b>{{ t.query }}</b>
+          <span class="tag" :class="t.auto_ok ? 'tag-green' : 'tag-yellow'">
+            {{ t.auto_ok ? '自查通过' : (t.issues || []).length + ' 个问题' }}
+          </span>
+        </div>
+      </div>
+
+      <div class="card" style="flex:1" v-if="detail && form">
+        <h2>{{ detail.task.query }}
+          <span class="tag" :class="autoOk ? 'tag-green' : 'tag-yellow'">
+            {{ autoOk ? '✓ 中文自查通过' : '⚠ 自查发现 ' + issues.length + ' 个问题' }}
+          </span>
+        </h2>
+
+        <div v-if="issues.length" class="alert-warn">
+          <b>自查问题：</b>
+          <ul class="plain-list" style="margin:4px 0 0">
+            <li v-for="(i, idx) in issues" :key="idx">· {{ i }}</li>
+          </ul>
+          <p v-if="review.query_clean && review.query_clean.suggested" class="muted" style="margin-top:6px">
+            建议修正：{{ review.query_clean.suggested }}
+          </p>
+        </div>
+
+        <h3>① Query（最终生效）</h3>
+        <textarea v-model="form.query" rows="2" class="tc-field"></textarea>
+
+        <h3>② 图上文案（6 页，最终生效）</h3>
+        <div class="tc-grid">
+          <div v-for="(_, i) in 6" :key="i">
+            <label class="muted">P{{ i + 1 }}{{ i === 0 ? ' 封面' : (i === 5 ? ' 结尾' : ' 要点') }}</label>
+            <textarea v-model="form.pages[i]" rows="2" class="tc-field"></textarea>
+          </div>
+        </div>
+
+        <h3>③ 生图描述（6 页，最终生效）</h3>
+        <div class="tc-grid">
+          <div v-for="(_, i) in 6" :key="'ip' + i">
+            <label class="muted">P{{ i + 1 }} 生图描述</label>
+            <textarea v-model="form.image_prompts[i]" rows="2" class="tc-field"></textarea>
+          </div>
+        </div>
+
+        <div style="margin-top:14px;display:flex;gap:10px;align-items:center">
+          <button class="btn btn-primary" :disabled="confirming"
+                  @click="confirm">{{ confirming ? '放行中…' : '✓ 最终核查通过，进入生产' }}</button>
+          <span class="muted" style="font-size:13px">放行后进入「审图」环节（compare/single）或直接生产（general）</span>
+        </div>
+      </div>
+      <div class="card" style="flex:1" v-else>
+        <div class="empty" style="padding:60px 0">
+          {{ items.length ? '← 点左侧任务开始核查' : '等待任务进入文字核查…' }}
+        </div>
+      </div>
+    </div>
+  </app-layout>`,
+};
