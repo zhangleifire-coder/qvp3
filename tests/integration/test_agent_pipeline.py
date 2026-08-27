@@ -65,7 +65,8 @@ FAKE_AGENT_CALL = {
 async def _create_task(mode: str = "general"):
     async with SessionLocal() as session:
         task = Task(idempotency_key=f"agent-{uuid.uuid4().hex[:8]}",
-                    query="测试Query", content_type="x", mode=mode)
+                    query="测试Query", content_type="x", mode=mode,
+                    text_override={"query": "测试Query"})   # 预置：跳过文字核查关卡
         session.add(task)
         await session.commit()
         await session.refresh(task)
@@ -138,7 +139,7 @@ async def test_agent_pipeline_produces_full_artifacts(agent_path):
 
         events = (await session.execute(
             select(NodeEvent).where(NodeEvent.task_id == task_id))).scalars().all()
-        assert len(events) == 9   # ref_collect 关卡节点（general 记 skip）
+        assert len(events) == 10  # text_check + ref_collect 两关卡节点（均记 skip）
         ap = [e for e in events if e.node_name == "agent_production"][0]
         assert ap.error_class is None
         assert ap.cost_estimate_cny and ap.cost_estimate_cny > 1.2  # 文本 + 工具成本已合并
@@ -197,7 +198,8 @@ async def test_agent_presets_style_not_overwritten(agent_path):
     async with SessionLocal() as session:
         task = Task(idempotency_key=f"agent-fix-{uuid.uuid4().hex[:8]}",
                     query="组合风格任务", content_type="x", mode="general",
-                    gen_style="解读·经验分享", gen_category="汽车")
+                    gen_style="解读·经验分享", gen_category="汽车",
+                    text_override={"query": "组合风格任务"})
         session.add(task)
         await session.commit()
         await session.refresh(task)
