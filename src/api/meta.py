@@ -17,3 +17,20 @@ async def meta_nodes():
 async def meta_access():
     """前端权限口径：role_all_access=true 时审核台全员开放 A/B/C 角色切换。"""
     return {"role_all_access": settings.role_all_access}
+
+
+@router.get("/api/meta/review_counts")
+async def review_counts():
+    """人审关卡待办计数（菜单徽标）：文字核查 / 审图 / 任务审核。"""
+    from sqlalchemy import func, select
+    from src.db.session import SessionLocal
+    from src.models.tasks import Task
+    from src.models.review import ReviewSession
+    async with SessionLocal() as session:
+        text_n = (await session.execute(
+            select(func.count(Task.id)).where(Task.status == "awaiting_text"))).scalar() or 0
+        refs_n = (await session.execute(
+            select(func.count(Task.id)).where(Task.status == "awaiting_refs"))).scalar() or 0
+        review_n = (await session.execute(
+            select(func.count(Task.id)).where(Task.status == "review"))).scalar() or 0
+        return {"text": text_n, "refs": refs_n, "review": review_n}

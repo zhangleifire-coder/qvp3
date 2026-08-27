@@ -486,6 +486,10 @@ const TasksView = {
             <td>
               <span class="tag" :class="statusTag(rowStatus(t)).cls">{{ statusTag(rowStatus(t)).label }}</span>
               <span v-if="rowStatus(t) === 'processing'" class="live-dot" title="生产进行中（实时）"></span>
+              <router-link v-if="t.status === 'awaiting_text'" to="/textcheck"
+                           class="btn btn-sm btn-outline" style="margin-left:6px" @click.stop>去核查</router-link>
+              <router-link v-if="t.status === 'awaiting_refs'" to="/refs"
+                           class="btn btn-sm btn-outline" style="margin-left:6px" @click.stop>去审图</router-link>
             </td>
             <td><span v-if="riskTag(t.risk_level)" class="tag" :class="riskTag(t.risk_level).cls">{{ riskTag(t.risk_level).label }}</span><span v-else class="muted">-</span></td>
             <td>
