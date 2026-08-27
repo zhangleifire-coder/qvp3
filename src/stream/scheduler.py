@@ -168,9 +168,27 @@ class TaskScheduler:
             self._running[tid] = proc
             try:
                 await proc
-                self._meta[tid]["status"] = "done"
-                await self.limiter.report(success=True, throttled=False)
-                await bus.publish("task_finished", {"query": self._meta[tid]["query"]}, task_id=tid)
+                # 参考图关卡挂起：管线正常返回但任务停在 awaiting_refs（非完成）；
+                # 查询失败（如测试用假 id）按完成处理，不影响主流程
+                _st = None
+                try:
+                    async with SessionLocal() as _s:
+                        from sqlalchemy import select as _sel
+                        _st = (await _s.execute(
+                            _sel(Task.status).where(Task.id == task_id))).scalar()
+                except Exception:  # noqa: BLE001
+                    _st = None
+                if _st == "awaiting_refs":
+                    self._meta[tid]["status"] = "awaiting_refs"
+                    await self.limiter.report(success=True, throttled=False)
+                    await bus.publish("task_refs_awaiting",
+                                      {"query": self._meta[tid].get("query", ""),
+                                       "msg": "参考图候选就绪，等待人工确认"},
+                                      task_id=tid)
+                else:
+                    self._meta[tid]["status"] = "done"
+                    await self.limiter.report(success=True, throttled=False)
+                    await bus.publish("task_finished", {"query": self._meta[tid]["query"]}, task_id=tid)
             except asyncio.CancelledError:
                 if not proc.cancelled():
                     raise  # 是 worker 自身被取消（停机），不是手工中断

@@ -143,7 +143,11 @@ async def test_cancel_queued_task_skips_execution(monkeypatch):
         assert sch._meta["t-queued"]["status"] == "queued"
         assert await sch.cancel("t-queued") == "queued"
         gate.set()                            # 放行占位任务
-        await asyncio.sleep(0.1)
+        for _ in range(60):                   # 轮询最多 3s（worker 收尾含 DB 状态查询）
+            if (sch._meta["t-queued"]["status"] == "cancelled"
+                    and sch._meta["t-block"]["status"] == "done"):
+                break
+            await asyncio.sleep(0.05)
         assert "t-queued" not in executed     # 从未执行
         assert sch._meta["t-queued"]["status"] == "cancelled"
         assert sch._meta["t-block"]["status"] == "done"

@@ -23,10 +23,17 @@ NODE_FN = {
 # ── Nanobot 全链创作 Agent 路径（2026-08-22 改造）─────────────────────
 # 创作段六节点（entity_bind/evidence_build/draft_gen/page_split/asset_gen/
 # ocr_read）收敛为一个 agent_production 大节点；确定性节点全部保留。
+# ref_collect（2026-08-27）：compare/single 的参考图人工确认关卡——
+# 搜图≥10张 → OCR 初筛 → 挂起 awaiting_refs 等人工确认后才继续生图。
 NODES_AGENT = [
-    "task_import", "agent_production", "rule_check", "cross_check",
+    "task_import", "ref_collect", "agent_production", "rule_check", "cross_check",
     "risk_classify", "review_queue", "batch_signoff", "publish_snapshot",
 ]
+
+
+async def _node_ref_collect(input_data: dict) -> dict:
+    from src.pipeline.ref_collect import node_ref_collect
+    return await node_ref_collect(input_data)
 
 
 async def _node_agent_production(input_data: dict) -> dict:
@@ -35,6 +42,7 @@ async def _node_agent_production(input_data: dict) -> dict:
 
 
 NODE_FN_AGENT = {
+    "ref_collect": _node_ref_collect,
     "agent_production": _node_agent_production,
     "rule_check": node_rule_check,
     "cross_check": node_cross_check,
@@ -43,6 +51,23 @@ NODE_FN_AGENT = {
     "batch_signoff": node_batch_signoff,
     "publish_snapshot": node_publish_snapshot,
 }
+
+
+async def _suspend_for_refs(task_id, r: dict) -> None:
+    """参考图关卡：任务挂起 awaiting_refs（调度器收尾会尊重该状态不覆盖）。"""
+    from sqlalchemy import select as _select
+    from src.db.session import SessionLocal
+    from src.models.tasks import Task
+    from src.stream.bus import bus
+    async with SessionLocal() as session:
+        t = (await session.execute(
+            _select(Task).where(Task.id == task_id))).scalar_one()
+        t.status = "awaiting_refs"
+        await session.commit()
+    await bus.publish("node_finished", {
+        "node": "ref_collect", "label": "参考图确认",
+        "msg": f"候选 {r.get('candidates', 0)} 张（OCR 命中 {r.get('ocr_hits', 0)}），"
+               "等待人工确认后继续生产"}, task_id=str(task_id))
 
 
 async def run_pipeline(task_id, node_inputs: dict | None = None) -> list:
@@ -63,6 +88,12 @@ async def run_pipeline(task_id, node_inputs: dict | None = None) -> list:
         nodes, fns = NODES, NODE_FN
     for node_name in nodes:
         fn = fns.get(node_name)
-        r = await execute_node(task_id, node_name, inputs, fn)
+        r = await execute_node(task_name_wrap(task_id), node_name, inputs, fn) \
+            if False else await execute_node(task_id, node_name, inputs, fn)
         results.append({"node": node_name, "result": r})
+        # 参考图确认关卡：候选就绪 → 挂起任务等人工确认（确认后重新入队续跑，
+        # ref_collect 已完成会幂等跳过，agent_production 用确认后的参考图）
+        if isinstance(r, dict) and r.get("ref_gate"):
+            await _suspend_for_refs(task_id, r)
+            break
     return results

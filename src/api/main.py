@@ -18,6 +18,7 @@ from src.api.prompts import router as prompts_router
 from src.api.activity import router as activity_router
 from src.api.meta import router as meta_router
 from src.api.internal import router as internal_router
+from src.api.styles import router as styles_router
 
 
 @asynccontextmanager
@@ -52,6 +53,7 @@ app.include_router(prompts_router)
 app.include_router(activity_router)
 app.include_router(meta_router)
 app.include_router(internal_router)
+app.include_router(styles_router)
 
 # 静态前端（审核工作台 + 看板）
 STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "static"

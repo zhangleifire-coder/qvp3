@@ -138,7 +138,7 @@ async def test_agent_pipeline_produces_full_artifacts(agent_path):
 
         events = (await session.execute(
             select(NodeEvent).where(NodeEvent.task_id == task_id))).scalars().all()
-        assert len(events) == 8
+        assert len(events) == 9   # ref_collect 关卡节点（general 记 skip）
         ap = [e for e in events if e.node_name == "agent_production"][0]
         assert ap.error_class is None
         assert ap.cost_estimate_cny and ap.cost_estimate_cny > 1.2  # 文本 + 工具成本已合并

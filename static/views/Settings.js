@@ -2,6 +2,8 @@
 const SettingsView = {
   data() {
     return {
+      styleItems: [], styleForm: { style_name: '', keywords: '', description: '', enabled: true },
+      styleImportMsg: '',
       tab: 'prompts',
       // 密码
       old_password: '', new_password: '', confirm: '', pwError: '', pwMsg: '', savingPw: false,
@@ -28,6 +30,35 @@ const SettingsView = {
     },
   },
   methods: {
+    async loadStyles() {
+      try { this.styleItems = (await api.get('/api/styles')).items || []; }
+      catch (e) { /* 静默 */ }
+    },
+    async saveStyle() {
+      try {
+        await api.post('/api/styles?actor=' + encodeURIComponent((getUser() || {}).name || ''), this.styleForm);
+        this.styleForm = { style_name: '', keywords: '', description: '', enabled: true };
+        this.loadStyles();
+      } catch (e) { alert('保存失败：' + e.message); }
+    },
+    async removeStyle(r) {
+      if (!confirm(`删除风格「${r.style_name}」？`)) return;
+      try { await api.delete('/api/styles/' + r.id + '?actor=' + encodeURIComponent((getUser() || {}).name || '')); this.loadStyles(); }
+      catch (e) { alert('删除失败：' + e.message); }
+    },
+    async importStyles(ev) {
+      const f = ev.target.files[0];
+      if (!f) return;
+      const fd = new FormData();
+      fd.append('file', f);
+      fd.append('actor', (getUser() || {}).name || 'anonymous');
+      try {
+        const r = await api.postForm('/api/styles/import', fd);
+        this.styleImportMsg = `导入 ${r.imported} 条` + (r.errors && r.errors.length ? `，${r.errors.length} 行失败` : '');
+        this.loadStyles();
+      } catch (e) { this.styleImportMsg = '导入失败：' + e.message; }
+      ev.target.value = '';
+    },
     fmtTime,
     // ---------- 工作日志 ----------
     actLabel(a) {
@@ -172,8 +203,42 @@ const SettingsView = {
       <div class="tabs" style="margin-bottom:0">
         <button class="tab" :class="{on: tab==='prompts'}" @click="tab='prompts'">提示词库</button>
         <button class="tab" :class="{on: tab==='logs'}" @click="tab='logs'; loadLogs()">工作日志</button>
+        <button class="tab" :class="{on: tab==='styles'}" @click="tab='styles'; loadStyles()">风格关键词库</button>
         <button class="tab" :class="{on: tab==='password'}" @click="tab='password'">修改密码</button>
       </div>
+    </div>
+
+    <div class="card" v-if="tab==='styles'">
+      <h2>风格关键词库 <span class="muted" style="font-weight:normal;font-size:13px">生成时 Agent 按关键词自动匹配视觉风格；库为空时用系统内置 8 风格</span></h2>
+      <div style="display:flex;gap:10px;align-items:center;margin:10px 0">
+        <input ref="styleCsv" type="file" accept=".csv" style="display:none" @change="importStyles">
+        <button class="btn btn-outline btn-sm" @click="$refs.styleCsv.click()">📥 导入训练数据 CSV（style_name,keywords,description）</button>
+        <a class="btn btn-outline btn-sm" style="text-decoration:none" href="/api/styles/template" download>下载模板</a>
+        <span v-if="styleImportMsg" class="muted" style="font-size:13px">{{ styleImportMsg }}</span>
+      </div>
+      <form @submit.prevent="saveStyle" class="style-form">
+        <input v-model="styleForm.style_name" placeholder="风格名（如：科技蓝调）" required style="flex:1">
+        <input v-model="styleForm.keywords" placeholder="匹配关键词（逗号分隔，如：手机,数码,芯片,参数）" style="flex:2">
+        <input v-model="styleForm.description" placeholder="视觉描述词（注入生图提示词）" style="flex:2">
+        <button class="btn btn-primary btn-sm">{{ styleForm.id ? '更新' : '添加' }}</button>
+        <button v-if="styleForm.id" type="button" class="btn btn-outline btn-sm" @click="styleForm={style_name:'',keywords:'',description:'',enabled:true}">取消</button>
+      </form>
+      <table class="table" style="margin-top:10px">
+        <thead><tr><th>风格名</th><th>关键词</th><th>描述词</th><th>启用</th><th style="text-align:right">操作</th></tr></thead>
+        <tbody>
+          <tr v-for="r in styleItems" :key="r.id">
+            <td><b>{{ r.style_name }}</b></td>
+            <td class="muted" style="font-size:13px">{{ r.keywords || '—' }}</td>
+            <td class="muted" style="font-size:13px">{{ r.description || '—' }}</td>
+            <td><span class="tag" :class="r.enabled ? 'tag-green' : 'tag-gray'">{{ r.enabled ? '启用' : '停用' }}</span></td>
+            <td style="text-align:right">
+              <button class="btn btn-outline btn-sm" @click="styleForm={...r}">编辑</button>
+              <button class="btn btn-sm btn-danger-ghost" @click="removeStyle(r)">删除</button>
+            </td>
+          </tr>
+          <tr v-if="!styleItems.length"><td colspan="5" class="muted" style="text-align:center;padding:18px">暂无风格条目——添加或导入训练数据后，生成时将自动匹配</td></tr>
+        </tbody>
+      </table>
     </div>
 
     <div class="card" v-if="tab==='logs'">

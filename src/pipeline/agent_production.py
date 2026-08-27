@@ -235,7 +235,8 @@ def _validate_output(data: dict) -> tuple[dict | None, list[str]]:
 def _compose_message(task_id: str, query: str, mode: str, draft_tpl: str,
                      pages_tpl: str, image_tpl: str, feedbacks: list[str],
                      combo_section: str = "",
-                     fixed_style: str | None = None) -> str:
+                     fixed_style: str | None = None,
+                     style_kb_text: str | None = None) -> str:
     from src.services.combo import image_style_library_text
     lines = "\n".join(f"{i}. {r}" for i, r in enumerate(feedbacks, 1))
     feedback_section = (_FEEDBACK_HEADER.format(feedback_lines=lines)
@@ -249,7 +250,7 @@ def _compose_message(task_id: str, query: str, mode: str, draft_tpl: str,
         query=query, mode=mode, mode_desc=_MODE_DESC.get(mode, mode),
         task_id=task_id,
         quota_search=settings.mcp_max_web_searches_per_task,
-        image_style_library=image_style_library_text(),
+        image_style_library=style_kb_text or image_style_library_text(),
         style_rule=style_rule,
         draft_template=draft_tpl, pages_template=pages_tpl,
         image_template=image_tpl,
@@ -406,6 +407,11 @@ async def node_agent_production(input_data: dict) -> dict:
         query, mode, owner_id = task.query, (task.mode or "general"), task.created_by
         combo_section = _build_combo_section(task)
         fixed_style = task.gen_style
+        confirmed_refs = list((await session.execute(
+            select(Asset).where(Asset.task_id == task_id,
+                                Asset.source_type == "official",
+                                Asset.selection_status == "confirmed")
+            .order_by(Asset.page_index))).scalars().all())
 
     # 提示词库仍然后端主管：解析顺序 用户自定义 → admin 系统覆盖 → 代码默认
     draft_tpl = await get_effective_prompt("draft_gen", mode, owner_id)
@@ -425,10 +431,24 @@ async def node_agent_production(input_data: dict) -> dict:
     from src.gateway.tool_ledger import task_quotas
     await task_quotas.reset(tid)
 
+    refs_section = ""
+    if confirmed_refs:
+        # 阶段2（人工确认后重跑）：参考图已确认，注入指令直接使用，跳过搜图
+        lines = "\n".join(
+            f"  {i}. {a.image_url}（OCR命中: {a.ocr_hit or '无'}）"
+            for i, a in enumerate(confirmed_refs, 1))
+        refs_section = ("【已确认实景参考图（人工筛选后保留，必须使用）】\n"
+                        + lines
+                        + "\n要求：跳过 image_search，把以上图片路径原样作为 "
+                          "generate_images 的 reference_urls 参数传入做图生图；"
+                          "不要增删替换。\n\n")
     session_id = f"qvp-task-{tid}-{uuid.uuid4().hex[:8]}"
+    # 风格关键词库（用户"知识训练"数据）：非空时替代内置风格库供 Agent 自动匹配
+    from src.api.styles import style_library_text
+    kb_text = await style_library_text()
     user_msg = _compose_message(tid, query, mode, draft_tpl, pages_tpl,
-                                image_tpl, feedbacks, combo_section,
-                                fixed_style=fixed_style)
+                                image_tpl, feedbacks, combo_section + refs_section,
+                                fixed_style=fixed_style, style_kb_text=kb_text)
     await bus.publish("agent_progress", {"message": "已连接 Nanobot，开始创作…",
                                          "session_id": session_id}, task_id=tid)
 

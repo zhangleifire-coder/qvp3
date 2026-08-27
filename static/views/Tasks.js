@@ -20,6 +20,8 @@ const TasksView = {
       exportTick: 0,         // 1s 心跳：驱动用时/速率每秒刷新
       recycleItems: [],      // 导出回收站（仅 admin 可见）
       showRecycle: false,    // 回收站展开开关
+      refKeep: {},           // 参考图勾选 {assetId: true}
+      confirmingRefs: false, // 确认中防抖
       zoom: null,            // 图片放大浏览 {src, title, text}
       search: '',            // 关键词搜索（Query 模糊匹配）
       rowMenu: null,         // 展开操作菜单的行任务 id
@@ -39,6 +41,7 @@ const TasksView = {
       const m = {}; this.nodes.forEach(n => { m[n.name] = n.label; }); return m;
     },
     detailTask() { return this.detail && this.detail.task; },
+    refKeepCount() { return Object.keys(this.refKeep).filter(k => this.refKeep[k]).length; },
     actorName() { return (getUser() || {}).name || 'anonymous'; },
     liveOfDetail() {
       return this.detailTask ? (this.live[this.detailTask.id] || null) : null;
@@ -112,8 +115,10 @@ const TasksView = {
     },
     async open(t) {
       this.detailError = ''; this.detail = null;
-      try { this.detail = await api.get(`/api/tasks/${t.id}/detail`); }
-      catch (e) { this.detailError = e.message; }
+      try {
+        this.detail = await api.get(`/api/tasks/${t.id}/detail`);
+        if (this.detailTask && this.detailTask.status === 'awaiting_refs') this.initRefKeep();
+      } catch (e) { this.detailError = e.message; }
     },
     close() { this.detail = null; },
     pageCopyOf(i) {
@@ -198,6 +203,32 @@ const TasksView = {
       return d ? (d.msg || '') : '';
     },
     isAdmin() { const u = getUser(); return u && u.role === 'admin'; },
+    refCandidates() {
+      // 待确认参考图候选（awaiting_refs 状态展示）
+      return ((this.detail && this.detail.assets) || [])
+        .filter(a => a.source_type === 'official' && a.selection_status === 'candidate');
+    },
+    initRefKeep() {
+      // 默认全勾选（OCR 命中的排前，人工可减选）
+      this.refKeep = {};
+      this.refCandidates().forEach(a => { this.refKeep[a.id] = true; });
+    },
+    async confirmRefs() {
+      if (this.confirmingRefs) return;
+      const keep = Object.keys(this.refKeep).filter(k => this.refKeep[k]);
+      if (!keep.length) { alert('至少保留一张参考图（全部不要请用中断任务）'); return; }
+      if (!confirm(`确认保留 ${keep.length} 张参考图并继续生产？
+未勾选的候选将被剔除。`)) return;
+      this.confirmingRefs = true;
+      try {
+        await api.post(`/api/tasks/${this.detailTask.id}/refs/confirm`,
+          { keep_ids: keep, actor: this.actorName });
+        this.showExport = false;
+        await this.open({ id: this.detailTask.id });
+        this.load(); this.loadLive();
+      } catch (e) { alert('确认失败：' + e.message); }
+      finally { this.confirmingRefs = false; }
+    },
     async deleteExportPart(jobId, part) {
       if (!confirm(`确定删除第 ${part} 包？\n删除后进入回收站（仅管理员可见，72 小时后自动清理）。`)) return;
       try {
@@ -526,6 +557,29 @@ const TasksView = {
                 </tr>
               </tbody>
             </table>
+          </template>
+
+          <!-- 参考图确认关卡：候选网格（OCR 命中在前）+ 勾选 + 确认继续 -->
+          <template v-if="detailTask.status === 'awaiting_refs' && refCandidates().length">
+            <h3 style="margin-top:16px">实景参考图确认 <span class="tag tag-yellow">待人工确认</span></h3>
+            <p class="muted" style="font-size:13px;margin:4px 0 10px">
+              已搜集 {{ refCandidates().length }} 张候选（系统按 OCR 命中排序，勾选保留后继续生产；未勾选将剔除）
+            </p>
+            <div class="img-grid ref-grid">
+              <figure v-for="a in refCandidates()" :key="a.id"
+                      :class="{unchecked: !refKeep[a.id]}">
+                <img :src="a.display_url || a.image_url" loading="lazy" alt="" @click="openZoom(a, true)">
+                <label class="ref-check">
+                  <input type="checkbox" v-model="refKeep[a.id]" style="width:auto">
+                  <span v-if="a.ocr_hit" class="tag tag-green" style="font-size:11px">OCR命中: {{ a.ocr_hit.slice(0, 14) }}</span>
+                  <span v-else class="tag tag-gray" style="font-size:11px">无文字命中</span>
+                </label>
+              </figure>
+            </div>
+            <div style="margin:12px 0">
+              <button class="btn btn-primary" :disabled="confirmingRefs"
+                      @click="confirmRefs">{{ confirmingRefs ? '确认中…' : '✓ 确认保留 ' + refKeepCount + ' 张并继续生产' }}</button>
+            </div>
           </template>
 
           <div v-if="canRetry" style="margin:12px 0">

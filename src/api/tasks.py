@@ -379,7 +379,9 @@ async def task_detail(task_id: str):
                       "prompt_version": draft.prompt_version} if draft else None,
             "page_copies": [{"page_index": p.page_index, "body": p.body} for p in page_copies],
             "assets": [{"page_index": a.page_index, "source_type": a.source_type,
-                        "image_url": a.image_url,
+                        "image_url": a.image_url, "id": str(a.id),
+                        "selection_status": a.selection_status,
+                        "ocr_hit": a.ocr_hit,
                         "display_url": f"/api/assets/{a.id}/image"} for a in assets],
             "claims": [{"claim_text": c.claim_text, "risk_level": c.risk_level,
                         "verification_status": c.verification_status} for c in claims],
@@ -512,6 +514,59 @@ async def delete_task(task_id: str, actor: str = "anonymous"):
     return {"ok": True, "task_id": task_id, "deleted": query[:50]}
 
 
+class RefsConfirmIn(BaseModel):
+    keep_ids: list[str]          # 保留的候选 Asset id（其余候选剔除）
+    actor: str = "anonymous"
+
+
+@router.post("/api/tasks/{task_id}/refs/confirm")
+async def confirm_refs(task_id: str, payload: RefsConfirmIn):
+    """人工确认参考图筛选结果：勾选保留 → confirmed（其余 candidate 剔除），
+    任务从 awaiting_refs 回到队列继续生产（agent 用确认图生图）。"""
+    try:
+        tid = uuid.UUID(task_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid task_id")
+    async with SessionLocal() as session:
+        task = (await session.execute(select(Task).where(Task.id == tid))).scalars().first()
+        if not task:
+            raise HTTPException(status_code=404, detail="task not found")
+        if task.status != "awaiting_refs":
+            raise HTTPException(
+                status_code=400,
+                detail=f"仅待确认参考图状态可确认，当前: {task.status}")
+        from src.models.assets import Asset
+        keep = set(payload.keep_ids)
+        cands = list((await session.execute(
+            select(Asset).where(Asset.task_id == tid,
+                                Asset.source_type == "official",
+                                Asset.selection_status.in_(["candidate", "confirmed"]))
+            .order_by(Asset.page_index))).scalars().all())
+        kept = 0
+        for a in cands:
+            if str(a.id) in keep:
+                a.selection_status = "confirmed"
+                kept += 1
+            else:
+                a.selection_status = "rejected"
+        if not kept:
+            raise HTTPException(
+                status_code=422, detail="至少保留一张参考图（全部剔除请用中断任务）")
+        # 剔除项落库后清理，保留项重排序 1..N
+        for i, a in enumerate([a for a in cands if a.selection_status == "confirmed"], 1):
+            a.page_index = i
+        for a in [a for a in cands if a.selection_status == "rejected"]:
+            await session.delete(a)
+        task.status = "draft"
+        await session.commit()
+        query = task.query
+    from src.stream.scheduler import scheduler
+    await scheduler.enqueue(tid, query)
+    await log_action(payload.actor, "refs_confirm",
+                     f"确认参考图 {kept} 张（剔除 {len(cands) - kept} 张），继续生产", task_id=tid)
+    return {"ok": True, "kept": kept, "rejected": len(cands) - kept, "queued": True}
+
+
 @router.post("/api/tasks/{task_id}/cancel")
 async def cancel_task(task_id: str, actor: str = "anonymous"):
     """手工中断任务：排队中→直接出队；生产中→取消执行协程（幂等可重试）。
@@ -528,10 +583,10 @@ async def cancel_task(task_id: str, actor: str = "anonymous"):
         task = (await session.execute(select(Task).where(Task.id == tid))).scalars().first()
         if not task:
             raise HTTPException(status_code=404, detail="task not found")
-        if task.status not in ("draft", "processing"):
+        if task.status not in ("draft", "processing", "awaiting_refs"):
             raise HTTPException(
                 status_code=400,
-                detail=f"只有排队中/生产中的任务可以中断，当前状态: {task.status}")
+                detail=f"只有排队中/生产中/待确认参考图的任务可以中断，当前状态: {task.status}")
         query = task.query
     how = await scheduler.cancel(tid)
     if how == "not_found":

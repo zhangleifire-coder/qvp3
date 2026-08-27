@@ -19,6 +19,9 @@ class Asset(Base):
     origin_url = Column(Text)  # 上游原始地址（本地持久化前的来源，用于版权追溯）
     model_version = Column(Text)
     is_illustration = Column(Boolean, nullable=False, default=False)
+    # 参考图确认关卡（010）：candidate=待确认 / confirmed=人工保留 / rejected=人工剔除
+    selection_status = Column(Text)
+    ocr_hit = Column(Text)          # OCR 初筛命中的关键词（逗号分隔）
     created_at = Column(TIMESTAMP(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
 
