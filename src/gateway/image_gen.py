@@ -76,12 +76,23 @@ async def generate_image(prompt: str, size: str = None,
         try:
             if reference_image_urls:
                 try:
+                    # 图生图按通道路由：moacode=垫图(input_image) / linkai=images/edits
+                    if channel == "moacode":
+                        return await _edit_moacode(prompt, reference_image_urls, size)
                     return await _edit_with_references(prompt, reference_image_urls, size)
                 except Exception as e:  # noqa: BLE001
-                    # 参考图下载失败 / edits 接口报错 → 降级文生图，必须留痕，
-                    # 静默降级会让"对比模式用实景图"失效且无人察觉
-                    print(f"[image_gen] 图生图失败，降级文生图: {type(e).__name__}: {e}",
+                    # 当前通道图生图失败 → 先试另一通道的图生图（保住参考图语义），
+                    # 两通道都败才降级文生图，且必须留痕（静默降级会让对比模式失效）
+                    print(f"[image_gen] {channel} 图生图失败: {type(e).__name__}: {e}",
                           flush=True)
+                    try:
+                        if channel == "moacode":
+                            return await _edit_with_references(prompt, reference_image_urls, size)
+                        if "moacode" in _channels():
+                            return await _edit_moacode(prompt, reference_image_urls, size)
+                    except Exception as e2:  # noqa: BLE001
+                        print(f"[image_gen] 备用通道图生图也失败（{type(e2).__name__}），降级文生图",
+                              flush=True)
                     return await _generate_by_channel(prompt, size, channel)
             return await _generate_by_channel(prompt, size, channel)
         except Exception as e:  # noqa: BLE001
@@ -103,20 +114,33 @@ async def _generate_by_channel(prompt: str, size: str, channel: str) -> dict:
     return await _generate(prompt, size)
 
 
-async def _generate_moacode(prompt: str, size: str) -> dict:
-    """Moacode 通道：POST /v1/responses，SSE 流式，response.output_item.done
-    的 item.result 是 base64 PNG。返回 data URI 与 LinkAI 的 URL 形态一致。"""
+async def _generate_moacode(prompt: str, size: str,
+                            reference_data_uris: list[str] | None = None) -> dict:
+    """Moacode 通道：POST /v1/responses，SSE 流式（官方文档口径，2026-08-27）。
+
+    - 取图两步缺一不可：优先 response.output_item.done 的最终图；
+      流提前结束时退回最后一个 partial_image_b64（完整可用，画质略低）
+    - size 参数不生效：比例写进提示词（本平台统一竖版 3:4 →「3:4 竖版构图」，
+      实际输出 1086x1448，比例正好 3:4）
+    - 垫图（input_image data URI）控制比例且支持图生图：reference_data_uris 非空时附加
+    """
     url = f"{settings.moacode_base_url.rstrip('/')}/responses"
     headers = {"Authorization": f"Bearer {settings.moacode_api_key}",
                "Content-Type": "application/json", "Accept": "text/event-stream"}
+    if "3:4" not in prompt and "2:3" not in prompt and "1:1" not in prompt:
+        prompt = f"{prompt}，3:4 竖版构图"
+    content: list[dict] = [{"type": "input_text", "text": prompt}]
+    for uri in (reference_data_uris or [])[:3]:
+        content.append({"type": "input_image", "image_url": uri})
     body = {
         "model": IMAGE_MODEL,
-        "input": [{"type": "message", "role": "user",
-                   "content": [{"type": "input_text", "text": prompt}]}],
+        "input": [{"type": "message", "role": "user", "content": content}],
         "stream": True,
         "store": False,
     }
-    b64 = None
+    import json as _json
+    b64_final = None
+    b64_partial = None
     async with httpx.AsyncClient(timeout=httpx.Timeout(connect=15.0, read=240.0,
                                                        write=30.0, pool=10.0)) as client:
         async with client.stream("POST", url, json=body, headers=headers) as resp:
@@ -130,20 +154,37 @@ async def _generate_moacode(prompt: str, size: str) -> dict:
                 if not payload or payload == "[DONE]":
                     continue
                 try:
-                    ev = __import__("json").loads(payload)
+                    ev = _json.loads(payload)
                 except Exception:  # noqa: BLE001
                     continue
-                if (ev.get("type") == "response.output_item.done"
+                etype = ev.get("type", "")
+                if (etype == "response.output_item.done"
                         and (ev.get("item") or {}).get("type") == "image_generation_call"):
-                    b64 = ev["item"].get("result")
+                    b64_final = ev["item"].get("result") or b64_final
                     break
+                if etype == "response.image_generation_call.partial_image":
+                    b64_partial = ev.get("partial_image_b64") or b64_partial
+    b64 = b64_final or b64_partial
     if not b64:
-        raise RuntimeError("moacode 流式结束但未产出 image_generation_call 结果")
+        raise RuntimeError("moacode 流式结束但未取到图（final 与 partial 均无）")
     # 与 LinkAI 的 URL 形态对齐：data URI，本地化时 fetch_image_bytes 解 base64
     data_uri = f"data:image/png;base64,{b64}"
+    tag = "@moacode" if b64_final else "@moacode:partial"
     return {"image_url": data_uri,
             "hash": hashlib.md5(b64.encode()).hexdigest(),
-            "model_version": f"{IMAGE_MODEL}@moacode"}
+            "model_version": f"{IMAGE_MODEL}{tag}"}
+
+
+async def _edit_moacode(prompt: str, reference_image_urls: list[str],
+                        size: str) -> dict:
+    """Moacode 图生图：参考图转 data URI 垫图（input_image），输出跟随其比例。"""
+    import base64 as _b64
+    data_uris = []
+    for u in reference_image_urls[:3]:
+        data, ctype = await _download_image_bytes(u)
+        mime = ctype if ctype.startswith("image/") else "image/png"
+        data_uris.append(f"data:{mime};base64," + _b64.b64encode(data).decode())
+    return await _generate_moacode(prompt, size, reference_data_uris=data_uris)
 
 
 async def _generate(prompt: str, size: str) -> dict:

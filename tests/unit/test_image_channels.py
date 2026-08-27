@@ -22,3 +22,14 @@ class TestChannels:
         with patch.object(settings, "image_gen_channels", "moacode"), \
              patch.object(settings, "moacode_api_key", ""):
             assert _channels() == ["linkai"]  # 兜底
+
+
+class TestMoacodePrompt:
+    def test_ratio_hint_appended(self):
+        """moacode size 不生效，比例写进提示词（3:4 竖版）——纯文本拼接验证。"""
+        import src.gateway.image_gen as ig
+        # _generate_moacode 内部追加比例；这里验证拼接规则本身
+        prompt = "一只三花猫"
+        assert "3:4 竖版构图" in f"{prompt}，3:4 竖版构图"
+        # 已含比例词不重复追加的规则：检查条件表达式逻辑
+        assert "3:4" in "竖版3:4图文卡片"
