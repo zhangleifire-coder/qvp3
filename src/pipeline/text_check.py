@@ -44,6 +44,11 @@ _MODE_DESC = {
     "compare": "两个主体对比评测，图生图保持外观一致",
 }
 
+# 解析失败重试时附加的强约束（Kimi 偶发未转义英文双引号破坏 JSON）
+_STRICT_JSON_SUFFIX = ("\n\n【重要】上一次输出无法通过 JSON 解析。请确保：只输出一个合法 JSON 对象；"
+                       "字符串内部如需引用请使用中文引号“”，严禁未转义的英文双引号；"
+                       "全部输出必须在 JSON 的最后一个 } 处结束。")
+
 
 def _parse_json(text: str) -> dict | None:
     raw = (text or "").strip()
@@ -68,6 +73,10 @@ async def run_text_check(task_id) -> dict:
     result = await call_with_failover(prompt)
     data = _parse_json(result["text"])
     if data is None:
+        # 模型偶发输出非法 JSON（未转义引号等，间歇性）：带强约束重试一次
+        result = await call_with_failover(prompt + _STRICT_JSON_SUFFIX)
+        data = _parse_json(result["text"])
+    if data is None:
         # 输出无法解析（截断/格式异常）：显式标记为失败，禁止静默空草稿放行——
         # 人工核查页会提示"AI 起草失败"，可点「重新起草」重试（2026-08-29 事故修复）
         raw_len = len(result.get("text") or "")
@@ -83,6 +92,7 @@ async def run_text_check(task_id) -> dict:
                 "pages_draft": [], "image_prompt_draft": [],
                 "model": result.get("model_version"),
                 "auto_ok": False, "draft_error": True,
+                "raw_head": (result.get("text") or "")[:400],  # 失败原文头部（诊断用）
             }
             task.status = "awaiting_text"
             await session.commit()
