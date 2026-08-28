@@ -348,3 +348,19 @@ input, select, textarea { font-size: 15px; }
 .user-setting { color: var(--muted); font-size: 12.5px; text-decoration: none;
   padding: 2px 8px; border-radius: 6px; white-space: nowrap; }
 .user-setting:hover { color: var(--primary); background: #f1f4f9; }
+
+/* ── 全屏图片查看器（缩放/平移/切换）── */
+.lbv-mask { position: fixed; inset: 0; z-index: 200; background: rgba(8, 10, 14, .96);
+  display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.lbv-img { max-width: 92vw; max-height: 88vh; object-fit: contain;
+  transition: transform .06s linear; user-select: none; }
+.lbv-img.grab { cursor: grab; }
+.lbv-img.dragging { cursor: grabbing; transition: none; }
+.lbv-toolbar { position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,.1);
+  border-radius: 22px; padding: 5px 14px; backdrop-filter: blur(6px); }
+.lbv-btn { width: 30px; height: 30px; border-radius: 50%; border: none;
+  background: rgba(255,255,255,.16); color: #fff; font-size: 16px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; }
+.lbv-btn:hover { background: rgba(255,255,255,.3); }
+.lbv-zoom { color: #ddd; font-size: 12.5px; min-width: 44px; text-align: center; font-family: monospace; }
