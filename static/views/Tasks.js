@@ -24,6 +24,8 @@ const TasksView = {
       confirmingRefs: false, // 确认中防抖
       imgEdit: null,         // 定点修改弹窗 {asset, instruction, busy}
       selected: {},          // 批量删除勾选 {taskId: true}
+      taskRecycle: [],       // 任务回收站（仅 admin）
+      showTaskRecycle: false,
       zoom: null,            // 图片放大浏览 {src, title, text}
       search: '',            // 关键词搜索（Query 模糊匹配）
       rowMenu: null,         // 展开操作菜单的行任务 id
@@ -213,6 +215,27 @@ const TasksView = {
       const on = !this.allPageSelected;
       this.list.forEach(t => { this.selected[t.id] = on; });
     },
+    async loadTaskRecycle() {
+      try {
+        const r = await api.get('/api/tasks/recycle');
+        this.taskRecycle = r.items || [];
+      } catch (e) { /* 静默 */ }
+    },
+    async restoreTask(rid) {
+      if (!confirm('恢复该任务？将以「已中断」态回到任务中心（可重试续跑，产物全恢复）。')) return;
+      try {
+        await api.post(`/api/tasks/recycle/${rid}/restore?actor=` + encodeURIComponent(this.actorName));
+        this.loadTaskRecycle();
+        this.load();
+      } catch (e) { alert('恢复失败：' + e.message); }
+    },
+    async purgeTaskRecycle(rid) {
+      if (!confirm('彻底删除该回收站项？快照将永久销毁，不可恢复。')) return;
+      try {
+        await api.delete(`/api/tasks/recycle/${rid}?actor=` + encodeURIComponent(this.actorName));
+        this.loadTaskRecycle();
+      } catch (e) { alert('删除失败：' + e.message); }
+    },
     async batchDelete() {
       const ids = this.selectedIds;
       if (!ids.length) { alert('请先勾选要删除的任务'); return; }
@@ -229,6 +252,7 @@ const TasksView = {
         alert(msg);
         this.selected = {};
         this.load();
+        if (this.isAdmin) this.loadTaskRecycle();
       } catch (e) { alert('批量删除失败：' + e.message); }
       finally { this.loading = false; }
     },
@@ -496,6 +520,10 @@ const TasksView = {
       <button v-if="search" class="btn btn-outline btn-sm" @click="search=''; load()">清除</button>
       <button class="btn btn-sm btn-danger-ghost" :disabled="!selectedIds.length || loading"
               @click="batchDelete">🗑 删除选中（{{ selectedIds.length }}）</button>
+      <button v-if="isAdmin" class="btn btn-outline btn-sm"
+              @click="showTaskRecycle = !showTaskRecycle; if (showTaskRecycle) loadTaskRecycle()">
+        ♻️ 任务回收站（{{ taskRecycle.length }}）
+      </button>
       <template v-if="approvedCount > 0">
         <button v-if="!exportJob" class="btn btn-outline btn-sm" @click="startExport">📦 导出已通过内容包（{{ approvedCount }}）</button>
         <button v-else-if="exportJob.status !== 'done'" class="btn btn-outline btn-sm" @click="showExport = true">📦 打包中… {{ exportPct }}%</button>
@@ -727,6 +755,30 @@ const TasksView = {
         <div v-else-if="!detailError" class="empty">加载中…</div>
       </div>
     </div>
+    <div v-if="showTaskRecycle && isAdmin" class="card" style="margin-top:14px">
+      <div class="drawer-head">
+        <h2>♻️ 任务回收站 <span class="muted" style="font-weight:normal;font-size:13px">删除的任务在此暂存 72 小时，可恢复或彻底删除；仅管理员可见</span></h2>
+        <button class="btn btn-outline btn-sm" @click="showTaskRecycle=false">收起</button>
+      </div>
+      <div v-if="!taskRecycle.length" class="empty" style="padding:14px 0">回收站为空</div>
+      <table v-else class="table tl-table">
+        <thead><tr><th>Query</th><th>模式</th><th>快照</th><th>删除人/时间</th><th>剩余</th><th style="text-align:right">操作</th></tr></thead>
+        <tbody>
+          <tr v-for="r in taskRecycle" :key="r.id">
+            <td class="q-cell">{{ r.query }}</td>
+            <td><span class="tag tag-blue">{{ r.mode || '-' }}</span></td>
+            <td class="muted" style="font-size:12px">{{ r.tables }} 表 / {{ r.rows }} 行</td>
+            <td class="muted" style="font-size:12px">{{ r.deleted_by }} · {{ (r.deleted_at||'').slice(5,16).replace('T',' ') }}</td>
+            <td><span class="tag tag-yellow" style="font-size:11px">剩 {{ r.expires_in_hours }}h</span></td>
+            <td style="text-align:right">
+              <button class="btn btn-outline btn-sm" @click="restoreTask(r.id)">↩ 恢复</button>
+              <button class="btn btn-sm btn-danger-ghost" @click="purgeTaskRecycle(r.id)">彻底删除</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
     <div v-if="showExport && exportJob" class="drawer-mask" @click.self="showExport = false">
       <div class="export-modal export-modal-lg">
         <div class="drawer-head">

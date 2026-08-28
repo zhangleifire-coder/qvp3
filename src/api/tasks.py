@@ -1,7 +1,9 @@
 import csv
+import json
 import hashlib
 import io
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Response
 from pydantic import BaseModel
@@ -469,9 +471,139 @@ async def patch_task(task_id: str, payload: TaskPatchIn, actor: str = "anonymous
     return {"ok": True, "task_id": task_id, "updated": sorted(updates.keys())}
 
 
+# ── 任务回收站（014）：删除前全表快照，可恢复，72h 彻底清理 ──
+_RECYCLE_TTL_HOURS = 72
+
+
+async def _snapshot_task(session, tid) -> dict:
+    """把任务 + 全部子表行序列化成 {表名: [行dict]}（删除前归档）。
+
+    深链表（无 task_id）按父表 ids 查：evidence←claims、ocr_results←assets、
+    review_actions←review_sessions（_TABLES 顺序保证父表先快照）。
+    """
+    import datetime as _dt
+    from src.models.assets import Asset, CrossCheck, OcrResult
+    from src.models.drafts import Draft, PageCopy, RuleResult
+    from src.models.entities import Claim, Evidence
+    from src.models.events import NodeEvent
+    from src.models.review import (Approval, BatchMember, Issue, RejectMark,
+                                   ReviewAction, ReviewSession, RiskClassification)
+    from src.models.snapshots import PublishSnapshot
+    _TABLES = [
+        ("tasks", Task), ("claims", Claim), ("evidence", Evidence),
+        ("drafts", Draft), ("page_copies", PageCopy), ("assets", Asset),
+        ("ocr_results", OcrResult), ("rule_results", RuleResult),
+        ("cross_checks", CrossCheck), ("risk_classifications", RiskClassification),
+        ("review_sessions", ReviewSession), ("review_actions", ReviewAction),
+        ("issues", Issue), ("approvals", Approval),
+        ("publish_snapshots", PublishSnapshot), ("node_events", NodeEvent),
+        ("reject_marks", RejectMark), ("batch_members", BatchMember),
+    ]
+    # 深链表 → (外键列, 父模型)
+    _PARENT = {"evidence": ("claim_id", Claim),
+               "ocr_results": ("asset_id", Asset),
+               "review_actions": ("review_session_id", ReviewSession)}
+    parent_ids: dict[str, list] = {}
+
+    def _dump(model, rows) -> list:
+        items = []
+        for r in rows:
+            d = {}
+            for c in model.__table__.columns:
+                v = getattr(r, c.name)
+                if isinstance(v, (_dt.datetime, _dt.date)):
+                    v = v.isoformat()
+                elif isinstance(v, uuid.UUID):
+                    v = str(v)
+                elif v is not None and not isinstance(v, (str, int, float, bool, dict, list)):
+                    v = str(v)
+                d[c.name] = v
+            items.append(d)
+        return items
+
+    payload: dict[str, list] = {}
+    for name, model in _TABLES:
+        if name == "tasks":
+            rows = (await session.execute(
+                select(model).where(model.id == tid))).scalars().all()
+        elif name in _PARENT:
+            fkey, parent = _PARENT[name]
+            ids = parent_ids.get(parent.__tablename__)
+            rows = [] if not ids else (await session.execute(
+                select(model).where(getattr(model, fkey).in_(ids)))).scalars().all()
+        else:
+            rows = (await session.execute(
+                select(model).where(model.task_id == tid))).scalars().all()
+            if name == "claims":
+                parent_ids["claims"] = [r.id for r in rows]
+            elif name == "assets":
+                parent_ids["assets"] = [r.id for r in rows]
+            elif name == "review_sessions":
+                parent_ids["review_sessions"] = [r.id for r in rows]
+        if rows:
+            payload[name] = _dump(model, rows)
+    return payload
+
+
+async def _recycle_snapshot(session, tid) -> None:
+    """快照入回收站（72h 后惰性彻底清理；同任务旧快照被覆盖）。"""
+    import datetime as _dt
+    from src.config import settings  # noqa: F401
+    task = (await session.execute(select(Task).where(Task.id == tid))).scalars().one()
+    payload = await _snapshot_task(session, tid)
+    await session.execute(text(
+        "DELETE FROM task_recycle WHERE task_id = :t"), {"t": str(tid)})
+    await session.execute(text(
+        "INSERT INTO task_recycle (task_id, mode, query, payload, deleted_by, "
+        "expires_at) VALUES (:t, :m, :q, CAST(:p AS JSONB), :by, now() + interval '72 hours')"),
+        {"t": str(tid), "m": task.mode, "q": task.query,
+         "p": json.dumps(payload, ensure_ascii=False),
+         "by": getattr(_recycle_actor, "value", "anonymous")})
+
+
+class _recycle_actor:  # 简单上下文传递（batch/delete 复用）
+    value = "anonymous"
+
+
+async def _purge_task_recycle_expired() -> int:
+    """清理回收站中超过 72h 的项（惰性触发）。"""
+    async with SessionLocal() as session:
+        n = (await session.execute(text(
+            "DELETE FROM task_recycle WHERE expires_at < now()"))).rowcount
+        if n:
+            await session.commit()
+    return n
+
+
+def _restore_rows(session, model, rows: list) -> None:
+    """把快照行按列类型转回 ORM 对象（datetime/uuid/json）。"""
+    import datetime as _dt
+    for d in rows:
+        obj = model()
+        for c in model.__table__.columns:
+            if c.name not in d:
+                continue
+            v = d[c.name]
+            if v is None:
+                continue
+            tn = str(c.type)
+            if "UUID" in tn:
+                v = uuid.UUID(str(v))
+            elif "TIMESTAMP" in tn or "DateTime" in tn:
+                v = _dt.datetime.fromisoformat(str(v))
+            elif "JSONB" in tn or "JSON" in tn:
+                v = v  # 已是 dict/list
+            elif "Boolean" in tn:
+                v = bool(v)
+            elif "Integer" in tn:
+                v = int(v)
+            setattr(obj, c.name, v)
+        session.add(obj)
+
+
 @router.delete("/api/tasks/{task_id}")
 async def delete_task(task_id: str, actor: str = "anonymous"):
-    """删除任务条目及其全部产物（17 张子表级联；审计日志保留）。
+    """删除任务条目及其全部产物（先入回收站可恢复，72h 彻底清；审计日志保留）。
 
     生产中（processing）不可删——先在监控页中断；排队中（draft）自动出队。
     """
@@ -486,6 +618,9 @@ async def delete_task(task_id: str, actor: str = "anonymous"):
         if task.status == "processing":
             raise HTTPException(
                 status_code=400, detail="任务正在生产中，请先在实时监控页中断后再删除")
+        _recycle_actor.value = actor
+        await _recycle_snapshot(session, tid)   # 快照入回收站（删前归档）
+        await session.commit()
         query = task.query
     # 排队中的任务先出队（worker 取到时直接丢弃）
     await scheduler.cancel(tid)
@@ -523,7 +658,8 @@ async def delete_task(task_id: str, actor: str = "anonymous"):
             await session.execute(stmt)
         await session.commit()
     await log_action(actor, "delete", f"删除任务及其全部产物：{query[:50]}", task_id=tid)
-    return {"ok": True, "task_id": task_id, "deleted": query[:50]}
+    return {"ok": True, "task_id": task_id, "deleted": query[:50],
+            "recycled": True, "expires_hours": _RECYCLE_TTL_HOURS}
 
 
 class RefsConfirmIn(BaseModel):
@@ -802,6 +938,96 @@ async def confirm_text(task_id: str, payload: TextConfirmIn):
     return {"ok": True, "queued": True, "overridden": sorted(ov.keys())}
 
 
+@router.get("/api/tasks/recycle")
+async def list_task_recycle():
+    """任务回收站列表（仅 admin 前端展示；访问时惰性清理过期项）。"""
+    purged = await _purge_task_recycle_expired()
+    async with SessionLocal() as session:
+        rows = (await session.execute(text(
+            "SELECT id, task_id, mode, query, deleted_by, deleted_at, expires_at, "
+            "(SELECT count(*) FROM jsonb_object_keys(payload)) AS tables, "
+            "(SELECT coalesce(sum(jsonb_array_length(e.value)), 0) FROM jsonb_each(payload) AS e) AS rows "
+            "FROM task_recycle ORDER BY deleted_at DESC LIMIT 200"))).all()
+        items = [{"id": str(r[0]), "task_id": str(r[1]), "mode": r[2],
+                  "query": r[3], "deleted_by": r[4],
+                  "deleted_at": r[5].isoformat() if r[5] else None,
+                  "expires_in_hours": round((r[6] - datetime.now(timezone.utc)).total_seconds() / 3600, 1) if r[6] else None,
+                  "tables": r[7], "rows": r[8]} for r in rows]
+    return {"items": items, "ttl_hours": _RECYCLE_TTL_HOURS, "purged": purged}
+
+
+@router.post("/api/tasks/recycle/{recycle_id}/restore")
+async def restore_task(recycle_id: str, actor: str = "anonymous"):
+    """从回收站恢复任务：全表快照反序列化回插（保留原 UUID），恢复为已中断态。"""
+    try:
+        rid = uuid.UUID(recycle_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid id")
+    async with SessionLocal() as session:
+        row = (await session.execute(text(
+            "SELECT payload FROM task_recycle WHERE id = :i"), {"i": str(rid)})).first()
+        if not row:
+            raise HTTPException(status_code=404, detail="回收站项不存在或已过期")
+        payload = row[0]
+        from src.models.assets import Asset, CrossCheck, OcrResult
+        from src.models.drafts import Draft, PageCopy, RuleResult
+        from src.models.entities import Claim, Evidence
+        from src.models.events import NodeEvent
+        from src.models.review import (Approval, BatchMember, Issue, RejectMark,
+                                       ReviewAction, ReviewSession, RiskClassification)
+        from src.models.snapshots import PublishSnapshot as _PS
+        _MODELS = {
+            "tasks": Task, "claims": Claim, "evidence": Evidence,
+            "drafts": Draft, "page_copies": PageCopy, "assets": Asset,
+            "ocr_results": OcrResult, "rule_results": RuleResult,
+            "cross_checks": CrossCheck, "risk_classifications": RiskClassification,
+            "review_sessions": ReviewSession, "review_actions": ReviewAction,
+            "issues": Issue, "approvals": Approval, "publish_snapshots": _PS,
+            "node_events": NodeEvent, "reject_marks": RejectMark, "batch_members": BatchMember,
+        }
+        try:
+            # 按依赖顺序回插（父表在前）
+            for tname in ("tasks", "claims", "evidence", "drafts", "page_copies",
+                          "assets", "ocr_results", "rule_results", "cross_checks",
+                          "risk_classifications", "review_sessions", "review_actions",
+                          "issues", "approvals", "publish_snapshots", "node_events",
+                          "reject_marks", "batch_members"):
+                if tname in payload:
+                    _restore_rows(session, _MODELS[tname], payload[tname])
+                    await session.flush()   # 父表先落库，防 FK 顺序违例
+            # 恢复为 cancelled：可重试续跑，避免恢复即自动生产
+            orig_id = payload.get("tasks", [{}])[0].get("id")
+            if orig_id:
+                await session.execute(text(
+                    "UPDATE tasks SET status = 'cancelled' WHERE id = :t"),
+                    {"t": orig_id})
+            await session.execute(text(
+                "DELETE FROM task_recycle WHERE id = :i"), {"i": str(rid)})
+            await session.commit()
+        except Exception as e:  # noqa: BLE001
+            await session.rollback()
+            raise HTTPException(status_code=500, detail=f"恢复失败：{str(e)[:200]}")
+    await log_action(actor, "recycle_restore", "从回收站恢复任务", )
+    return {"ok": True, "restored": True, "note": "任务已恢复为「已中断」态，可在任务中心重试续跑"}
+
+
+@router.delete("/api/tasks/recycle/{recycle_id}")
+async def purge_task_recycle(recycle_id: str, actor: str = "anonymous"):
+    """彻底删除回收站单项（不可恢复；72h 自动清理前的手动清理）。"""
+    try:
+        rid = uuid.UUID(recycle_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid id")
+    async with SessionLocal() as session:
+        q = (await session.execute(text(
+            "DELETE FROM task_recycle WHERE id = :i"), {"i": str(rid)})).rowcount
+        await session.commit()
+    if not q:
+        raise HTTPException(status_code=404, detail="回收站项不存在")
+    await log_action(actor, "recycle_purge", "彻底删除回收站任务快照")
+    return {"ok": True}
+
+
 class BatchDeleteIn(BaseModel):
     ids: list[str]
     actor: str = "anonymous"
@@ -829,7 +1055,8 @@ async def batch_delete_tasks(payload: BatchDeleteIn):
     if deleted:
         await log_action(payload.actor, "delete",
                          f"批量删除任务 {deleted} 条（跳过 {len(skipped)}）")
-    return {"ok": True, "deleted": deleted, "skipped": skipped}
+    return {"ok": True, "deleted": deleted, "skipped": skipped,
+            "recycled": True, "expires_hours": _RECYCLE_TTL_HOURS}
 
 
 @router.post("/api/tasks/{task_id}/cancel")
