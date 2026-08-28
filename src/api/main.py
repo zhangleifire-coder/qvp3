@@ -60,10 +60,21 @@ STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "static"
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
+@app.middleware("http")
+async def _static_no_cache(request, call_next):
+    """静态资源与 SPA 入口禁用启发式缓存：每次带 etag revalidate（未变则 304），
+    避免改版后浏览器长期沿用旧 JS（曾导致任务中心批量删除修复不生效）。"""
+    resp = await call_next(request)
+    p = request.url.path
+    if p == "/" or p.startswith("/static"):
+        resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
 # SPA 入口（static/index.html + hash 路由）
 @app.get("/")
 async def index():
-    return FileResponse(str(STATIC_DIR / "index.html"))
+    return FileResponse(str(STATIC_DIR / "index.html"), headers={"Cache-Control": "no-cache"})
 
 
 # 旧页面路径 → SPA hash 路由（兼容旧链接/书签）
