@@ -802,6 +802,36 @@ async def confirm_text(task_id: str, payload: TextConfirmIn):
     return {"ok": True, "queued": True, "overridden": sorted(ov.keys())}
 
 
+class BatchDeleteIn(BaseModel):
+    ids: list[str]
+    actor: str = "anonymous"
+
+
+@router.post("/api/tasks/batch_delete")
+async def batch_delete_tasks(payload: BatchDeleteIn):
+    """任务中心统一删除：批量删除选中任务（逐条走单删级联逻辑，
+    生产中任务自动跳过并说明原因）。"""
+    deleted, skipped = 0, []
+    for tid_str in payload.ids[:200]:
+        try:
+            tid = uuid.UUID(tid_str)
+        except ValueError:
+            skipped.append({"id": tid_str, "reason": "无效 id"})
+            continue
+        try:
+            r = await delete_task(str(tid), actor=payload.actor)
+            if r.get("ok"):
+                deleted += 1
+        except HTTPException as e:
+            skipped.append({"id": tid_str, "reason": e.detail})
+        except Exception as e:  # noqa: BLE001
+            skipped.append({"id": tid_str, "reason": str(e)[:100]})
+    if deleted:
+        await log_action(payload.actor, "delete",
+                         f"批量删除任务 {deleted} 条（跳过 {len(skipped)}）")
+    return {"ok": True, "deleted": deleted, "skipped": skipped}
+
+
 @router.post("/api/tasks/{task_id}/cancel")
 async def cancel_task(task_id: str, actor: str = "anonymous"):
     """手工中断任务：排队中→直接出队；生产中→取消执行协程（幂等可重试）。

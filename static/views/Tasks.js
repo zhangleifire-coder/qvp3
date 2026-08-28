@@ -23,6 +23,7 @@ const TasksView = {
       refKeep: {},           // 参考图勾选 {assetId: true}
       confirmingRefs: false, // 确认中防抖
       imgEdit: null,         // 定点修改弹窗 {asset, instruction, busy}
+      selected: {},          // 批量删除勾选 {taskId: true}
       zoom: null,            // 图片放大浏览 {src, title, text}
       search: '',            // 关键词搜索（Query 模糊匹配）
       rowMenu: null,         // 展开操作菜单的行任务 id
@@ -204,6 +205,33 @@ const TasksView = {
       return d ? (d.msg || '') : '';
     },
     isAdmin() { const u = getUser(); return u && u.role === 'admin'; },
+    selectedIds() { return Object.keys(this.selected).filter(k => this.selected[k]); },
+    allPageSelected() {
+      return this.list.length > 0 && this.list.every(t => this.selected[t.id]);
+    },
+    toggleSelectAll() {
+      const on = !this.allPageSelected;
+      this.list.forEach(t => { this.selected[t.id] = on; });
+    },
+    async batchDelete() {
+      const ids = this.selectedIds;
+      if (!ids.length) { alert('请先勾选要删除的任务'); return; }
+      if (!confirm(`确定统一删除选中的 ${ids.length} 条任务？
+
+将一并删除各自的正文、分页、配图、审核记录等全部产物，不可恢复；生产中的任务会自动跳过。`)) return;
+      this.loading = true;
+      try {
+        const r = await api.post('/api/tasks/batch_delete', { ids, actor: this.actorName });
+        let msg = `已删除 ${r.deleted} 条`;
+        if (r.skipped && r.skipped.length) {
+          msg += `，跳过 ${r.skipped.length} 条（${r.skipped[0].reason}${r.skipped.length > 1 ? ' 等' : ''}）`;
+        }
+        alert(msg);
+        this.selected = {};
+        this.load();
+      } catch (e) { alert('批量删除失败：' + e.message); }
+      finally { this.loading = false; }
+    },
     historyOf(page) {
       return ((this.detail && this.detail.history_assets) || [])
         .filter(a => a.page_index === page);
@@ -466,6 +494,8 @@ const TasksView = {
       <label class="auto-refresh"><input type="checkbox" v-model="auto" style="width:auto"> 自动刷新</label>
       <input v-model="search" @keyup.enter="load" placeholder="🔍 搜索 Query…" style="width:170px">
       <button v-if="search" class="btn btn-outline btn-sm" @click="search=''; load()">清除</button>
+      <button class="btn btn-sm btn-danger-ghost" :disabled="!selectedIds.length || loading"
+              @click="batchDelete">🗑 删除选中（{{ selectedIds.length }}）</button>
       <template v-if="approvedCount > 0">
         <button v-if="!exportJob" class="btn btn-outline btn-sm" @click="startExport">📦 导出已通过内容包（{{ approvedCount }}）</button>
         <button v-else-if="exportJob.status !== 'done'" class="btn btn-outline btn-sm" @click="showExport = true">📦 打包中… {{ exportPct }}%</button>
@@ -478,9 +508,10 @@ const TasksView = {
     <div class="card">
       <div v-if="!list.length" class="empty">暂无任务，<router-link to="/import">去导入 →</router-link></div>
       <table v-else class="table">
-        <thead><tr><th>Query</th><th>模式</th><th>状态</th><th>风险</th><th>当前节点</th><th>创建时间</th><th style="text-align:right">操作</th></tr></thead>
+        <thead><tr><th style="width:30px"><input type="checkbox" :checked="allPageSelected" @change="toggleSelectAll" style="width:auto" title="全选本页"></th><th>Query</th><th>模式</th><th>状态</th><th>风险</th><th>当前节点</th><th>创建时间</th><th style="text-align:right">操作</th></tr></thead>
         <tbody>
           <tr v-for="t in list" :key="t.id" @click="open(t)" :class="{selected: detailTask && detailTask.id === t.id}" :title="rowLiveMsg(t)">
+            <td @click.stop><input type="checkbox" v-model="selected[t.id]" style="width:auto"></td>
             <td class="q-cell">{{ t.query }}</td>
             <td><span class="tag tag-blue">{{ modeLabel(t.mode) }}</span></td>
             <td>
