@@ -938,6 +938,31 @@ async def confirm_text(task_id: str, payload: TextConfirmIn):
     return {"ok": True, "queued": True, "overridden": sorted(ov.keys())}
 
 
+@router.post("/api/tasks/{task_id}/text/redraft")
+async def redraft_text(task_id: str, actor: str = "ops"):
+    """重新起草：AI 起草失败（输出截断/格式异常）或人工不满意草稿时，
+    对 awaiting_text 任务重跑 text_check 节点（覆盖 text_review，人工修改尚未保存的不受影响——
+    text_override 只在放行时写入）。"""
+    try:
+        tid = uuid.UUID(task_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid task_id")
+    async with SessionLocal() as session:
+        task = (await session.execute(select(Task).where(Task.id == tid))).scalars().first()
+        if not task:
+            raise HTTPException(status_code=404, detail="task not found")
+        if task.status != "awaiting_text":
+            raise HTTPException(status_code=400,
+                                detail=f"仅待人工核查状态可重新起草，当前: {task.status}")
+        query = task.query
+    from src.pipeline.text_check import run_text_check
+    summary = await run_text_check(tid)
+    await log_action(actor, "text_redraft",
+                     f"重新起草：{summary.get('auto_ok') and '通过' or '存在问题'}"
+                     f"（模型输出 {summary.get('candidates_pages', 0)} 页草稿）", task_id=tid)
+    return {"ok": True, "summary": summary}
+
+
 @router.get("/api/tasks/recycle")
 async def list_task_recycle():
     """任务回收站列表（仅 admin 前端展示；访问时惰性清理过期项）。"""

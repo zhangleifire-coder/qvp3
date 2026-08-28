@@ -22,13 +22,17 @@ class ModelRefusalError(Exception):
 
 
 async def call_provider(model: str, prompt: str, api_key: str = None,
-                        api_base: str = None, max_tokens: int = 1024) -> dict:
+                        api_base: str = None, max_tokens: int = 4096,
+                        timeout: int = 90) -> dict:
     litellm.api_key = api_key or settings.deepseek_api_key
     start = time.time()
     kwargs = dict(model=model, messages=[{"role": "user", "content": prompt}],
-                  max_tokens=max_tokens)
+                  max_tokens=max_tokens, timeout=timeout)
     if api_base:
         kwargs["api_base"] = api_base
+    # max_tokens 默认 4096：起草类任务（正文+分页+生图描述）约需 2000-3000 token，
+    # 旧默认 1024 会截断 JSON 尾部导致解析失败（2026-08-29 文字核查空内容事故）。
+    # timeout 90s：上游偶发挂起（DeepSeek 长生成 120s+ 无响应），及时切断走降级链。
     response = await litellm.acompletion(**kwargs)
     elapsed = time.time() - start
     text = response.choices[0].message.content if response.choices else None

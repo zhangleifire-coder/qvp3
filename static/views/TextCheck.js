@@ -5,6 +5,7 @@ const TextCheckView = {
     return {
       items: [], total: 0, loading: false, error: '',
       cur: null, detail: null, form: null, confirming: false, timer: null,
+      redrafting: false,   // 重新起草中防抖
     };
   },
   computed: {
@@ -13,6 +14,7 @@ const TextCheckView = {
     issues() { return (this.review.query_clean || {}).issues || []; },
     bodyIssues() { return this.review.body_issues || []; },
     autoOk() { return this.review.auto_ok; },
+    draftError() { return !!this.review.draft_error; },
     bodyChars() { return (this.form && this.form.body || '').replace(/\s/g, '').length; },
   },
   methods: {
@@ -53,6 +55,19 @@ const TextCheckView = {
         if (this.cur && this.cur.id === t.id) { this.cur = null; this.detail = null; this.form = null; }
         this.load();
       } catch (e) { alert('删除失败：' + e.message); }
+    },
+    async redraft() {
+      // AI 起草失败（截断/格式异常）或草稿不满意时，重新跑 text_check 起草
+      if (this.redrafting || !this.cur) return;
+      if (!confirm('重新起草？将覆盖当前自动草稿（你未保存的人工修改会丢失），约需 30-90 秒。')) return;
+      this.redrafting = true;
+      try {
+        await api.post(`/api/tasks/${this.cur.id}/text/redraft?actor=`
+          + encodeURIComponent((getUser() || {}).name || ''));
+        await this.pick(this.cur);   // 重载详情与表单
+        this.load();
+      } catch (e) { alert('重新起草失败：' + e.message); }
+      finally { this.redrafting = false; }
     },
     async confirm() {
       if (this.confirming || !this.detail) return;
@@ -105,6 +120,11 @@ const TextCheckView = {
           </span>
         </h2>
 
+        <div v-if="draftError" class="alert-warn" style="border-color:#e84545">
+          <b>⚠ AI 起草失败</b>——模型输出被截断或格式异常，下方草稿为空。
+          请点「🔄 重新起草」重试（已提升输出上限，通常可恢复），或直接删除该任务重新导入。
+        </div>
+
         <div v-if="issues.length || bodyIssues.length" class="alert-warn">
           <b>自查问题：</b>
           <ul class="plain-list" style="margin:4px 0 0">
@@ -141,6 +161,8 @@ const TextCheckView = {
         <div style="margin-top:14px;display:flex;gap:10px;align-items:center">
           <button class="btn btn-primary" :disabled="confirming"
                   @click="confirm">{{ confirming ? '放行中…' : '✓ 最终核查通过，进入生产' }}</button>
+          <button class="btn btn-outline" :disabled="redrafting"
+                  @click="redraft">{{ redrafting ? '起草中…（约 30-90 秒）' : '🔄 重新起草' }}</button>
           <span class="muted" style="font-size:13px">放行后进入「审图」环节（compare/single）或直接生产（general）</span>
         </div>
       </div>

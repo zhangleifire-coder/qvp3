@@ -66,7 +66,27 @@ async def run_text_check(task_id) -> dict:
     prompt = _TEXT_CHECK_PROMPT.format(query=query,
                                        mode_desc=_MODE_DESC.get(mode, mode))
     result = await call_with_failover(prompt)
-    data = _parse_json(result["text"]) or {}
+    data = _parse_json(result["text"])
+    if data is None:
+        # 输出无法解析（截断/格式异常）：显式标记为失败，禁止静默空草稿放行——
+        # 人工核查页会提示"AI 起草失败"，可点「重新起草」重试（2026-08-29 事故修复）
+        raw_len = len(result.get("text") or "")
+        async with SessionLocal() as session:
+            task = (await session.execute(
+                select(Task).where(Task.id == task_id))).scalar_one()
+            task.text_review = {
+                "query": query,
+                "query_clean": {"issues": ["AI 起草失败：模型输出无法解析"
+                                           f"（{result.get('model_version')}，{raw_len} 字符，疑似截断），"
+                                           "请点「重新起草」重试"], "suggested": ""},
+                "body_draft": "", "body_issues": [],
+                "pages_draft": [], "image_prompt_draft": [],
+                "model": result.get("model_version"),
+                "auto_ok": False, "draft_error": True,
+            }
+            task.status = "awaiting_text"
+            await session.commit()
+        return {"candidates_pages": 0, "issues": 1, "auto_ok": False}
     qc = data.get("query_clean") or {"issues": [], "suggested": ""}
     body = str(data.get("body_draft") or "")[:3000]
     pages = [str(p)[:200] for p in (data.get("pages_draft") or [])][:6]

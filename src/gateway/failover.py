@@ -33,7 +33,9 @@ async def call_with_failover(prompt: str, primary_model: str = DEEPSEEK_MODEL,
             result["degraded"] = False
             return result
         except Exception as e:
-            if attempt == max_retries:
+            # 超时/挂起类错误不会自愈，重试只会白等（90s×N），直接降级备用模型
+            is_timeout = "Timeout" in type(e).__name__ or isinstance(e, asyncio.TimeoutError)
+            if is_timeout or attempt == max_retries:
                 try:
                     result = await call_provider(fallback_model, prompt,
                                                  api_key=_api_key_for(fallback_model),
