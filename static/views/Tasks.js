@@ -83,6 +83,13 @@ const TasksView = {
     refAssets() {
       return ((this.detail && this.detail.assets) || []).filter(a => a.source_type === 'official');
     },
+    // 批量删除勾选（注意：必须是 computed——放进 methods 会向模板暴露函数对象，
+    // 函数恒为 truthy 且 .length=0，导致表头全选恒勾、按钮恒显示(0)、全选恒写 false）
+    selectedIds() { return Object.keys(this.selected).filter(k => this.selected[k]); },
+    allPageSelected() {
+      return this.list.length > 0 && this.list.every(t => this.selected[t.id]);
+    },
+    isAdmin() { const u = getUser(); return u && u.role === 'admin'; },
   },
   methods: {
     fmtTime, roleName,
@@ -205,11 +212,6 @@ const TasksView = {
       if (!lv || lv.status !== 'processing' || !lv.debug || !lv.debug.length) return '';
       const d = lv.debug[lv.debug.length - 1];
       return d ? (d.msg || '') : '';
-    },
-    isAdmin() { const u = getUser(); return u && u.role === 'admin'; },
-    selectedIds() { return Object.keys(this.selected).filter(k => this.selected[k]); },
-    allPageSelected() {
-      return this.list.length > 0 && this.list.every(t => this.selected[t.id]);
     },
     toggleSelectAll() {
       const on = !this.allPageSelected;
