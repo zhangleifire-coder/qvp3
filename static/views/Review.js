@@ -13,6 +13,8 @@ const ReviewView = {
       zoom: null,           // 图片放大浏览 {src, title, text}
       allAccess: false,     // 试运行期全员开放三角色（ROLE_ALL_ACCESS）
       activeRole: '',       // 当前审核角色（allAccess 时可切换，默认账号自身角色）
+      roleCounts: {},       // 各角色待审计数（与菜单徽标同口径 /api/meta/review_counts）
+      countsTimer: null,
     };
   },
   computed: {
@@ -74,6 +76,12 @@ const ReviewView = {
       if (!this.isReviewer || !this.activeRole) return;
       try { this.queue = (await api.get(`/api/review/queue/${this.activeRole}`)).sessions || []; this.error = ''; }
       catch (e) { this.error = e.message; }
+      this.loadCounts();
+    },
+    // 各角色待审计数（与左侧菜单徽标同口径）：切 tab 前即可看到单在哪个角色
+    async loadCounts() {
+      try { this.roleCounts = (await api.get('/api/meta/review_counts')).review_by_role || {}; }
+      catch (e) { /* 静默失败，不影响队列 */ }
     },
     switchRole(r) {
       if (r === this.activeRole) return;
@@ -139,7 +147,10 @@ const ReviewView = {
       } catch (e) { this.error = e.message; }
       finally { this.acting = false; }
     },
-    releaseTimers() { clearInterval(this.hbTimer); clearInterval(this.tickTimer); this.hbTimer = this.tickTimer = null; },
+    releaseTimers() {
+      clearInterval(this.hbTimer); clearInterval(this.tickTimer); clearInterval(this.countsTimer);
+      this.hbTimer = this.tickTimer = this.countsTimer = null;
+    },
   },
   async mounted() {
     // 试运行期（ROLE_ALL_ACCESS=true）：全员开放 A/B/C 切换；默认进自己账号的角色
@@ -148,6 +159,7 @@ const ReviewView = {
     } catch (e) { /* 取不到按收权处理 */ }
     this.activeRole = ['A', 'B', 'C'].includes(this.role) ? this.role : 'A';
     this.loadQueue();
+    this.countsTimer = setInterval(() => this.loadCounts(), 15000);
   },
   beforeUnmount() { this.releaseTimers(); },
   template: `
@@ -162,7 +174,8 @@ const ReviewView = {
           <h2 v-else style="margin-bottom:6px">审核角色</h2>
           <div v-if="allAccess" class="tabs">
             <button v-for="r in ['A','B','C']" :key="r" class="tab" :class="{on: activeRole===r}"
-                    @click="switchRole(r)" style="flex:1">{{ r }} · {{ roleName(r) }}</button>
+                    @click="switchRole(r)" style="flex:1">{{ r }} · {{ roleName(r) }}<span
+                    v-if="roleCounts[r]" class="menu-badge" style="margin-left:6px">{{ roleCounts[r] }}</span></button>
           </div>
           <p v-if="allAccess" class="muted" style="font-size:12.5px;margin:6px 0 10px">
             试运行模式：全员可审全部角色（默认进入你的账号角色 {{ role || 'A' }}），正式生产时将按账号分配固定角色。</p>

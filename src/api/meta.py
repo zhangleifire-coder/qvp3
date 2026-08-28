@@ -21,7 +21,12 @@ async def meta_access():
 
 @router.get("/api/meta/review_counts")
 async def review_counts():
-    """人审关卡待办计数（菜单徽标）：文字核查 / 审图 / 任务审核。"""
+    """人审关卡待办计数（菜单徽标）：文字核查 / 审图 / 任务审核。
+
+    review 徽标与审核队列同口径：未完成 ReviewSession 的去重任务数。
+    任务定案时会删除未完成会话，徽标随之归零；避免按 Task.status 统计时
+    出现「徽标有数、所有角色队列全空」的错位。附带分角色计数供审核页 tab 使用。
+    """
     from sqlalchemy import func, select
     from src.db.session import SessionLocal
     from src.models.tasks import Task
@@ -32,5 +37,12 @@ async def review_counts():
         refs_n = (await session.execute(
             select(func.count(Task.id)).where(Task.status == "awaiting_refs"))).scalar() or 0
         review_n = (await session.execute(
-            select(func.count(Task.id)).where(Task.status == "review"))).scalar() or 0
-        return {"text": text_n, "refs": refs_n, "review": review_n}
+            select(func.count(func.distinct(ReviewSession.task_id)))
+            .where(ReviewSession.finished_at.is_(None)))).scalar() or 0
+        by_role = {r: n for r, n in (await session.execute(
+            select(ReviewSession.role,
+                   func.count(func.distinct(ReviewSession.task_id)))
+            .where(ReviewSession.finished_at.is_(None))
+            .group_by(ReviewSession.role))).all()}
+        return {"text": text_n, "refs": refs_n, "review": review_n,
+                "review_by_role": {k: by_role.get(k, 0) for k in ("A", "B", "C")}}
