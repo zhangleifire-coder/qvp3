@@ -44,6 +44,16 @@ const TextCheckView = {
         };
       } catch (e) { this.error = e.message; }
     },
+    async removeTask(t) {
+      if (!confirm(`确定删除任务「${t.query}」？
+
+任务及全部草稿将移入回收站（72 小时内管理员可恢复）。`)) return;
+      try {
+        await api.delete('/api/tasks/' + t.id + '?actor=' + encodeURIComponent((getUser() || {}).name || ''));
+        if (this.cur && this.cur.id === t.id) { this.cur = null; this.detail = null; this.form = null; }
+        this.load();
+      } catch (e) { alert('删除失败：' + e.message); }
+    },
     async confirm() {
       if (this.confirming || !this.detail) return;
       if (!confirm('确认放行该任务进入生产？（将使用你核定的 query / 文案 / 生图描述）')) return;
@@ -78,8 +88,12 @@ const TextCheckView = {
         <div v-for="t in items" :key="t.id" class="refs-item" :class="{on: cur && cur.id === t.id}"
              @click="pick(t)">
           <b>{{ t.query }}</b>
-          <span class="tag" :class="t.auto_ok ? 'tag-green' : 'tag-yellow'">
-            {{ t.auto_ok ? '自查通过' : (t.issues || []).length + ' 个问题' }}
+          <span style="display:flex;align-items:center;gap:6px">
+            <span class="tag" :class="t.auto_ok ? 'tag-green' : 'tag-yellow'">
+              {{ t.auto_ok ? '自查通过' : (t.issues || []).length + ' 个问题' }}
+            </span>
+            <button class="btn btn-sm btn-danger-ghost" title="删除该任务（入回收站，72h 可恢复）"
+                    @click.stop="removeTask(t)">🗑</button>
           </span>
         </div>
       </div>

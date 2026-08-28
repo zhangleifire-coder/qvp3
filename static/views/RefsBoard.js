@@ -38,6 +38,16 @@ const RefsBoardView = {
         this.candidates.forEach(a => { this.keep[a.id] = true; });  // 默认全选
       } catch (e) { this.error = e.message; }
     },
+    async removeTask(t) {
+      if (!confirm(`确定删除任务「${t.query}」？
+
+任务及已搜集的候选图将移入回收站（72 小时内管理员可恢复）。`)) return;
+      try {
+        await api.delete('/api/tasks/' + t.id + '?actor=' + encodeURIComponent((getUser() || {}).name || ''));
+        if (this.cur && this.cur.id === t.id) { this.cur = null; this.detail = null; }
+        this.load();
+      } catch (e) { alert('删除失败：' + e.message); }
+    },
     async confirm() {
       if (this.confirming || !this.detail) return;
       const keep = Object.keys(this.keep).filter(k => this.keep[k]);
@@ -83,8 +93,12 @@ const RefsBoardView = {
         <div v-for="t in items" :key="t.id" class="refs-item" :class="{on: cur && cur.id === t.id}"
              @click="pick(t)">
           <b>{{ t.query }}</b>
-          <span class="tag tag-blue">{{ t.mode === 'compare' ? '对比' : '单品' }}</span>
-          <span class="muted" style="font-size:12px">候选 {{ t.candidates }} 张</span>
+          <span style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <span class="tag tag-blue">{{ t.mode === 'compare' ? '对比' : '单品' }}</span>
+            <span class="muted" style="font-size:12px">候选 {{ t.candidates }} 张</span>
+            <button class="btn btn-sm btn-danger-ghost" title="删除该任务（入回收站，72h 可恢复）"
+                    @click.stop="removeTask(t)">🗑</button>
+          </span>
         </div>
       </div>
 
