@@ -334,7 +334,7 @@ input, select, textarea { font-size: 15px; }
   color: #fff; padding: 0 4px; border-radius: 4px; }
 
 /* ── 文字核查板块 ── */
-.tc-field { width: 100%; }
+.tc-field { width: 100%; box-sizing: border-box; overflow: hidden; }  /* 高度 JS 自适应展开，无内部滚动条 */
 .tc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; margin: 6px 0 12px; }
 .alert-warn { background: #fff8e6; border: 1px solid #f0c36d; border-radius: 8px;
   padding: 10px 14px; margin: 8px 0 12px; font-size: 13.5px; }

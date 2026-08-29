@@ -18,6 +18,21 @@ const TextCheckView = {
     bodyChars() { return (this.form && this.form.body || '').replace(/\s/g, '').length; },
   },
   methods: {
+    // textarea 自适应高度：内容完整显示，不出内部滚动条
+    fitField(e) {
+      const el = e && e.target;
+      if (!el) return;
+      el.style.height = 'auto';
+      el.style.height = (el.scrollHeight + 2) + 'px';
+    },
+    fitAll() {
+      this.$nextTick(() => {
+        document.querySelectorAll('.tc-field').forEach(el => {
+          el.style.height = 'auto';
+          el.style.height = (el.scrollHeight + 2) + 'px';
+        });
+      });
+    },
     async load() {
       this.loading = true; this.error = '';
       try {
@@ -45,6 +60,7 @@ const TextCheckView = {
           image_prompts: ov.image_prompts || (rv.image_prompt_draft || []).slice(0, 6),
         };
       } catch (e) { this.error = e.message; }
+      this.fitAll();
     },
     async removeTask(t) {
       if (!confirm(`确定删除任务「${t.query}」？
@@ -137,16 +153,16 @@ const TextCheckView = {
         </div>
 
         <h3>① Query（最终生效）</h3>
-        <textarea v-model="form.query" rows="2" class="tc-field"></textarea>
+        <textarea v-model="form.query" rows="2" class="tc-field" @input="fitField"></textarea>
 
         <h3>② 正文（{{ bodyChars }} 字，最终生效——生图不再重写）</h3>
-        <textarea v-model="form.body" rows="12" class="tc-field"></textarea>
+        <textarea v-model="form.body" rows="12" class="tc-field" @input="fitField"></textarea>
 
         <h3>③ 图上文案（6 页，最终生效）</h3>
         <div class="tc-grid">
           <div v-for="(_, i) in 6" :key="i">
             <label class="muted">P{{ i + 1 }}{{ i === 0 ? ' 封面' : (i === 5 ? ' 结尾' : ' 要点') }}</label>
-            <textarea v-model="form.pages[i]" rows="2" class="tc-field"></textarea>
+            <textarea v-model="form.pages[i]" rows="2" class="tc-field" @input="fitField"></textarea>
           </div>
         </div>
 
@@ -154,7 +170,7 @@ const TextCheckView = {
         <div class="tc-grid">
           <div v-for="(_, i) in 6" :key="'ip' + i">
             <label class="muted">P{{ i + 1 }} 生图描述</label>
-            <textarea v-model="form.image_prompts[i]" rows="2" class="tc-field"></textarea>
+            <textarea v-model="form.image_prompts[i]" rows="2" class="tc-field" @input="fitField"></textarea>
           </div>
         </div>
 
