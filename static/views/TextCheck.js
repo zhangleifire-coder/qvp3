@@ -6,6 +6,8 @@ const TextCheckView = {
       items: [], total: 0, loading: false, error: '',
       cur: null, detail: null, form: null, confirming: false, timer: null,
       redrafting: false,   // 重新起草中防抖
+      marks: {},           // 驳回标记 {target: {target, note}}（query/body/page:N/ip:N）
+      rejecting: false,    // 按标记驳回重写中防抖
     };
   },
   computed: {
@@ -17,9 +19,17 @@ const TextCheckView = {
     draftError() { return !!this.review.draft_error; },
     isManual() { return this.review.source === 'manual'; },
     userBody() { return this.review.user_body || ''; },
+    marksList() { return Object.values(this.marks).filter(m => (m.note || '').trim()); },
+    lastFeedback() { return this.review.last_feedback || []; },
     bodyChars() { return (this.form && this.form.body || '').replace(/\s/g, '').length; },
   },
   methods: {
+    targetLabel(t) {
+      if (t === 'query') return 'Query';
+      if (t === 'body') return '正文';
+      const parts = String(t).split(':');
+      return parts[0] === 'page' ? ('第' + parts[1] + '页文案') : ('第' + parts[1] + '页生图描述');
+    },
     // textarea 自适应高度：内容完整显示，不出内部滚动条
     fitField(e) {
       const el = e && e.target;
@@ -48,7 +58,7 @@ const TextCheckView = {
       finally { this.loading = false; }
     },
     async pick(t) {
-      this.cur = t; this.detail = null;
+      this.cur = t; this.detail = null; this.marks = {};
       try {
         this.detail = await api.get(`/api/tasks/${t.id}/detail`);
         const rv = this.review;
@@ -86,6 +96,25 @@ const TextCheckView = {
         this.load();
       } catch (e) { alert('重新起草失败：' + e.message); }
       finally { this.redrafting = false; }
+    },
+    // ── 驳回标记：单条内容标记 + 修改意见 → 按标记重写 ──
+    toggleMark(target) {
+      if (this.marks[target]) delete this.marks[target];
+      else this.marks = { ...this.marks, [target]: { target, note: '' } };
+    },
+    async reject() {
+      if (this.rejecting || !this.cur) return;
+      if (!this.marksList.length) { alert('请先点「📌标记」要驳回的条目并填写修改意见'); return; }
+      if (!confirm('按 ' + this.marksList.length + ' 条标记驳回重写？\nAI 只修改被标记的条目，其余内容原样保留（约 30-120 秒）。')) return;
+      this.rejecting = true;
+      try {
+        await api.post(`/api/tasks/${this.cur.id}/text/reject`, {
+          marks: this.marksList, actor: (getUser() || {}).name });
+        this.marks = {};
+        await this.pick(this.cur);
+        this.load();
+      } catch (e) { alert('驳回重写失败：' + e.message); }
+      finally { this.rejecting = false; }
     },
     async confirm() {
       if (this.confirming || !this.detail) return;
@@ -161,31 +190,60 @@ const TextCheckView = {
           </p>
         </div>
 
-        <h3>① Query（最终生效）</h3>
-        <textarea v-model="form.query" rows="2" class="tc-field" @input="fitField"></textarea>
+        <div v-if="lastFeedback.length" class="alert-warn" style="background:#f2f7ff;border-color:#9ec1f5">
+          <b>上一轮驳回重写已处理（{{ lastFeedback.length }} 条标记）：</b>
+          <ul class="plain-list" style="margin:4px 0 0">
+            <li v-for="(f, i) in lastFeedback" :key="'lf'+i">· {{ targetLabel(f.target) }}：{{ f.note }}</li>
+          </ul>
+        </div>
 
-        <h3>② 正文（{{ bodyChars }} 字，最终生效——生图不再重写）</h3>
-        <textarea v-model="form.body" rows="12" class="tc-field" @input="fitField"></textarea>
+        <h3 class="tc-h3">① Query（最终生效）
+          <button class="btn btn-sm" :class="marks['query'] ? 'btn-danger' : 'btn-outline'"
+                  @click="toggleMark('query')">📌{{ marks['query'] ? '已标记' : '标记' }}</button></h3>
+        <div :class="{ 'tc-marked': marks['query'] }">
+          <textarea v-model="form.query" rows="2" class="tc-field" @input="fitField"></textarea>
+          <textarea v-if="marks['query']" v-model="marks['query'].note" rows="2"
+                    class="tc-note-field" placeholder="修改意见：这条 Query 要怎么改（必填，驳回重写时 AI 按此执行）"></textarea>
+        </div>
 
-        <h3>③ 图上文案（6 页，最终生效）</h3>
+        <h3 class="tc-h3">② 正文（{{ bodyChars }} 字，最终生效——生图不再重写）
+          <button class="btn btn-sm" :class="marks['body'] ? 'btn-danger' : 'btn-outline'"
+                  @click="toggleMark('body')">📌{{ marks['body'] ? '已标记' : '标记' }}</button></h3>
+        <div :class="{ 'tc-marked': marks['body'] }">
+          <textarea v-model="form.body" rows="12" class="tc-field" @input="fitField"></textarea>
+          <textarea v-if="marks['body']" v-model="marks['body'].note" rows="2"
+                    class="tc-note-field" placeholder="修改意见：正文哪里要改（必填）"></textarea>
+        </div>
+
+        <h3 class="tc-h3">③ 图上文案（6 页，最终生效）<span class="muted" style="font-weight:normal;font-size:12.5px">点每页 📌 可单独标记驳回</span></h3>
         <div class="tc-grid">
-          <div v-for="(_, i) in 6" :key="i">
-            <label class="muted">P{{ i + 1 }}{{ i === 0 ? ' 封面' : (i === 5 ? ' 结尾' : ' 要点') }}</label>
+          <div v-for="(_, i) in 6" :key="i" :class="{ 'tc-marked': marks['page:' + (i + 1)] }">
+            <label class="muted tc-h3" style="display:flex;justify-content:space-between;align-items:center">P{{ i + 1 }}{{ i === 0 ? ' 封面' : (i === 5 ? ' 结尾' : ' 要点') }}
+              <button class="btn btn-sm" :class="marks['page:' + (i + 1)] ? 'btn-danger' : 'btn-outline'"
+                      @click="toggleMark('page:' + (i + 1))">📌</button></label>
             <textarea v-model="form.pages[i]" rows="2" class="tc-field" @input="fitField"></textarea>
+            <textarea v-if="marks['page:' + (i + 1)]" v-model="marks['page:' + (i + 1)].note" rows="2"
+                      class="tc-note-field" placeholder="这页文案要怎么改（必填）"></textarea>
           </div>
         </div>
 
-        <h3>④ 生图描述（6 页，最终生效）</h3>
+        <h3 class="tc-h3">④ 生图描述（6 页，最终生效）<span class="muted" style="font-weight:normal;font-size:12.5px">点每页 📌 可单独标记驳回</span></h3>
         <div class="tc-grid">
-          <div v-for="(_, i) in 6" :key="'ip' + i">
-            <label class="muted">P{{ i + 1 }} 生图描述</label>
+          <div v-for="(_, i) in 6" :key="'ip' + i" :class="{ 'tc-marked': marks['ip:' + (i + 1)] }">
+            <label class="muted tc-h3" style="display:flex;justify-content:space-between;align-items:center">P{{ i + 1 }} 生图描述
+              <button class="btn btn-sm" :class="marks['ip:' + (i + 1)] ? 'btn-danger' : 'btn-outline'"
+                      @click="toggleMark('ip:' + (i + 1))">📌</button></label>
             <textarea v-model="form.image_prompts[i]" rows="2" class="tc-field" @input="fitField"></textarea>
+            <textarea v-if="marks['ip:' + (i + 1)]" v-model="marks['ip:' + (i + 1)].note" rows="2"
+                      class="tc-note-field" placeholder="这条生图描述要怎么改（必填）"></textarea>
           </div>
         </div>
 
-        <div style="margin-top:14px;display:flex;gap:10px;align-items:center">
+        <div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
           <button class="btn btn-primary" :disabled="confirming"
                   @click="confirm">{{ confirming ? '放行中…' : '✓ 最终核查通过，进入生产' }}</button>
+          <button class="btn btn-danger-ghost" :disabled="rejecting || !marksList.length"
+                  @click="reject">{{ rejecting ? '按标记重写中…（约 30-120 秒）' : '⤺ 驳回重写（' + marksList.length + ' 条标记）' }}</button>
           <button class="btn btn-outline" :disabled="redrafting"
                   @click="redraft">{{ redrafting ? '起草中…（约 30-90 秒）' : '🔄 重新起草' }}</button>
           <span class="muted" style="font-size:13px">放行后进入「审图」环节（compare/single）或直接生产（general）</span>

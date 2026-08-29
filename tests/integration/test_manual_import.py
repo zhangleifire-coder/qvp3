@@ -103,3 +103,69 @@ async def test_text_check_rewrite_mode_keeps_user_body():
         rv = task.text_review
         assert rv["source"] == "manual" and rv["user_body"] == _BODY   # 原稿保留
         assert rv["body_draft"].startswith("改写后的正文")
+
+
+@pytest.mark.asyncio
+async def test_text_reject_marks_drive_targeted_rewrite():
+    """驳回重写：标记存 review.feedback → 定向修改 prompt（注入意见+底稿）→ 意见留痕。"""
+    from src.api.tasks import import_manual, ManualImportIn, reject_text, TextRejectIn
+    from src.pipeline.text_check import run_text_check
+    with patch("src.api.tasks.scheduler.enqueue", new=AsyncMock()):
+        out = await import_manual(ManualImportIn(query="驳回标记测试标题", body=_BODY))
+    tid = out["task_id"]
+    # 第一轮：起草（改写模式）
+    first = {"text": json.dumps({
+        "query_clean": {"issues": [], "suggested": ""},
+        "body_draft": "第一版正文。" * 100,
+        "pages_draft": ["P1旧", "P2", "P3", "P4", "P5", "P6"],
+        "image_prompt_draft": ["d1", "d2", "d3", "d4", "d5", "d6"]},
+        ensure_ascii=False), "model_version": "m"}
+    with patch("src.pipeline.text_check.call_with_failover", return_value=first):
+        await run_text_check(tid)
+
+    # 驳回：标记第1页文案 + 正文
+    captured = {}
+    async def fake_failover(prompt):
+        captured["prompt"] = prompt
+        return {"text": json.dumps({
+            "query_clean": {"issues": [], "suggested": ""},
+            "body_draft": "第二版正文。" * 100,
+            "pages_draft": ["P1新", "P2", "P3", "P4", "P5", "P6"],
+            "image_prompt_draft": ["d1", "d2", "d3", "d4", "d5", "d6"]},
+            ensure_ascii=False), "model_version": "m"}
+    with patch("src.pipeline.text_check.call_with_failover", side_effect=fake_failover):
+        r = await reject_text(tid, TextRejectIn(actor="张三", marks=[
+            {"target": "page:1", "note": "封面文案不够吸引人，改成疑问句式"},
+            {"target": "body", "note": "第二段太啰嗦，压缩到两句话"},
+        ]))
+    assert r["ok"] is True and r["marks"] == 2
+    p = captured["prompt"]
+    assert "驳回标记与修改意见" in p
+    assert "第1页图上文案" in p and "疑问句式" in p        # 标记+意见注入
+    assert "P1旧" in p and "第一版正文" in p               # 当前草稿作为底稿
+    async with SessionLocal() as s:
+        task = (await s.execute(select(Task).where(Task.id == uuid.UUID(tid)))).scalar_one()
+        assert task.status == "awaiting_text"               # 改完回到核查
+        rv = task.text_review
+        assert "feedback" not in rv or not rv.get("feedback")   # 已处理清除
+        lf = rv.get("last_feedback") or []
+        assert len(lf) == 2 and lf[0]["target"] == "page:1"    # 意见留痕
+        assert rv["pages_draft"][0] == "P1新"
+
+
+@pytest.mark.asyncio
+async def test_text_reject_validation():
+    """驳回参数校验：空标记 / 无效 target / 缺意见 / 非核查状态。"""
+    from src.api.tasks import reject_text, TextRejectIn
+    with pytest.raises(HTTPException) as ei:
+        await reject_text("00000000-0000-0000-0000-000000000000",
+                          TextRejectIn(marks=[], actor="x"))
+    assert ei.value.status_code == 422
+    with pytest.raises(HTTPException) as ei2:
+        await reject_text("00000000-0000-0000-0000-000000000000",
+                          TextRejectIn(marks=[{"target": "page:9", "note": "x"}], actor="x"))
+    assert "无效标记对象" in str(ei2.value.detail)
+    with pytest.raises(HTTPException) as ei3:
+        await reject_text("00000000-0000-0000-0000-000000000000",
+                          TextRejectIn(marks=[{"target": "body", "note": " "}], actor="x"))
+    assert "缺少修改意见" in str(ei3.value.detail)

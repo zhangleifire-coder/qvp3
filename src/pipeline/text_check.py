@@ -70,6 +70,46 @@ _TEXT_REWRITE_PROMPT = """你是图文生产平台的内容编辑。用户已根
   "pages_draft": ["P1", "P2", "P3", "P4", "P5", "P6"],
   "image_prompt_draft": ["P1描述", "P2描述", "P3描述", "P4描述", "P5描述", "P6描述"]}}"""
 
+# 驳回重写模式：人工核查员对具体条目标记修改意见 → 只改标记处，其余原样保留
+_TEXT_FEEDBACK_PROMPT = """你是图文生产平台的内容编辑。人工核查员对当前草稿的【以下条目】提出了驳回标记与修改意见。
+请只针对这些被标记的条目进行修改（严格按意见执行）；未标记的条目必须原样保留、一字不改。其余仍需满足通用规范：无绝对化表述（禁：最/第一/唯一/100%/保证）、无 emoji、中文标点、不用 markdown 符号。
+
+【驳回标记与修改意见】
+{marks_block}
+
+【当前草稿】
+Query：{query}
+正文：
+{body}
+
+6 页图上文案：
+{pages}
+
+6 条生图描述：
+{image_prompts}
+{manual_section}
+输出 JSON 结构（完整输出修改后的全部内容，未修改条目原样包含）：
+{{"query_clean": {{"issues": [], "suggested": ""}},
+  "body_draft": "修改后的正文全文（400-700字）",
+  "pages_draft": ["P1", "P2", "P3", "P4", "P5", "P6"],
+  "image_prompt_draft": ["P1描述", "P2描述", "P3描述", "P4描述", "P5描述", "P6描述"]}}"""
+
+# 条目标记的中文说明（驳回意见注入用）
+_TARGET_LABELS = {
+    "query": "Query", "body": "正文",
+}
+
+
+def _target_label(target: str) -> str:
+    if target in _TARGET_LABELS:
+        return _TARGET_LABELS[target]
+    kind, _, idx = target.partition(":")
+    if kind == "page":
+        return f"第{idx}页图上文案"
+    if kind == "ip":
+        return f"第{idx}页生图描述"
+    return target
+
 # 解析失败重试时附加的强约束（Kimi 偶发未转义英文双引号破坏 JSON）
 _STRICT_JSON_SUFFIX = ("\n\n【重要】上一次输出无法通过 JSON 解析。请确保：只输出一个合法 JSON 对象；"
                        "字符串内部如需引用请使用中文引号“”，严禁未转义的英文双引号；"
@@ -99,8 +139,25 @@ async def run_text_check(task_id) -> dict:
         query, mode = task.query, (task.mode or "general")
         prev = task.text_review or {}
         user_body = str(prev.get("user_body") or "") if prev.get("source") == "manual" else ""
+        feedback = [f for f in (prev.get("feedback") or [])
+                    if isinstance(f, dict) and f.get("target") and f.get("note")]
 
-    if user_body:
+    if feedback:
+        # 驳回重写：只改人工标记的条目（意见注入），其余原样保留
+        marks_block = "\n".join(
+            f"- {_target_label(str(m['target']))}：（意见：{str(m['note'])[:300]}）"
+            for m in feedback)
+        manual_section = ("\n【事实底线】用户手写正文（被标记条目的事实也以此为准）：\n"
+                          + user_body) if user_body else ""
+        prompt = _TEXT_FEEDBACK_PROMPT.format(
+            marks_block=marks_block, query=query,
+            body=str(prev.get("body_draft") or ""),
+            pages="\n".join(f"P{i+1}：{p}" for i, p in
+                            enumerate(prev.get("pages_draft") or [])),
+            image_prompts="\n".join(f"P{i+1}：{p}" for i, p in
+                                    enumerate(prev.get("image_prompt_draft") or [])),
+            manual_section=manual_section)
+    elif user_body:
         prompt = _TEXT_REWRITE_PROMPT.format(query=query,
                                              mode_desc=_MODE_DESC.get(mode, mode),
                                              user_body=user_body)
@@ -163,6 +220,8 @@ async def run_text_check(task_id) -> dict:
     if user_body:   # 手工导入：标记来源并保留原稿（核查页可对照）
         review["source"] = "manual"
         review["user_body"] = user_body
+    if feedback:    # 驳回重写的意见留痕（已处理，feedback 本身不再写入=自然清除）
+        review["last_feedback"] = feedback
     async with SessionLocal() as session:
         task = (await session.execute(
             select(Task).where(Task.id == task_id))).scalar_one()

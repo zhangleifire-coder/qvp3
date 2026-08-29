@@ -1011,6 +1011,56 @@ async def redraft_text(task_id: str, actor: str = "ops"):
     return {"ok": True, "summary": summary}
 
 
+class TextRejectIn(BaseModel):
+    marks: list[dict]        # [{target: query|body|page:N|ip:N (N=1-6), note: 修改意见}]
+    actor: str = "anonymous"
+
+
+_VALID_TARGETS = {"query", "body"} | {f"page:{i}" for i in range(1, 7)} \
+                 | {f"ip:{i}" for i in range(1, 7)}
+
+
+@router.post("/api/tasks/{task_id}/text/reject")
+async def reject_text(task_id: str, payload: TextRejectIn):
+    """文字核查驳回重写：按人工标记的具体条目（query/正文/某页文案/某条生图描述）
+    和修改意见，让 AI 只改标记处、其余原样保留，改完回到 awaiting_text。"""
+    try:
+        tid = uuid.UUID(task_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid task_id")
+    if not payload.marks:
+        raise HTTPException(status_code=422, detail="至少标记一条内容并填写修改意见")
+    marks = []
+    for m in payload.marks:
+        target = str(m.get("target") or "").strip()
+        note = str(m.get("note") or "").strip()
+        if target not in _VALID_TARGETS:
+            raise HTTPException(status_code=422, detail=f"无效标记对象：{target}")
+        if not note:
+            raise HTTPException(status_code=422,
+                                detail=f"标记「{target}」缺少修改意见")
+        marks.append({"target": target, "note": note[:500]})
+    async with SessionLocal() as session:
+        task = (await session.execute(select(Task).where(Task.id == tid))).scalars().first()
+        if not task:
+            raise HTTPException(status_code=404, detail="task not found")
+        if task.status != "awaiting_text":
+            raise HTTPException(status_code=400,
+                                detail=f"仅待人工核查状态可驳回，当前: {task.status}")
+        rv = dict(task.text_review or {})
+        rv["feedback"] = marks          # run_text_check 读此标记走定向修改模式
+        task.text_review = rv
+        await session.commit()
+    from src.pipeline.text_check import run_text_check
+    summary = await run_text_check(tid)
+    from src.pipeline.text_check import _target_label
+    await log_action(payload.actor, "text_reject",
+                     f"文字核查驳回重写：{len(marks)} 条标记（"
+                     + "、".join(_target_label(m['target']) for m in marks[:5])
+                     + ("…" if len(marks) > 5 else "") + "）", task_id=tid)
+    return {"ok": True, "marks": len(marks), "summary": summary}
+
+
 @router.get("/api/tasks/recycle")
 async def list_task_recycle():
     """任务回收站列表（仅 admin 前端展示；访问时惰性清理过期项）。"""
