@@ -103,6 +103,53 @@ async def import_queries(payload: ImportQueriesIn):
             "concurrency": scheduler.limiter.capacity}
 
 
+# ============ 手工内容导入（query + 用户手写正文，2026-08-30） ============
+
+class ManualImportIn(BaseModel):
+    query: str                # 主题标题
+    body: str                 # 用户手写正文（500-700 字，AI 只改写优化不重写事实）
+    content_type: str = "generic"
+    mode: str = "general"
+    actor: str = "anonymous"
+
+
+@router.post("/api/tasks/import_manual")
+async def import_manual(payload: ManualImportIn):
+    """手工内容导入：用户自带正文 → text_check 走「改写优化」模式（保留事实）→
+    人工核查 → 生产。手写正文预存 text_review.user_body 供改写与核查对照。"""
+    import hashlib
+    query = payload.query.strip()
+    body = payload.body.strip()
+    if len(query) < 4:
+        raise HTTPException(status_code=422, detail="Query 至少 4 个字")
+    n_chars = len(body.replace(" ", "").replace("\n", ""))
+    if not (200 <= n_chars <= 5000):
+        raise HTTPException(status_code=422,
+                            detail=f"正文 {n_chars} 字（要求 200-5000 字，建议 500-700 字）")
+    if payload.mode not in ("general", "single", "compare"):
+        raise HTTPException(status_code=422, detail="mode 应为 general / single / compare")
+    key = f"manual|{query}|{payload.mode}|{hashlib.md5(body.encode()).hexdigest()[:10]}"
+    async with SessionLocal() as session:
+        existing = await session.execute(
+            select(Task).where(Task.idempotency_key == key))
+        if existing.first():
+            return {"imported": 0, "queued": False, "detail": "相同内容已导入过（幂等跳过）"}
+        task = Task(idempotency_key=key, query=query,
+                    content_type=payload.content_type, mode=payload.mode,
+                    status="draft",
+                    text_review={"source": "manual", "user_body": body})
+        session.add(task)
+        await session.flush()
+        tid = task.id
+        await session.commit()
+    await scheduler.enqueue(tid, query)
+    await log_action(payload.actor, "import_manual",
+                     f"手工内容导入（{n_chars} 字，模式 {payload.mode}）：{query[:40]}",
+                     task_id=tid)
+    return {"imported": 1, "task_id": str(tid), "queued": True, "body_chars": n_chars,
+            "next": "text_check 将改写优化你的正文（保留事实），完成后到「文字核查」确认"}
+
+
 # ============ 组合生成导入（query × 泛化问题池 × 风格/垂类，2026-08-24） ============
 
 class AnalyzeQueryIn(BaseModel):
@@ -883,6 +930,7 @@ async def list_text_awaiting():
             items.append({"id": str(t.id), "query": t.query, "mode": t.mode,
                           "auto_ok": rv.get("auto_ok"),
                           "issues": (rv.get("query_clean") or {}).get("issues", []),
+                          "source": rv.get("source") or "",
                           "created_at": t.created_at.isoformat() if t.created_at else None})
         return {"items": items, "total": len(items)}
 

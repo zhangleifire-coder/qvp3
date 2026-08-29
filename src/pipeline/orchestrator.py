@@ -41,7 +41,10 @@ async def _node_text_check(input_data: dict) -> dict:
     from src.models.tasks import Task
     async with SessionLocal() as session:
         t = (await session.execute(_sel(Task).where(Task.id == task_id))).scalar_one()
-        if t.text_override is not None or t.text_review is not None:
+        # 幂等跳过：仅当起草已完成（有 body_draft）或人工已核查（text_override）。
+        # 手工内容导入预存的 {source, user_body} 不算完成——需走改写模式起草。
+        rv = t.text_review or {}
+        if t.text_override is not None or rv.get("body_draft"):
             return {"skipped": True, "reason": "已完成文字自查/核查"}
     r = await run_text_check(task_id)
     return {"text_gate": True, **r}

@@ -15,6 +15,8 @@ const TextCheckView = {
     bodyIssues() { return this.review.body_issues || []; },
     autoOk() { return this.review.auto_ok; },
     draftError() { return !!this.review.draft_error; },
+    isManual() { return this.review.source === 'manual'; },
+    userBody() { return this.review.user_body || ''; },
     bodyChars() { return (this.form && this.form.body || '').replace(/\s/g, '').length; },
   },
   methods: {
@@ -120,6 +122,7 @@ const TextCheckView = {
              @click="pick(t)">
           <b>{{ t.query }}</b>
           <span style="display:flex;align-items:center;gap:6px">
+            <span v-if="t.source === 'manual'" class="tag tag-blue" title="手工内容导入">✍️ 手工</span>
             <span class="tag" :class="t.auto_ok ? 'tag-green' : 'tag-yellow'">
               {{ t.auto_ok ? '自查通过' : (t.issues || []).length + ' 个问题' }}
             </span>
@@ -134,7 +137,13 @@ const TextCheckView = {
           <span class="tag" :class="autoOk ? 'tag-green' : 'tag-yellow'">
             {{ autoOk ? '✓ 中文自查通过' : '⚠ 自查发现 ' + issues.length + ' 个问题' }}
           </span>
+          <span v-if="isManual" class="tag tag-blue" title="正文基于你手写的内容改写优化">✍️ 手工稿 · AI 改写</span>
         </h2>
+
+        <details v-if="isManual && userBody" style="margin:6px 0 10px">
+          <summary class="muted" style="cursor:pointer;font-size:13px">查看我的手写原稿（改写底稿）</summary>
+          <div class="alert-warn" style="white-space:pre-wrap;margin-top:6px;font-size:13px">{{ userBody }}</div>
+        </details>
 
         <div v-if="draftError" class="alert-warn" style="border-color:#e84545">
           <b>⚠ AI 起草失败</b>——模型输出被截断或格式异常，下方草稿为空。

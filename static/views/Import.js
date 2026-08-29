@@ -10,12 +10,15 @@ const ImportView = {
   data() {
     return {
       tab: 'text', mode: 'general', text: '', file: null, result: '', error: '', errors: [], loading: false,
+      // 手工内容导入（query + 手写正文 → AI 改写优化）
+      mQuery: '', mBody: '', mMode: 'general', mLoading: false, mResult: '',
       // 组合生成
       comboMode: 'general', comboRows: [newComboRow()], comboResult: '', comboItems: [], comboSkipped: [], comboLoading: false,
     };
   },
   computed: {
     queries() { return this.text.split('\n').map(s => s.trim()).filter(Boolean); },
+    mBodyChars() { return (this.mBody || '').replace(/\s/g, '').length; },
   },
   methods: {
     poolCount(r) {
@@ -56,6 +59,25 @@ const ImportView = {
       } catch (e) { this.error = e.message; }
       finally { this.comboLoading = false; }
     },
+    async submitManual() {
+      this.error = ''; this.mResult = '';
+      const q = this.mQuery.trim();
+      if (q.length < 4) { this.error = '请填写 Query 标题（至少 4 个字）'; return; }
+      if (this.mBodyChars < 200) { this.error = `正文目前 ${this.mBodyChars} 字，至少 200 字（建议 500-700 字）`; return; }
+      this.mLoading = true;
+      try {
+        const r = await api.post('/api/tasks/import_manual', {
+          query: q, body: this.mBody, mode: this.mMode, actor: (getUser() || {}).name });
+        if (r.imported) {
+          this.mResult = `已导入（${r.body_chars} 字）。AI 正在改写优化你的正文（保留事实）→ 完成后到「文字核查」确认放行`;
+          this.mQuery = ''; this.mBody = '';
+          window.dispatchEvent(new CustomEvent('qvp:imported'));
+        } else {
+          this.mResult = r.detail || '相同内容已导入过';
+        }
+      } catch (e) { this.error = e.message; }
+      finally { this.mLoading = false; }
+    },
     async submitText() {
       this.error = ''; this.result = '';
       if (!this.queries.length) { this.error = '请至少输入一条 Query'; return; }
@@ -92,9 +114,33 @@ const ImportView = {
         <button class="tab" :class="{on: tab==='text'}" @click="tab='text'">逐行文本</button>
         <button class="tab" :class="{on: tab==='csv'}" @click="tab='csv'">CSV 文件</button>
         <button class="tab" :class="{on: tab==='combo'}" @click="tab='combo'">组合生成</button>
+        <button class="tab" :class="{on: tab==='manual'}" @click="tab='manual'">✍️ 手工内容</button>
       </div>
 
-      <template v-if="tab==='text'">
+      <template v-if="tab==='manual'">
+        <label>Query 标题</label>
+        <input v-model="mQuery" placeholder="例：城市共享单车使用指南" style="width:100%">
+        <label style="margin-top:14px">你的正文（AI 将在保留事实的基础上改写优化，不重写）</label>
+        <textarea v-model="mBody" rows="16" placeholder="粘贴你自己写的 500-700 字正文…"
+                  style="width:100%"></textarea>
+        <p class="muted" style="margin:8px 0">
+          {{ mBodyChars }} 字<span v-if="mBodyChars && (mBodyChars < 500 || mBodyChars > 700)"
+            style="color:#c80">（建议 500-700 字）</span>
+        </p>
+        <label>生产模式</label>
+        <div class="mode-row">
+          <label v-for="(m, k) in MODE" :key="k" class="mode-card" :class="{on: mMode===k}">
+            <input type="radio" v-model="mMode" :value="k">
+            <b>{{ m.label }}</b>
+            <span class="muted">{{ m.desc }}</span>
+          </label>
+        </div>
+        <button class="btn btn-primary" style="margin-top:14px" :disabled="mLoading"
+                @click="submitManual">{{ mLoading ? '导入中…' : '导入并启动改写优化' }}</button>
+        <p v-if="mResult" class="form-ok" style="margin-top:10px">{{ mResult }}</p>
+      </template>
+
+      <template v-else-if="tab==='text'">
         <label>生产模式</label>
         <div class="mode-row">
           <label v-for="(m, k) in MODE" :key="k" class="mode-card" :class="{on: mode===k}">

@@ -44,6 +44,32 @@ _MODE_DESC = {
     "compare": "两个主体对比评测，图生图保持外观一致",
 }
 
+# 手工内容导入模式：用户自带正文，AI 只改写优化（保留事实与观点），不重写
+_TEXT_REWRITE_PROMPT = """你是图文生产平台的内容编辑。用户已根据 Query 手写了一篇正文。
+你的任务是在【完整保留用户全部事实、观点与信息】的前提下改写优化这篇正文，并产出配套核查内容（只输出 JSON，不要其它文字）：
+
+1. query_clean：Query 的中文自查——错别字、语句通顺、敏感词、绝对化违规表述（最/第一/唯一/100%/保证…）。
+   若有问题：query_clean = {{"issues": ["问题1", "问题2"], "suggested": "修正后的 query"}}
+   若无问题：query_clean = {{"issues": [], "suggested": "（原样，无需修改）"}}
+2. body_draft：改写优化后的正文（400-700字，不计空白）。改写原则：保留用户的全部事实与观点，不新增未经用户提及的事实；
+   优化结构为总分总、每段加小标题；表达流畅客观；无绝对化表述（禁：最/第一/唯一/100%/保证）、无 emoji、中文标点、不用 markdown 符号。
+3. pages_draft：把改写后正文精炼成 6 页图上文案（第1页封面主标题12-20字+钩子；第2-5页每页一个核心信息点25-50字；第6页总结20-40字；纯文本无 markdown）。
+4. image_prompt_draft：6 页配图的生图描述草稿（每页一句，竖版3:4图文卡片，与对应页文案呼应；不要出现具体品牌 logo/人脸）。
+
+【Query】
+{query}
+
+【生产模式】{mode_desc}
+
+【用户手写正文（改写底稿，事实以此为准）】
+{user_body}
+
+输出 JSON 结构：
+{{"query_clean": {{"issues": [], "suggested": ""}},
+  "body_draft": "改写优化后的正文全文（400-700字）",
+  "pages_draft": ["P1", "P2", "P3", "P4", "P5", "P6"],
+  "image_prompt_draft": ["P1描述", "P2描述", "P3描述", "P4描述", "P5描述", "P6描述"]}}"""
+
 # 解析失败重试时附加的强约束（Kimi 偶发未转义英文双引号破坏 JSON）
 _STRICT_JSON_SUFFIX = ("\n\n【重要】上一次输出无法通过 JSON 解析。请确保：只输出一个合法 JSON 对象；"
                        "字符串内部如需引用请使用中文引号“”，严禁未转义的英文双引号；"
@@ -62,14 +88,25 @@ def _parse_json(text: str) -> dict | None:
 
 
 async def run_text_check(task_id) -> dict:
-    """draft → text_check → 存 text_review → awaiting_text。返回产出摘要。"""
+    """draft → text_check → 存 text_review → awaiting_text。返回产出摘要。
+
+    手工内容导入的任务（text_review.source == "manual"）：走改写模式——
+    以用户手写正文为底稿优化，保留事实，并保留 user_body 供核查对照。
+    """
     async with SessionLocal() as session:
         task = (await session.execute(
             select(Task).where(Task.id == task_id))).scalar_one()
         query, mode = task.query, (task.mode or "general")
+        prev = task.text_review or {}
+        user_body = str(prev.get("user_body") or "") if prev.get("source") == "manual" else ""
 
-    prompt = _TEXT_CHECK_PROMPT.format(query=query,
-                                       mode_desc=_MODE_DESC.get(mode, mode))
+    if user_body:
+        prompt = _TEXT_REWRITE_PROMPT.format(query=query,
+                                             mode_desc=_MODE_DESC.get(mode, mode),
+                                             user_body=user_body)
+    else:
+        prompt = _TEXT_CHECK_PROMPT.format(query=query,
+                                           mode_desc=_MODE_DESC.get(mode, mode))
     result = await call_with_failover(prompt)
     data = _parse_json(result["text"])
     if data is None:
@@ -123,6 +160,9 @@ async def run_text_check(task_id) -> dict:
         "model": result.get("model_version"),
         "auto_ok": not qc.get("issues") and not body_issues,
     }
+    if user_body:   # 手工导入：标记来源并保留原稿（核查页可对照）
+        review["source"] = "manual"
+        review["user_body"] = user_body
     async with SessionLocal() as session:
         task = (await session.execute(
             select(Task).where(Task.id == task_id))).scalar_one()
