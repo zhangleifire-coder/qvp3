@@ -1002,13 +1002,17 @@ async def redraft_text(task_id: str, actor: str = "ops"):
         if task.status != "awaiting_text":
             raise HTTPException(status_code=400,
                                 detail=f"仅待人工核查状态可重新起草，当前: {task.status}")
+        rv = dict(task.text_review or {})
+        rv["redrafting"] = True          # 前端轮询完成标志（run_text_check 重建 review 后自然清除）
+        task.text_review = rv
+        await session.commit()
         query = task.query
+    import asyncio
     from src.pipeline.text_check import run_text_check
-    summary = await run_text_check(tid)
-    await log_action(actor, "text_redraft",
-                     f"重新起草：{summary.get('auto_ok') and '通过' or '存在问题'}"
-                     f"（模型输出 {summary.get('candidates_pages', 0)} 页草稿）", task_id=tid)
-    return {"ok": True, "summary": summary}
+    asyncio.create_task(run_text_check(tid))
+    await log_action(actor, "text_redraft", f"重新起草提交：{query[:40]}，AI 后台起草中", task_id=tid)
+    return {"ok": True, "queued": True,
+            "note": "已提交后台起草（约 1-5 分钟），核查页自动刷新结果"}
 
 
 class TextRejectIn(BaseModel):
@@ -1051,14 +1055,17 @@ async def reject_text(task_id: str, payload: TextRejectIn):
         rv["feedback"] = marks          # run_text_check 读此标记走定向修改模式
         task.text_review = rv
         await session.commit()
+    # 后台执行（LLM 链路含降级/重试，同步等待曾达 3-6 分钟导致前端假死）
+    import asyncio
     from src.pipeline.text_check import run_text_check
-    summary = await run_text_check(tid)
+    asyncio.create_task(run_text_check(tid))
     from src.pipeline.text_check import _target_label
     await log_action(payload.actor, "text_reject",
                      f"文字核查驳回重写：{len(marks)} 条标记（"
                      + "、".join(_target_label(m['target']) for m in marks[:5])
-                     + ("…" if len(marks) > 5 else "") + "）", task_id=tid)
-    return {"ok": True, "marks": len(marks), "summary": summary}
+                     + ("…" if len(marks) > 5 else "") + "），AI 后台改写中", task_id=tid)
+    return {"ok": True, "marks": len(marks), "queued": True,
+            "note": "已提交后台改写（约 1-5 分钟），核查页自动刷新结果"}
 
 
 @router.get("/api/tasks/recycle")

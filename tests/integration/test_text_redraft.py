@@ -1,5 +1,6 @@
 # 文字核查起草失败显式标记 + 重新起草 集成测试（2026-08-29 空内容事故）
 # 事故根因：LLM 输出被 1024 token 截断 → JSON 解析失败 → 静默存空草稿 + auto_ok=true
+import asyncio
 import json
 import uuid
 from unittest.mock import patch
@@ -63,7 +64,14 @@ async def test_redraft_recovers_after_failure():
     good = {"text": _GOOD, "model_version": "deepseek/deepseek-v4-pro", "degraded": False}
     with patch("src.pipeline.text_check.call_with_failover", return_value=good):
         out = await redraft_text(str(task_id), actor="张三")
-    assert out["ok"] is True and out["summary"]["auto_ok"] is True
+        # 后台 create_task 在 patch 上下文内轮询等完成（退出 with 会打到真 LLM）
+        for _ in range(60):
+            await asyncio.sleep(0.1)
+            async with SessionLocal() as s2:
+                t2 = (await s2.execute(select(Task).where(Task.id == task_id))).scalar_one()
+                if (t2.text_review or {}).get("body_draft"):
+                    break
+    assert out["ok"] is True and out.get("queued") is True
     async with SessionLocal() as s:
         task = (await s.execute(select(Task).where(Task.id == task_id))).scalar_one()
         assert "draft_error" not in task.text_review  # 成功路径不带失败标记

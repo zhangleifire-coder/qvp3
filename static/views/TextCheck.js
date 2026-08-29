@@ -8,6 +8,8 @@ const TextCheckView = {
       redrafting: false,   // 重新起草中防抖
       marks: {},           // 驳回标记 {target: {target, note}}（query/body/page:N/ip:N）
       rejecting: false,    // 按标记驳回重写中防抖
+      busyNote: '',        // 后台改写/起草中的提示（自动刷新结果）
+      draftTimer: null,    // 后台处理完成检测轮询
     };
   },
   computed: {
@@ -72,6 +74,13 @@ const TextCheckView = {
           image_prompts: ov.image_prompts || (rv.image_prompt_draft || []).slice(0, 6),
         };
       } catch (e) { this.error = e.message; }
+      const rvNow = this.review;
+      if (rvNow.feedback || rvNow.redrafting) {
+        this.busyNote = 'AI 正在改写/起草中（约 1-5 分钟）——完成后此页自动刷新';
+        this.watchDraft();
+      } else if (!this.draftTimer) {
+        this.busyNote = '';
+      }
       this.fitAll();
     },
     async removeTask(t) {
@@ -85,16 +94,16 @@ const TextCheckView = {
       } catch (e) { alert('删除失败：' + e.message); }
     },
     async redraft() {
-      // AI 起草失败（截断/格式异常）或草稿不满意时，重新跑 text_check 起草
+      // AI 起草失败（截断/格式异常）或草稿不满意时，重新跑 text_check 起草（后台执行）
       if (this.redrafting || !this.cur) return;
-      if (!confirm('重新起草？将覆盖当前自动草稿（你未保存的人工修改会丢失），约需 30-90 秒。')) return;
+      if (!confirm('重新起草？将覆盖当前自动草稿（你未保存的人工修改会丢失），约需 1-5 分钟。')) return;
       this.redrafting = true;
       try {
         await api.post(`/api/tasks/${this.cur.id}/text/redraft?actor=`
           + encodeURIComponent((getUser() || {}).name || ''));
-        await this.pick(this.cur);   // 重载详情与表单
-        this.load();
-      } catch (e) { alert('重新起草失败：' + e.message); }
+        this.busyNote = '已提交重新起草（约 1-5 分钟）——完成后此页自动刷新';
+        this.watchDraft();
+      } catch (e) { alert('重新起草提交失败：' + e.message); }
       finally { this.redrafting = false; }
     },
     // ── 驳回标记：单条内容标记 + 修改意见 → 按标记重写 ──
@@ -102,18 +111,39 @@ const TextCheckView = {
       if (this.marks[target]) delete this.marks[target];
       else this.marks = { ...this.marks, [target]: { target, note: '' } };
     },
+    // 后台改写/起草完成检测：review.feedback / review.redrafting 消失即完成
+    watchDraft() {
+      this.stopWatchDraft();
+      this.draftTimer = setInterval(async () => {
+        if (!this.cur) return this.stopWatchDraft();
+        try {
+          const d = await api.get(`/api/tasks/${this.cur.id}/detail`);
+          const rv = (d.task && d.task.text_review) || {};
+          if (!rv.feedback && !rv.redrafting) {
+            this.stopWatchDraft();
+            this.busyNote = '';
+            await this.pick(this.cur);
+            this.load();
+          }
+        } catch (e) { /* 网络抖动继续轮询 */ }
+      }, 6000);
+      setTimeout(() => this.stopWatchDraft(), 6 * 60 * 1000);  // 6 分钟兜底
+    },
+    stopWatchDraft() {
+      clearInterval(this.draftTimer); this.draftTimer = null;
+    },
     async reject() {
       if (this.rejecting || !this.cur) return;
       if (!this.marksList.length) { alert('请先点「📌标记」要驳回的条目并填写修改意见'); return; }
-      if (!confirm('按 ' + this.marksList.length + ' 条标记驳回重写？\nAI 只修改被标记的条目，其余内容原样保留（约 30-120 秒）。')) return;
+      if (!confirm('按 ' + this.marksList.length + ' 条标记驳回重写？\nAI 只修改被标记的条目，其余内容原样保留（约 1-5 分钟）。')) return;
       this.rejecting = true;
       try {
         await api.post(`/api/tasks/${this.cur.id}/text/reject`, {
           marks: this.marksList, actor: (getUser() || {}).name });
         this.marks = {};
-        await this.pick(this.cur);
-        this.load();
-      } catch (e) { alert('驳回重写失败：' + e.message); }
+        this.busyNote = '已提交按标记重写（约 1-5 分钟）——完成后此页自动刷新，期间可核查其他任务';
+        this.watchDraft();
+      } catch (e) { alert('驳回重写提交失败：' + e.message); }
       finally { this.rejecting = false; }
     },
     async confirm() {
@@ -138,7 +168,7 @@ const TextCheckView = {
     this.load();
     this.timer = setInterval(this.load, 8000);
   },
-  beforeUnmount() { clearInterval(this.timer); },
+  beforeUnmount() { clearInterval(this.timer); this.stopWatchDraft(); },
   template: `
   <app-layout title="文字核查 · 人工最终审核">
     <div class="refs-layout">
@@ -173,6 +203,10 @@ const TextCheckView = {
           <summary class="muted" style="cursor:pointer;font-size:13px">查看我的手写原稿（改写底稿）</summary>
           <div class="alert-warn" style="white-space:pre-wrap;margin-top:6px;font-size:13px">{{ userBody }}</div>
         </details>
+
+        <div v-if="busyNote" class="alert-warn" style="background:#f2f7ff;border-color:#9ec1f5">
+          ⏳ {{ busyNote }}
+        </div>
 
         <div v-if="draftError" class="alert-warn" style="border-color:#e84545">
           <b>⚠ AI 起草失败</b>——模型输出被截断或格式异常，下方草稿为空。
@@ -243,9 +277,9 @@ const TextCheckView = {
           <button class="btn btn-primary" :disabled="confirming"
                   @click="confirm">{{ confirming ? '放行中…' : '✓ 最终核查通过，进入生产' }}</button>
           <button class="btn btn-danger-ghost" :disabled="rejecting || !marksList.length"
-                  @click="reject">{{ rejecting ? '按标记重写中…（约 30-120 秒）' : '⤺ 驳回重写（' + marksList.length + ' 条标记）' }}</button>
+                  @click="reject">{{ rejecting ? '提交中…' : '⤺ 驳回重写（' + marksList.length + ' 条标记）' }}</button>
           <button class="btn btn-outline" :disabled="redrafting"
-                  @click="redraft">{{ redrafting ? '起草中…（约 30-90 秒）' : '🔄 重新起草' }}</button>
+                  @click="redraft">{{ redrafting ? '提交中…' : '🔄 重新起草' }}</button>
           <span class="muted" style="font-size:13px">放行后进入「审图」环节（compare/single）或直接生产（general）</span>
         </div>
       </div>

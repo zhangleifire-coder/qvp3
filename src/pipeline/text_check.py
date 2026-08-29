@@ -187,6 +187,8 @@ async def run_text_check(task_id) -> dict:
                 "model": result.get("model_version"),
                 "auto_ok": False, "draft_error": True,
                 "raw_head": (result.get("text") or "")[:400],  # 失败原文头部（诊断用）
+                # 驳回重写模式失败：意见留痕并不残留 feedback（否则前端完成检测卡住）
+                **({"last_feedback": feedback} if feedback else {}),
             }
             task.status = "awaiting_text"
             await session.commit()

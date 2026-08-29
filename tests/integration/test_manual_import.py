@@ -1,4 +1,5 @@
 # 手工内容导入（query + 用户手写正文 → AI 改写优化）集成测试
+import asyncio
 import json
 import uuid
 from unittest.mock import AsyncMock, patch
@@ -138,7 +139,14 @@ async def test_text_reject_marks_drive_targeted_rewrite():
             {"target": "page:1", "note": "封面文案不够吸引人，改成疑问句式"},
             {"target": "body", "note": "第二段太啰嗦，压缩到两句话"},
         ]))
-    assert r["ok"] is True and r["marks"] == 2
+        # 后台 create_task 在 patch 上下文内轮询等完成（退出 with 会打到真 LLM）
+        for _ in range(60):
+            await asyncio.sleep(0.1)
+            async with SessionLocal() as s2:
+                t2 = (await s2.execute(select(Task).where(Task.id == uuid.UUID(tid)))).scalar_one()
+                if (t2.text_review or {}).get("body_draft", "").startswith("第二版正文"):
+                    break
+    assert r["ok"] is True and r["marks"] == 2 and r.get("queued") is True
     p = captured["prompt"]
     assert "驳回标记与修改意见" in p
     assert "第1页图上文案" in p and "疑问句式" in p        # 标记+意见注入
