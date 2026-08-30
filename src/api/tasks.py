@@ -438,6 +438,7 @@ async def task_detail(task_id: str):
                         "selection_status": a.selection_status,
                         "ocr_hit": a.ocr_hit, "prompt_used": a.prompt_used,
                         "is_history": a.is_history, "edit_note": a.edit_note,
+                        "model_version": a.model_version,   # manual=实景审图手工上传
                         "display_url": f"/api/assets/{a.id}/image"} for a in assets],
             "history_assets": [{"page_index": a.page_index, "id": str(a.id),
                                 "image_url": a.image_url, "edit_note": a.edit_note,
@@ -833,6 +834,74 @@ async def research_refs(task_id: str, payload: RefsResearchIn):
                      f"（新增候选 {r.get('candidates', 0)} 张）", task_id=tid)
     return {"ok": True, "candidates": r.get("candidates", 0),
             "ocr_hits": r.get("ocr_hits", 0)}
+
+
+@router.post("/api/tasks/{task_id}/refs/upload")
+async def upload_refs(task_id: str, files: list[UploadFile] = File(...),
+                      actor: str = Form("anonymous")):
+    """实景审图·手工上传自定义图片：与搜索候选并列（默认勾选，可 OCR 初筛），
+    供「搜不到合适实景图」时人工补充。仅 awaiting_refs 状态可用。"""
+    import hashlib
+    try:
+        tid = uuid.UUID(task_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid task_id")
+    async with SessionLocal() as session:
+        task = (await session.execute(select(Task).where(Task.id == tid))).scalars().first()
+        if not task:
+            raise HTTPException(status_code=404, detail="task not found")
+        if task.status != "awaiting_refs":
+            raise HTTPException(status_code=400,
+                                detail=f"仅待确认参考图状态可上传，当前: {task.status}")
+        query, mode = task.query, (task.mode or "general")
+    from src.models.assets import Asset
+    from src.pipeline.nodes import _persist_image
+    from src.pipeline.ref_collect import split_subjects
+    from src.config import settings
+    subjects = split_subjects(query, mode)
+    uploaded = 0
+    async with SessionLocal() as session:
+        # page_index 从现有候选最大值顺延
+        base = (await session.execute(select(func.max(Asset.page_index)).where(
+            Asset.task_id == tid, Asset.source_type == "official",
+            Asset.selection_status == "candidate"))).scalar() or 0
+        for f in files:
+            data = await f.read()
+            ctype = (f.content_type or "").split(";")[0].strip()
+            if not ctype.startswith("image/"):
+                raise HTTPException(status_code=422,
+                                    detail=f"{f.filename} 不是图片（{ctype or '未知类型'}）")
+            if len(data) > 10 * 1024 * 1024:
+                raise HTTPException(status_code=422, detail=f"{f.filename} 超过 10MB")
+            uploaded += 1
+            local_url = _persist_image(tid, base + uploaded, "refup", data, ctype)
+            ocr_hit = ""
+            if not settings.mock_image_gen:
+                try:
+                    from src.gateway.ocr import ocr_image
+                    import re as _re
+                    r = await ocr_image(local_url)
+                    text = r.get("raw_text", "") or ""
+                    hit_words = [w for s in subjects for w in _re.split(
+                        r"[，,。；;\s]+", s) if len(w) >= 2 and w in text]
+                    ocr_hit = ",".join(dict.fromkeys(hit_words))[:120]
+                except Exception:  # noqa: BLE001
+                    pass
+            session.add(Asset(
+                task_id=tid, page_index=base + uploaded, subject=query,
+                # source_type 仍归 official（参考图大类，生产/审核口径不变），
+                # model_version=manual 标记手工上传；copyright_status 受表 CHECK 约束
+                source_type="official", copyright_status="unknown",
+                hash=hashlib.md5(data).hexdigest(), image_url=local_url,
+                origin_url="", model_version="manual", is_illustration=False,
+                selection_status="candidate", ocr_hit=ocr_hit or None))
+        await session.commit()
+        total = (await session.execute(select(func.count(Asset.id)).where(
+            Asset.task_id == tid, Asset.source_type == "official",
+            Asset.selection_status == "candidate"))).scalar() or 0
+    await log_action(actor, "refs_upload",
+                     f"手工上传 {uploaded} 张实景参考图（候选共 {total} 张）", task_id=tid)
+    return {"ok": True, "uploaded": uploaded, "candidates": total}
 
 
 class ImageEditIn(BaseModel):

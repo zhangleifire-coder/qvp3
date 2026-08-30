@@ -22,9 +22,9 @@ from src.db.session import SessionLocal
 from src.models.assets import Asset
 from src.models.tasks import Task
 
-_TARGET_MIN = 10          # 至少搜集 10 张（需求口径）
-_PER_SUBJECT = 6          # 每主体搜 6 张
-_MAX_CANDIDATES = 16      # 候选上限（防页面过长）
+_TARGET_MIN = 12          # 至少搜集 12 张（2026-08-30 用户口径，原 10）
+_PER_SUBJECT = 12         # 每主体搜 12 张
+_MAX_CANDIDATES = 24      # 候选上限（防页面过长；下载/OCR 剔除后仍保 12+）
 
 # compare 拆主体的连接词（两边各为一个产品/主体）
 _SPLIT_RE = re.compile(r"[和与跟]|还是|对比|vs|VS|跟比|和比")

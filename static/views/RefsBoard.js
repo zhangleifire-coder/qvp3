@@ -7,6 +7,7 @@ const RefsBoardView = {
       items: [], total: 0, loading: false, error: '',
       cur: null, detail: null, keep: {}, confirming: false,
       researchQ: '', researching: false, timer: null,
+      uploading: false,   // 手工上传中
     };
   },
   computed: {
@@ -75,6 +76,27 @@ const RefsBoardView = {
       } catch (e) { alert('重搜失败：' + e.message); }
       finally { this.researching = false; }
     },
+    async upload(e) {
+      // 手工上传自定义实景图：与搜索候选并列（默认勾选）
+      const files = e && e.target ? e.target.files : null;
+      if (!files || !files.length || this.uploading || !this.cur) return;
+      this.uploading = true;
+      try {
+        const fd = new FormData();
+        for (const f of files) fd.append('files', f);
+        fd.append('actor', (getUser() || {}).name || '');
+        const r = await api.postForm(`/api/tasks/${this.cur.id}/refs/upload`, fd);
+        this.detail = await api.get(`/api/tasks/${this.cur.id}/detail`);
+        this.keep = {};
+        this.candidates.forEach(a => { this.keep[a.id] = true; });  // 默认全选（含新上传）
+        this.load();
+        alert(`已上传 ${r.uploaded} 张（当前候选共 ${r.candidates} 张）`);
+      } catch (err) { alert('上传失败：' + err.message); }
+      finally {
+        this.uploading = false;
+        if (e && e.target) e.target.value = '';   // 允许重复选择同一文件
+      }
+    },
     fmtSize(b) { return b >= 1048576 ? (b / 1048576).toFixed(1) + 'MB' : Math.round(b / 1024) + 'KB'; },
   },
   async mounted() {
@@ -114,13 +136,20 @@ const RefsBoardView = {
             <input v-model="researchQ" placeholder="补充搜索关键词（可选，如：戴森 V12 实拍）" style="flex:1">
             <button class="btn btn-outline btn-sm" :disabled="researching"
                     @click="research">{{ researching ? '重搜中…' : '↻ 驳回重搜（再搜一批）' }}</button>
+            <label class="btn btn-outline btn-sm" style="cursor:pointer"
+                   :title="'上传自定义实景图（与搜索候选并列，默认勾选）'">
+              {{ uploading ? '上传中…' : '⬆ 上传图片' }}
+              <input type="file" accept="image/*" multiple style="display:none"
+                     :disabled="uploading" @change="upload">
+            </label>
           </div>
           <div class="img-grid ref-grid">
             <figure v-for="a in candidates" :key="a.id" :class="{unchecked: !keep[a.id]}">
               <img :src="a.display_url || a.image_url" loading="lazy" alt="">
               <label class="ref-check">
                 <input type="checkbox" v-model="keep[a.id]" style="width:auto">
-                <span v-if="a.ocr_hit" class="tag tag-green" style="font-size:11px">OCR命中: {{ a.ocr_hit.slice(0, 12) }}</span>
+                <span v-if="a.model_version === 'manual'" class="tag tag-blue" style="font-size:11px">手工上传</span>
+                <span v-else-if="a.ocr_hit" class="tag tag-green" style="font-size:11px">OCR命中: {{ a.ocr_hit.slice(0, 12) }}</span>
                 <span v-else class="tag tag-gray" style="font-size:11px">无命中</span>
               </label>
             </figure>
