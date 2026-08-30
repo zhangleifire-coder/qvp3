@@ -101,5 +101,7 @@ class TestStyleAdaptiveCompose:
     def test_image_style_library_text(self):
         from src.services.combo import image_style_library_text, IMAGE_STYLE_LIBRARY
         t = image_style_library_text()
-        assert len(IMAGE_STYLE_LIBRARY) == 8
+        # 2026-08-24 样例提炼后 10 条，首选「自然写实暖调」（836 张人工样例主体风格）
+        assert len(IMAGE_STYLE_LIBRARY) == 10
+        assert IMAGE_STYLE_LIBRARY[0][0] == "自然写实暖调"
         assert all(f"- {n}：" in t for n, _ in IMAGE_STYLE_LIBRARY)
