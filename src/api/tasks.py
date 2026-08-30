@@ -969,10 +969,18 @@ async def edit_image(asset_id: str, payload: ImageEditIn):
         page = (await session.execute(
             select(PageCopy).where(PageCopy.task_id == old.task_id,
                                    PageCopy.page_index == old.page_index))).scalars().first()
-        base_prompt = (old.prompt_used
-                       or get_image_prompt(task.mode or "general",
+        # prompt_used 已含本篇风格段（含6页统一条款）→ 优先沿用保证同风格；
+        # 缺失时重建提示词并注入任务已锁定的风格（ensure_task_style 幂等）
+        if not old.prompt_used:
+            from src.services.style_select import (ensure_task_style,
+                                                   build_style_block)
+            s_name, s_desc = await ensure_task_style(old.task_id)
+            base_prompt = get_image_prompt(task.mode or "general",
                                            page.body if page else task.query,
-                                           old.page_index))
+                                           old.page_index,
+                                           style_block=build_style_block(s_name, s_desc))
+        else:
+            base_prompt = old.prompt_used
         ref_urls = [a.image_url for a in (await session.execute(
             select(Asset).where(Asset.task_id == old.task_id,
                                 Asset.source_type == "official",

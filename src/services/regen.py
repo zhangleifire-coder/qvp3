@@ -108,6 +108,7 @@ async def partial_regen(task_id) -> dict:
         node_review_queue, call_with_failover)
     from src.gateway.failover import DEEPSEEK_MODEL, KIMI_MODEL
     from src.gateway.prompt_versions import get_effective_prompt, get_image_prompt
+    from src.services.style_select import ensure_task_style, build_style_block
 
     async with SessionLocal() as session:
         task = (await session.execute(
@@ -118,6 +119,9 @@ async def partial_regen(task_id) -> dict:
         rounds, _ = await get_rejection_feedback(session, task_id)
     if not marks:
         return {"regenerated": 0}
+    # 沿用任务已锁定的视觉风格（首次未选则此时选定并落库）→ 重生成页与原图同风格
+    style_name, style_desc = await ensure_task_style(task_id)
+    style_block = build_style_block(style_name, style_desc)
 
     page_reasons: dict[int, list[str]] = {}
     image_reasons: dict[int, list[str]] = {}
@@ -191,7 +195,8 @@ async def partial_regen(task_id) -> dict:
         done_pages = []
         for p in images_to_regen:
             prompt = get_image_prompt(mode, body_map.get(p, ""), p,
-                                      template=image_template)
+                                      template=image_template,
+                                      style_block=style_block)
             fb = image_reasons.get(p, []) + page_reasons.get(p, [])
             if fb:
                 prompt += ("\n\n【审核意见】该页上一版本被人工审核驳回："

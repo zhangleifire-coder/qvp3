@@ -384,11 +384,18 @@ async def node_asset_gen(input_data: dict) -> dict:
             reference_urls = [a.image_url for a in refs.scalars() if a.image_url]
     # 自定义生图模板（提示词库启用的）替代系统模板；排版轮换仍由代码追加
     image_template = await get_effective_prompt("image_gen", mode, owner_id)
-    prompts = [get_image_prompt(mode, p.body or "", i, template=image_template)
+    # 风格自适应（2026-08-31）：按 query 题材从风格库加权随机选一个视觉方向，
+    # 落库 task.gen_image_style；一篇 6 页共用同一段风格词（字体/色调/装饰统一）
+    from src.services.style_select import ensure_task_style, build_style_block
+    style_name, style_desc = await ensure_task_style(input_data["task_id"])
+    style_block = build_style_block(style_name, style_desc)
+    prompts = [get_image_prompt(mode, p.body or "", i, template=image_template,
+                                style_block=style_block)
                for i, p in enumerate(page_list, start=1)]
     while len(prompts) < 6:
         prompts.append(get_image_prompt(mode, "", len(prompts) + 1,
-                                        template=image_template))
+                                        template=image_template,
+                                        style_block=style_block))
     # 串行 + 间隔生成：避免测试账户限流，保证每张图有足够处理时间
     results = []
     seen_hashes = set()
