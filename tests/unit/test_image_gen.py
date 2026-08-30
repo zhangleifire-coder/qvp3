@@ -11,7 +11,10 @@ _generate_image = image_gen.generate_image
 
 @pytest.mark.asyncio
 async def test_generate_text_only_routes_to_generate():
-    with patch.object(image_gen, "_generate", new=AsyncMock(return_value={"image_url": "u", "hash": "h", "model_version": "gpt-image-1.5"})) as gen, \
+    # 路由测试固定 linkai 通道：_next_channel 全局轮询，若轮到 fusion/moacode
+    # 会调用未 mock 的真实生图函数（网络重试 60s+ 后假失败）——历史偶发红根因
+    with patch.object(image_gen, "_next_channel", return_value="linkai"), \
+         patch.object(image_gen, "_generate", new=AsyncMock(return_value={"image_url": "u", "hash": "h", "model_version": "gpt-image-1.5"})) as gen, \
          patch.object(image_gen, "_edit_with_references", new=AsyncMock()) as edit:
         await _generate_image("prompt")
     gen.assert_awaited_once()
@@ -20,14 +23,16 @@ async def test_generate_text_only_routes_to_generate():
 
 @pytest.mark.asyncio
 async def test_generate_with_refs_routes_to_edit():
-    with patch.object(image_gen, "_edit_with_references", new=AsyncMock(return_value={"image_url": "u", "hash": "h", "model_version": "gpt-image-1.5"})) as edit:
+    with patch.object(image_gen, "_next_channel", return_value="linkai"), \
+         patch.object(image_gen, "_edit_with_references", new=AsyncMock(return_value={"image_url": "u", "hash": "h", "model_version": "gpt-image-1.5"})) as edit:
         await _generate_image("prompt", reference_image_urls=["https://x/a.png"])
     edit.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_ref_download_failure_falls_back_to_generate():
-    with patch.object(image_gen, "_edit_with_references",
+    with patch.object(image_gen, "_next_channel", return_value="linkai"), \
+         patch.object(image_gen, "_edit_with_references",
                       new=AsyncMock(side_effect=httpx.HTTPStatusError("err", request=None, response=None))) as edit, \
          patch.object(image_gen, "_generate", new=AsyncMock(return_value={"image_url": "u", "hash": "h", "model_version": "gpt-image-1.5"})) as gen:
         await _generate_image("prompt", reference_image_urls=["https://x/a.png"])
