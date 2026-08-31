@@ -14,7 +14,11 @@ router = APIRouter()
 
 def _sse(event_type: str, data: dict | None = None) -> str:
     payload = {"type": event_type, "data": data or {}}
-    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+    # default=str：task_id 等字段可能是 uuid.UUID / datetime——json.dumps 对
+    # 其抛 TypeError 会当场杀死整条 SSE generator（连接从此静默无帧，浏览器
+    # EventSource 重连后又被下一条事件杀死——2026-09-01 「监控页数据流失效」
+    # 的最终根因；实测 TypeError: Object of type UUID is not JSON serializable）
+    return f"data: {json.dumps(payload, ensure_ascii=False, default=str)}\n\n"
 
 
 def _full_snapshot() -> dict:

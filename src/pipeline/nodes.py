@@ -127,7 +127,9 @@ def _emit_progress(task_id, node: str, msg: str = "",
         data["preview"] = preview
     try:
         loop = asyncio.get_running_loop()
-        loop.create_task(bus.publish("node_progress", data, task_id=task_id))
+        # task_id 统一转 str：bus/SSE 链路按字符串处理（UUID 会炸 json.dumps）
+        loop.create_task(bus.publish("node_progress", data,
+                                     task_id=str(task_id)))
     except RuntimeError:
         pass  # 无运行循环（如线程池回调）时静默放弃
 
