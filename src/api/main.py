@@ -60,15 +60,34 @@ STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "static"
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
-@app.middleware("http")
-async def _static_no_cache(request, call_next):
+class _StaticNoCacheASGI:
     """静态资源与 SPA 入口禁用启发式缓存：每次带 etag revalidate（未变则 304），
-    避免改版后浏览器长期沿用旧 JS（曾导致任务中心批量删除修复不生效）。"""
-    resp = await call_next(request)
-    p = request.url.path
-    if p == "/" or p.startswith("/static"):
-        resp.headers["Cache-Control"] = "no-cache"
-    return resp
+    避免改版后浏览器长期沿用旧 JS（曾导致任务中心批量删除修复不生效）。
+
+    必须用纯 ASGI 中间件而非 @app.middleware("http")（BaseHTTPMiddleware）：
+    后者会桥接转发响应体，对 /api/stream/events 这类 StreamingResponse 有
+    「首帧后流冻结」缺陷（2026-09-01 排查：监控页事件流/Agent数据流静止的
+    传输层根因）。纯 ASGI 只在响应头阶段追加 header，不触碰响应体。
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            path = scope.get("path", "")
+            if path == "/" or path.startswith("/static"):
+                async def _send(message):
+                    if message["type"] == "http.response.start":
+                        message.setdefault("headers", []).append(
+                            (b"cache-control", b"no-cache"))
+                    await send(message)
+                await self.app(scope, receive, _send)
+                return
+        await self.app(scope, receive, send)
+
+
+app.add_middleware(_StaticNoCacheASGI)
 
 
 # SPA 入口（static/index.html + hash 路由）
