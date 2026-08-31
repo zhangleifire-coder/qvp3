@@ -281,6 +281,23 @@ async def node_page_split(input_data: dict) -> dict:
     from src.models.drafts import PageCopy
     from src.models.tasks import Task
     from src.gateway.prompt_versions import get_effective_prompt
+
+    def _balance_issue(arr: list[str]) -> str:
+        """图上文字量校验（2026-08-31 用户要求）：每页 30-100 字且六页基本均衡。
+        返回问题描述；合格返回空串。"""
+        lens = [len(p) for p in arr]
+        issues = []
+        short = [f"第{i+1}页仅{l}字" for i, l in enumerate(lens) if l < 30]
+        long_ = [f"第{i+1}页{l}字" for i, l in enumerate(lens) if l > 100]
+        if short:
+            issues.append("字数不足30字：" + "、".join(short))
+        if long_:
+            issues.append("字数超100字：" + "、".join(long_))
+        if max(lens) - min(lens) > 25:
+            issues.append(f"各页失衡（最长{max(lens)}最短{min(lens)}，"
+                          "任意两页相差须≤25字）")
+        return "；".join(issues)
+
     async with SessionLocal() as session:
         text = await _latest_draft_body(session, input_data["task_id"])
         owner_id = (await session.execute(
@@ -292,16 +309,36 @@ async def node_page_split(input_data: dict) -> dict:
         template = await get_effective_prompt("page_split", None, owner_id)
         llm_prompt = (template.replace("{body}", text) if "{body}" in template
                       else template + "\n\n" + text)
+
+        def _parse(result_text: str) -> list[str] | None:
+            raw = result_text.strip()
+            if raw.startswith("```"):
+                raw = raw.strip("`").lstrip("json").strip()
+            try:
+                arr = _json.loads(raw[raw.index("["):raw.rindex("]") + 1])
+            except Exception:
+                return None
+            arr = [str(p).strip() for p in arr if str(p).strip()]
+            return arr[:6] if len(arr) >= 6 else None
+
         result = await call_with_failover(llm_prompt, DEEPSEEK_MODEL, KIMI_MODEL)
-        raw = result["text"].strip()
-        if raw.startswith("```"):
-            raw = raw.strip("`").lstrip("json").strip()
-        arr = _json.loads(raw[raw.index("["):raw.rindex("]") + 1])
-        arr = [str(p).strip() for p in arr if str(p).strip()]
-        if len(arr) >= 6:
-            pages = arr[:6]
-            model_version = result["model_version"]
-            cost = result["cost_cny"]
+        pages = _parse(result["text"])
+        model_version, cost = result["model_version"], result["cost_cny"]
+        # 字数/均衡校验：不合格带意见重试一次；仍不合格保留违规较轻的一版
+        # （下游审图人工关卡兜底，不因校验卡死流水线）
+        issue = _balance_issue(pages) if pages else ""
+        if issue:
+            retry = await call_with_failover(
+                llm_prompt + "\n\n【上次输出不合格，必须修正】" + issue
+                + "。请重新输出全部 6 页：每页（含小标题与标点）30-100 字，"
+                  "各页字数相差不超过 25 字。",
+                DEEPSEEK_MODEL, KIMI_MODEL)
+            pages2 = _parse(retry["text"])
+            cost += retry["cost_cny"]
+            issue2 = _balance_issue(pages2) if pages2 else ""
+            if pages2 and (not issue2 or len(issue2) < len(issue)):
+                pages = pages2
+                model_version = retry["model_version"]
     except Exception:
         traceback.print_exc()
     if pages is None:
@@ -311,7 +348,7 @@ async def node_page_split(input_data: dict) -> dict:
             session.add(PageCopy(task_id=input_data["task_id"], page_index=i, body=body, claim_ids=[]))
         await session.commit()
     return {"page_count": len(pages), "model_version": model_version,
-            "prompt_version": "page_split_llm_v1", "cost_cny": cost}
+            "prompt_version": "page_split_llm_v2", "cost_cny": cost}
 
 
 async def _generate_single_asset(task_id, page_index: int, prompt: str,

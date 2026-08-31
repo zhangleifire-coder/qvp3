@@ -137,11 +137,12 @@ async def partial_regen(task_id) -> dict:
         template = await get_effective_prompt("page_regen", None, owner_id)
         async with SessionLocal() as session:
             draft_body = await _latest_draft_body(session, task_id)
+            # 全部页一起取：old_map 供重写、sib_lens 供字数均衡参照（2026-08-31）
             rows = (await session.execute(
-                select(PageCopy).where(PageCopy.task_id == task_id,
-                                       PageCopy.page_index.in_(pages_to_rewrite))
+                select(PageCopy).where(PageCopy.task_id == task_id)
             )).scalars().all()
             old_map = {r.page_index: r.body or "" for r in rows}
+            len_map = {r.page_index: len((r.body or "").strip()) for r in rows}
         total_cost = 0.0
         models = set()
         for p in pages_to_rewrite:
@@ -149,6 +150,11 @@ async def partial_regen(task_id) -> dict:
             prompt = _fill_template(template, {
                 "page_index": p, "body": draft_body,
                 "old_copy": old_map.get(p, ""), "feedback": fb})
+            sib = "、".join(f"第{i}页{n}字" for i, n in sorted(len_map.items())
+                           if i != p)
+            if sib:
+                prompt += ("\n\n该篇其余各页现字数（均衡参照，重写后本页"
+                           f"30-100字且与它们相差不超过25字）：{sib}")
             result = await call_with_failover(prompt, DEEPSEEK_MODEL, KIMI_MODEL)
             total_cost += result["cost_cny"]
             models.add(result["model_version"])
