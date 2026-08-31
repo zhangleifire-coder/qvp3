@@ -44,12 +44,16 @@ const ImgLightbox = {
     prev() { if (this.idx > 0) { this.idx--; this.resetView(); } },
     next() { if (this.idx < this.list.length - 1) { this.idx++; this.resetView(); } },
     zoomAt(factor, cx, cy) {
-      // 以视口坐标 (cx, cy) 为中心缩放：补偿平移让该点视觉不动
+      // 稳定缩放的关键：图片由 .lbv-mask flex 居中，屏幕点 p = C + t + s·u
+      // （C=视口中心，t=平移，u=图内偏移）。保持光标下像素不动必须以 C 为原点补偿：
+      // t' = (p−C) − k·((p−C) − t)，k=新缩放/旧缩放。
+      // （旧版以视口左上角为原点，缩放时光标点会持续向左上漂移——2026-09-01 修复）
       const ns = Math.min(8, Math.max(0.2, this.scale * factor));
       if (ns === this.scale) return;
       const k = ns / this.scale;
-      this.tx = cx - k * (cx - this.tx);
-      this.ty = cy - k * (cy - this.ty);
+      const px = cx - innerWidth / 2, py = cy - innerHeight / 2;
+      this.tx = px - k * (px - this.tx);
+      this.ty = py - k * (py - this.ty);
       this.scale = ns;
     },
     onWheel(e) {
@@ -69,6 +73,8 @@ const ImgLightbox = {
       this.sx = e.clientX - this.tx;
       this.sy = e.clientY - this.ty;
       e.preventDefault();
+      // 指针捕获：鼠标移出图片仍持续拖拽；同时天然支持触屏单指平移
+      try { e.target.setPointerCapture(e.pointerId); } catch (_) { /* 旧浏览器 */ }
     },
     onMove(e) {
       if (!this.dragging) return;
@@ -103,7 +109,8 @@ const ImgLightbox = {
     <img class="lbv-img" :src="cur.src" :key="cur.src" :style="{transform}"
          :class="{grab: scale > 1, dragging}"
          @dblclick="onDblClick"
-         @mousedown="onDown" @mousemove="onMove" @mouseup="onUp" @mouseleave="onUp"
+         @pointerdown="onDown" @pointermove="onMove" @pointerup="onUp"
+         @pointercancel="onUp" @mouseleave="onUp"
          alt="" draggable="false">
 
     <div class="lb-caption">

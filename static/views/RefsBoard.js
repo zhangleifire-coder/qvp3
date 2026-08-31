@@ -8,6 +8,7 @@ const RefsBoardView = {
       cur: null, detail: null, keep: {}, confirming: false,
       researchQ: '', researching: false, timer: null,
       uploading: false,   // 手工上传中
+      zoom: null,         // 全屏查看器（放大细察候选图）
     };
   },
   computed: {
@@ -19,6 +20,17 @@ const RefsBoardView = {
     awaitingCount() { return this.total; },
   },
   methods: {
+    // 全屏查看候选图：放大细察细节（缩放锚定光标位置），←→/按钮切换上一张下一张
+    openZoom(i) {
+      const list = this.candidates.map(a => ({
+        src: a.display_url || a.image_url,
+        title: `候选 ${a.page_index || '·'}`
+               + (a.model_version === 'manual' ? ' · 手工上传' : ' · 搜索'),
+        text: a.ocr_hit ? `OCR命中：${a.ocr_hit}` : '',
+      }));
+      if (!list.length) return;
+      this.zoom = { list, index: Math.min(Math.max(0, i), list.length - 1) };
+    },
     async load() {
       this.loading = true; this.error = '';
       try {
@@ -144,8 +156,10 @@ const RefsBoardView = {
             </label>
           </div>
           <div class="img-grid ref-grid">
-            <figure v-for="a in candidates" :key="a.id" :class="{unchecked: !keep[a.id]}">
-              <img :src="a.display_url || a.image_url" loading="lazy" alt="">
+            <figure v-for="(a, ai) in candidates" :key="a.id" :class="{unchecked: !keep[a.id]}">
+              <img :src="a.display_url || a.image_url" loading="lazy" alt=""
+                   style="cursor:zoom-in" title="点击放大查看细节"
+                   @click="openZoom(ai)">
               <label class="ref-check">
                 <input type="checkbox" v-model="keep[a.id]" style="width:auto">
                 <span v-if="a.model_version === 'manual'" class="tag tag-blue" style="font-size:11px">手工上传</span>
@@ -165,5 +179,6 @@ const RefsBoardView = {
         </div>
       </div>
     </div>
+    <img-lightbox :img="zoom" @close="zoom=null" />
   </app-layout>`,
 };

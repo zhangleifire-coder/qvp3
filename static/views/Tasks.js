@@ -166,8 +166,26 @@ const TasksView = {
     openZoom(a, isRef) {
       const list = this.zoomItems();
       const src = a.display_url || a.image_url;
-      const index = Math.max(0, list.findIndex(x => x.src === src));
-      this.zoom = { list, index };
+      const index = list.findIndex(x => x.src === src);
+      if (index >= 0) { this.zoom = { list, index }; return; }
+      // 历史版本：src 不在主列表——构建该页「当前版+全部旧版」对比列表，
+      // 定位到所点的那张（旧逻辑 findIndex=-1 会错误跳到第 1 张当前图）
+      const hist = this.historyOf(a.page_index) || [];
+      const vlist = [];
+      const cur = this.genAssets.find(g => g.page_index === a.page_index);
+      if (cur) vlist.push({
+        src: cur.display_url || cur.image_url,
+        title: `P${a.page_index} · 当前版`,
+        text: this.pageCopyOf(a.page_index),
+      });
+      hist.forEach((h, i) => vlist.push({
+        src: h.display_url || h.image_url,
+        title: `P${a.page_index} · 旧版 v${hist.length - i}`
+               + (h.edit_note ? `（${h.edit_note.slice(0, 20)}）` : ''),
+        text: '',
+      }));
+      if (!vlist.length) return;
+      this.zoom = { list: vlist, index: Math.max(0, vlist.findIndex(x => x.src === src)) };
     },
     async retry() {
       if (!this.detailTask) return;
