@@ -37,8 +37,10 @@ async def stream_events(request: Request):
             # 先推一帧快照，让前端立即渲染当前状态（含每任务节点进度）
             yield _sse("snapshot", _full_snapshot())
             while True:
-                if await request.is_disconnected():
-                    break
+                # 断开检测靠 yield 写回失败（客户端断开时抛异常退出），
+                # 不用 request.is_disconnected() 轮询——该调用在部分
+                # uvicorn/平台组合下会误判断连，导致 SSE 收完快照即静默关闭
+                #（2026-09-01 排查：监控页「事件流不动」的传输层根因）
                 try:
                     event = await asyncio.wait_for(q.get(), timeout=15.0)
                 except asyncio.TimeoutError:

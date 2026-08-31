@@ -24,12 +24,15 @@ def _api_base_for(model: str):
 
 async def call_with_failover(prompt: str, primary_model: str = DEEPSEEK_MODEL,
                              fallback_model: str = KIMI_MODEL,
-                             max_retries: int = 2) -> dict:
+                             max_retries: int = 2, on_delta=None) -> dict:
+    # on_delta（可选）：流式回调透传给 call_provider（监控实时显示生成过程）。
+    # 重试/降级会重新从头生成——回调侧收到重新增长的 total 属预期。
     for attempt in range(max_retries + 1):
         try:
             result = await call_provider(primary_model, prompt,
                                          api_key=_api_key_for(primary_model),
-                                         api_base=_api_base_for(primary_model))
+                                         api_base=_api_base_for(primary_model),
+                                         on_delta=on_delta)
             result["degraded"] = False
             return result
         except Exception as e:
@@ -39,7 +42,8 @@ async def call_with_failover(prompt: str, primary_model: str = DEEPSEEK_MODEL,
                 try:
                     result = await call_provider(fallback_model, prompt,
                                                  api_key=_api_key_for(fallback_model),
-                                                 api_base=_api_base_for(fallback_model))
+                                                 api_base=_api_base_for(fallback_model),
+                                                 on_delta=on_delta)
                     result["degraded"] = True
                     result["original_error"] = str(e)
                     return result

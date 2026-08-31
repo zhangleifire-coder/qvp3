@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import traceback
 import uuid
@@ -8,6 +9,7 @@ from src.config import settings
 from src.db.session import SessionLocal
 from src.gateway.failover import call_with_failover, DEEPSEEK_MODEL, KIMI_MODEL
 from src.quality.rules import check_rules
+from src.stream.bus import bus
 
 # 生成图本地持久化目录（通过 /static 挂载直接可访问）
 GENERATED_DIR = Path(__file__).resolve().parent.parent.parent / "static" / "generated"
@@ -112,6 +114,35 @@ async def _latest_draft_body(session, task_id):
     return draft.body if draft else ""
 
 
+# ── 节点级实时进度事件（2026-09-01 用户要求：所有工作流式上监控）──
+# node_progress 事件 = 某节点「正在做什么」的功能名 + 子步骤消息或 LLM 流式增量；
+# 监控页实时事件流与创作数据流面板都渲染。事件投递失败绝不阻塞主流程。
+def _emit_progress(task_id, node: str, msg: str = "",
+                   chars: int = None, preview: str = ""):
+    data = {"node": node}
+    if msg:
+        data["msg"] = msg
+    if chars is not None:
+        data["chars"] = chars
+        data["preview"] = preview
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(bus.publish("node_progress", data, task_id=task_id))
+    except RuntimeError:
+        pass  # 无运行循环（如线程池回调）时静默放弃
+
+
+def _stream_reporter(task_id, node: str):
+    """LLM 流式 on_delta → node_progress（120 字/帧节流，含尾部预览）。"""
+    last = {"n": 0}
+
+    def _on_delta(_piece, total):
+        if len(total) - last["n"] >= 120:
+            last["n"] = len(total)
+            _emit_progress(task_id, node, chars=len(total), preview=total[-160:])
+    return _on_delta
+
+
 async def node_entity_bind(input_data: dict) -> dict:
     """搜实景图/实物图，存为 official 素材（compare/single 作参考图；general 跳过）。"""
     import hashlib
@@ -209,7 +240,11 @@ async def node_draft_gen(input_data: dict) -> dict:
                    "以下是审核员提出的全部修改意见：\n" + lines +
                    "\n请逐条针对性修正上述问题后重新创作，确保新内容不再出现同类问题。")
         prompt_version = f"draft_{mode}_v1_regen{regen.get('round', 1)}"
-    result = await call_with_failover(prompt, DEEPSEEK_MODEL, KIMI_MODEL)
+    _emit_progress(input_data["task_id"], "draft_gen",
+                   msg="正文撰写中（LLM 流式生成）")
+    result = await call_with_failover(prompt, DEEPSEEK_MODEL, KIMI_MODEL,
+                                      on_delta=_stream_reporter(
+                                          input_data["task_id"], "draft_gen"))
     async with SessionLocal() as session:
         from sqlalchemy import func
         max_v = (await session.execute(
@@ -321,7 +356,11 @@ async def node_page_split(input_data: dict) -> dict:
             arr = [str(p).strip() for p in arr if str(p).strip()]
             return arr[:6] if len(arr) >= 6 else None
 
-        result = await call_with_failover(llm_prompt, DEEPSEEK_MODEL, KIMI_MODEL)
+        _emit_progress(input_data["task_id"], "page_split",
+                       msg="分页文案生成中（每页 30-100 字、六页均衡）")
+        result = await call_with_failover(
+            llm_prompt, DEEPSEEK_MODEL, KIMI_MODEL,
+            on_delta=_stream_reporter(input_data["task_id"], "page_split"))
         pages = _parse(result["text"])
         model_version, cost = result["model_version"], result["cost_cny"]
         # 字数/均衡校验：不合格带意见重试一次；仍不合格保留违规较轻的一版
@@ -332,7 +371,8 @@ async def node_page_split(input_data: dict) -> dict:
                 llm_prompt + "\n\n【上次输出不合格，必须修正】" + issue
                 + "。请重新输出全部 6 页：每页（含小标题与标点）30-100 字，"
                   "各页字数相差不超过 25 字。",
-                DEEPSEEK_MODEL, KIMI_MODEL)
+                DEEPSEEK_MODEL, KIMI_MODEL,
+                on_delta=_stream_reporter(input_data["task_id"], "page_split"))
             pages2 = _parse(retry["text"])
             cost += retry["cost_cny"]
             issue2 = _balance_issue(pages2) if pages2 else ""
@@ -433,6 +473,8 @@ async def node_asset_gen(input_data: dict) -> dict:
     try:
         from src.services.page_subject import extract_page_subjects
         from src.gateway.failover import DEEPSEEK_MODEL, KIMI_MODEL
+        _emit_progress(input_data["task_id"], "asset_gen",
+                       msg="提取各页画面主体（图文对应）")
         bodies = [(p.body or "") for p in page_list][:6]
         while len(bodies) < 6:
             bodies.append("")
@@ -465,12 +507,19 @@ async def node_asset_gen(input_data: dict) -> dict:
     seen_hashes = set()
     extra_gen = 0
     for i in range(1, 7):
+        _emit_progress(input_data["task_id"], "asset_gen",
+                       msg=f"生成配图 {i}/6（{style_name}）")
         r = await _generate_single_asset(
             input_data["task_id"], i, prompts[i - 1], reference_urls)
         if not settings.mock_image_gen:
             r, extra = await _dedupe_and_validate(r, prompts[i - 1], reference_urls,
                                                   input_data["task_id"], i, seen_hashes)
             extra_gen += extra
+            if extra:
+                _emit_progress(input_data["task_id"], "asset_gen",
+                               msg=f"P{i} 与已有图重复，已换构图重生成")
+        _emit_progress(input_data["task_id"], "asset_gen",
+                       msg=f"P{i} 完成" if not settings.mock_image_gen else f"P{i}（mock）")
         results.append(r)
         await asyncio.sleep(settings.image_gen_delay_seconds)
     async with SessionLocal() as session:
@@ -502,7 +551,9 @@ async def node_ocr_read(input_data: dict) -> dict:
         return {"ocr_completed": True, "cost_cny": 0}
     results = []
     total_cost = 0.0
-    for asset_id, page_index, image_url in rows:
+    for idx, (asset_id, page_index, image_url) in enumerate(rows, 1):
+        _emit_progress(input_data["task_id"], "ocr_read",
+                       msg=f"OCR 图文自检 P{page_index}（{idx}/{len(rows)}）")
         try:
             r = await ocr_image(image_url)
             results.append(OcrResult(asset_id=asset_id, raw_text=r["raw_text"],

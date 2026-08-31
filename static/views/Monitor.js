@@ -109,13 +109,16 @@ const MonitorView = {
         task_failed: '失败', task_cancelled: '人工中断', node_started: '节点开始',
         node_finished: '节点完成', node_failed: '节点失败', rate_limit: '触发限流',
         concurrency: '并发调整', maintenance: '检修切换',
+        node_progress: e.chars
+            ? `${label}流式生成 ${e.chars} 字`
+            : `${label}${e.msg || '进行中'}`,
         agent_progress: e.chars ? `流式输出 ${e.chars} 字（约 ${e.tokens_est || 0} token）`
                                 : 'Agent 启动',
         agent_tool: this._toolLog(e),
         export_progress: `打包 ${e.phase || ''}`,
       };
       const detail = map[e.type] || e.type;
-      return `${who}${detail}${label ? ' · ' + label : ''}${e.msg ? ' · ' + e.msg : ''}`;
+      return `${who}${detail}${label && e.type !== 'node_progress' ? ' · ' + label : ''}${e.msg && e.type !== 'node_progress' ? ' · ' + e.msg : ''}`;
     },
     async cancelTask(t) {
       if (this.cancelling) return;
@@ -241,15 +244,38 @@ const MonitorView = {
               if (last && last.k === 'stream') Object.assign(last, line);
               else this.pushLog(tid, 'stream', line.m);
               if (t) t.stream = { chars: d.chars, tokens: d.tokens_est || 0, tail: d.preview || '' };
-              // 创作 Agent 数据流：只显示文本增量（流式预览），工具调用在卡片工作日志里
-              this._pushAgentFeed('stream', `${this._taskName(tid)} 流式 ${d.chars} 字 ≈ ${d.tokens_est || 0} token`);
+              // 创作 Agent 数据流：文本增量（流式预览尾部 + 计数）
+              const tail = (d.preview || '').replace(/\s+/g, ' ').slice(-60);
+              this._pushAgentFeed('stream',
+                `${this._taskName(tid)} 流式 ${d.chars} 字${tail ? '：…' + tail : ''}`);
             } else if (tid && d.message) {
               this.pushLog(tid, 'info', d.message);
             }
           } else if (d.type === 'agent_tool') {
             this.applyAgentEvent(d);
-            // 工具调用只进任务卡片工作日志（创作 Agent 数据流只放文本增量，避免重复）
-            if (tid) this.pushLog(tid, 'tool', this._toolLog(d));
+            this.pushLog(tid, 'tool', this._toolLog(d));
+            // 工具调用细节也进创作数据流（2026-09-01 用户要求：所有步骤可见）
+            this._pushAgentFeed('tool', `${this._taskName(tid)} ${this._toolLog(d)}`);
+          } else if (d.type === 'node_progress') {
+            // 直连路径节点子步骤/流式增量：功能名 + 正在做什么（含预览尾部）
+            const lbl = this.nodeLabel(d.node);
+            if (d.chars) {
+              const t2 = this.tasks.find(x => x.id === tid);
+              if (t2) t2.stream = { chars: d.chars, tokens: Math.round(d.chars / 1.7),
+                                    tail: (d.preview || '').slice(-120) };
+              const last = (this.taskLogs[tid] || []).slice(-1)[0];
+              const line = `${lbl} · 流式生成 ${d.chars} 字`;
+              if (last && last.k === 'stream') Object.assign(last, { m: line });
+              else this.pushLog(tid, 'stream', line);
+              const tail = (d.preview || '').replace(/\s+/g, ' ').slice(-60);
+              this._pushAgentFeed('stream',
+                `${this._taskName(tid)} ${lbl}流式 ${d.chars} 字${tail ? '：…' + tail : ''}`);
+            } else {
+              this.pushLog(tid, 'info', `${lbl} · ${d.msg || '进行中'}`);
+              this._pushAgentFeed('step', `${this._taskName(tid)} ${lbl} · ${d.msg || '进行中'}`);
+            }
+            const t3 = this.tasks.find(x => x.id === tid);
+            if (t3 && d.msg) t3.stage_hint = d.msg;
           } else if (d.type.startsWith('task_') || d.type.startsWith('node_')) {
             if (tid) this.pushLog(tid, d.type.includes('failed') ? 'err' : 'info',
                                   this._nodeLog(d));

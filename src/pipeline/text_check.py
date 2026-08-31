@@ -164,11 +164,18 @@ async def run_text_check(task_id) -> dict:
     else:
         prompt = _TEXT_CHECK_PROMPT.format(query=query,
                                            mode_desc=_MODE_DESC.get(mode, mode))
-    result = await call_with_failover(prompt)
+    from src.pipeline.nodes import _stream_reporter, _emit_progress
+    branch = ("驳回定向修改" if feedback else
+              "手工底稿改写" if user_body else "全新起草")
+    _emit_progress(task_id, "text_check", msg=f"文字自查·{branch}（LLM 流式生成）")
+    _report = _stream_reporter(task_id, "text_check")
+    result = await call_with_failover(prompt, on_delta=_report)
     data = _parse_json(result["text"])
     if data is None:
         # 模型偶发输出非法 JSON（未转义引号等，间歇性）：带强约束重试一次
-        result = await call_with_failover(prompt + _STRICT_JSON_SUFFIX)
+        _emit_progress(task_id, "text_check", msg="输出格式异常，带强约束重试")
+        result = await call_with_failover(prompt + _STRICT_JSON_SUFFIX,
+                                          on_delta=_report)
         data = _parse_json(result["text"])
     if data is None:
         # 输出无法解析（截断/格式异常）：显式标记为失败，禁止静默空草稿放行——

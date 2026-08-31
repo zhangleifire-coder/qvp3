@@ -369,3 +369,4 @@ input, select, textarea { font-size: 15px; }
   display: flex; align-items: center; justify-content: center; }
 .lbv-btn:hover { background: rgba(255,255,255,.3); }
 .lbv-zoom { color: #ddd; font-size: 12.5px; min-width: 44px; text-align: center; font-family: monospace; }
+.af-step { color: #2f855a; }   /* 直连节点子步骤（功能名+正在做什么） */

@@ -85,7 +85,7 @@ async def test_text_check_rewrite_mode_keeps_user_body():
     tid = out["task_id"]
 
     captured = {}
-    async def fake_failover(prompt):
+    async def fake_failover(prompt, **kw):
         captured["prompt"] = prompt
         return {"text": json.dumps({
             "query_clean": {"issues": [], "suggested": ""},
@@ -126,7 +126,7 @@ async def test_text_reject_marks_drive_targeted_rewrite():
 
     # 驳回：标记第1页文案 + 正文
     captured = {}
-    async def fake_failover(prompt):
+    async def fake_failover(prompt, **kw):
         captured["prompt"] = prompt
         return {"text": json.dumps({
             "query_clean": {"issues": [], "suggested": ""},
