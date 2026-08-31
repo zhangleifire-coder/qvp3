@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     # 任务内生图并行批量（2026-08-24）：6 张按批并发调用生图 API，
     # 1=退回串行（openox 老线路防限流用），2-3=linkai 等容忍并发的线路
     image_gen_parallel: int = 2
-    image_cost_per_image_cny: float = 0.2   # 每张生图成本（元，客户确认 2026-08-19）
+    image_cost_per_image_cny: float = 0.4   # 每张生图成本（元，2026-08-31 调价；原0.2 为 2026-08-19 客户确认价）
     # OCR（阿里百炼 qwen 系列，模型可按需换 qwen3.5-ocr / qwen3-vl-flash 等）
     ocr_model: str = "qwen-vl-ocr"
     ocr_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
@@ -75,7 +75,7 @@ class Settings(BaseSettings):
     mcp_callback_base_url: str = "http://127.0.0.1:8003"
     internal_callback_token: str = "qvp-internal-dev"
     # MCP 工具配额（按 task_id 计，防 Agent 失控烧钱的硬限制）
-    mcp_max_images_per_task: int = 8     # 6 张交付 + 2 张去重重生余量（¥0.2/张）
+    mcp_max_images_per_task: int = 8     # 6 张交付 + 2 张去重重生余量（¥0.4/张，2026-08-31 调价）
     mcp_max_web_searches_per_task: int = 3
     mcp_max_image_searches_per_task: int = 3
     mcp_max_ocr_per_task: int = 8
