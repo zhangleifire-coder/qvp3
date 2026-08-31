@@ -28,6 +28,9 @@ class Task(Base):
     gen_image_style = Column(Text)   # Agent/直连路径选定的图片整体视觉风格名
     # 015：选定时的风格描述词快照——风格库后续编辑/删除不影响本任务重生成同风格
     gen_image_style_desc = Column(Text)
+    # 016：asset_gen 前 LLM 从 6 页文案提取的每页画面主体（JSON 数组 6 字符串），
+    # 注入生图提示词替换通用主体锚定条款；NULL=未提取/提取失败
+    page_subjects = Column(JSONB)
     # 文字自查+人工核查（012）：自动自查草稿 / 人工修改后的最终版
     text_review = Column(JSONB)
     text_override = Column(JSONB)

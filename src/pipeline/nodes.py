@@ -426,13 +426,40 @@ async def node_asset_gen(input_data: dict) -> dict:
     from src.services.style_select import ensure_task_style, build_style_block
     style_name, style_desc = await ensure_task_style(input_data["task_id"])
     style_block = build_style_block(style_name, style_desc)
+    # 分页画面主体提取（2026-08-31 移植 8002，治「图文不对应」）：生图前一次
+    # LLM 从 6 页文案提取每页具体画面主体，注入提示词替换通用主体锚定句；
+    # 失败回退 None 不阻塞出图。结果落 tasks.page_subjects（迁移 016）便于排查
+    page_subjects = None
+    try:
+        from src.services.page_subject import extract_page_subjects
+        from src.gateway.failover import DEEPSEEK_MODEL, KIMI_MODEL
+        bodies = [(p.body or "") for p in page_list][:6]
+        while len(bodies) < 6:
+            bodies.append("")
+        page_subjects = await extract_page_subjects(
+            bodies,
+            llm_call=lambda p: call_with_failover(
+                p, DEEPSEEK_MODEL, KIMI_MODEL, max_retries=1))
+        if page_subjects:
+            async with SessionLocal() as session:
+                t = (await session.execute(
+                    select(Task).where(Task.id == input_data["task_id"]))).scalar_one()
+                t.page_subjects = page_subjects
+                await session.commit()
+    except Exception:
+        traceback.print_exc()
+        page_subjects = None
     prompts = [get_image_prompt(mode, p.body or "", i, template=image_template,
-                                style_block=style_block)
+                                style_block=style_block,
+                                page_subject=(page_subjects[i - 1]
+                                              if page_subjects else None))
                for i, p in enumerate(page_list, start=1)]
     while len(prompts) < 6:
         prompts.append(get_image_prompt(mode, "", len(prompts) + 1,
                                         template=image_template,
-                                        style_block=style_block))
+                                        style_block=style_block,
+                                        page_subject=(page_subjects[len(prompts)]
+                                                      if page_subjects else None)))
     # 串行 + 间隔生成：避免测试账户限流，保证每张图有足够处理时间
     results = []
     seen_hashes = set()

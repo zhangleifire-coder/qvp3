@@ -97,6 +97,19 @@ const TasksView = {
     modeLabel(m) { return MODE[m] ? MODE[m].label : (m || '-'); },
     riskTag(r) { return RISK[r] || null; },
     nodeLabel(name) { return this.nodeLabels[name] || name || '-'; },
+    // 把本次任务选中的配图风格存进我的风格库（偏好闭环入口，移植 8002）：
+    // lookup 预填描述词 → 存个人库（同名幂等覆盖）
+    async saveMyStyle(name) {
+      const actor = encodeURIComponent(this.actorName);
+      try {
+        const lk = await api.get(`/api/styles/lookup?style_name=${encodeURIComponent(name)}&actor=${actor}`);
+        await api.post(`/api/styles?actor=${actor}`, {
+          style_name: name, keywords: '', description: lk.description || '',
+          enabled: true, public: false,
+        });
+        alert(`已把「${name}」存入我的风格库（设置→风格关键词库可维护）`);
+      } catch (e) { alert('保存失败：' + e.message); }
+    },
     buildQuery() {
       const p = new URLSearchParams();
       if (this.fStatus) p.set('status', this.fStatus);
@@ -589,6 +602,10 @@ const TasksView = {
             <span v-if="detailTask.gen_style" class="tag tag-blue">风格：{{ detailTask.gen_style }}</span>
             <span v-if="detailTask.gen_category" class="tag tag-blue">垂类：{{ detailTask.gen_category }}</span>
             <span v-if="detailTask.gen_image_style" class="tag tag-blue">配图：{{ detailTask.gen_image_style }}</span>
+            <a v-if="detailTask.gen_image_style" href="javascript:;"
+               class="tag tag-gray" style="text-decoration:none"
+               title="把本次配图风格存进我的风格库（个人库）"
+               @click="saveMyStyle(detailTask.gen_image_style)">存为我的风格</a>
             <span v-if="detail.risk" class="tag" :class="riskTag(detail.risk.level).cls">风险：{{ riskTag(detail.risk.level).label }}</span>
             <span class="muted" style="margin-left:8px">{{ fmtTime(detailTask.created_at) }}</span>
           </p>

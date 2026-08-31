@@ -122,6 +122,12 @@ async def partial_regen(task_id) -> dict:
     # 沿用任务已锁定的视觉风格（首次未选则此时选定并落库）→ 重生成页与原图同风格
     style_name, style_desc = await ensure_task_style(task_id)
     style_block = build_style_block(style_name, style_desc)
+    # 沿用首图的分页画面主体快照（迁移016）：重生成页图文对应不打折
+    page_subjects = None
+    async with SessionLocal() as session:
+        t0 = (await session.execute(
+            select(Task).where(Task.id == task_id))).scalar_one()
+        page_subjects = t0.page_subjects if isinstance(t0.page_subjects, list) else None
 
     page_reasons: dict[int, list[str]] = {}
     image_reasons: dict[int, list[str]] = {}
@@ -202,7 +208,11 @@ async def partial_regen(task_id) -> dict:
         for p in images_to_regen:
             prompt = get_image_prompt(mode, body_map.get(p, ""), p,
                                       template=image_template,
-                                      style_block=style_block)
+                                      style_block=style_block,
+                                      page_subject=(page_subjects[p - 1]
+                                                    if page_subjects
+                                                    and 1 <= p <= len(page_subjects)
+                                                    else None))
             fb = image_reasons.get(p, []) + page_reasons.get(p, [])
             if fb:
                 prompt += ("\n\n【审核意见】该页上一版本被人工审核驳回："

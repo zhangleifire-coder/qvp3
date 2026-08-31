@@ -115,13 +115,25 @@ async def test_stage2_refs_section_injected():
 
 
 async def test_style_kb_crud_and_injection():
-    """风格库：CRUD + 导入幂等 + 注入（非空替代内置）。"""
+    """风格库：CRUD + 导入幂等 + 注入（公共库非空替代内置）。
+
+    2026-08-31 两级库改造后：张三须为真实 admin 用户（变更操作 401 校验），
+    条目写入公共库（public=True）才能进 Agent 注入文本 style_library_text。
+    """
+    from sqlalchemy import text as _text
+    async with SessionLocal() as session:
+        await session.execute(_text(
+            "INSERT INTO users (id, name, role, active) VALUES "
+            "(:i, '张三', 'admin', true) ON CONFLICT DO NOTHING"),
+            {"i": str(uuid.uuid4())})
+        await session.commit()
     from src.api.styles import (StyleIn, delete_style, import_styles, list_styles,
                                 style_library_text, upsert_style)
     await upsert_style(StyleIn(style_name="测试科技蓝", keywords="手机,数码",
-                               description="深蓝科技光感"), actor="张三")
+                               description="深蓝科技光感", public=True), actor="张三")
     await upsert_style(StyleIn(style_name="测试科技蓝", keywords="手机",
-                               description="更新后的描述"), actor="张三")   # 同名覆盖
+                               description="更新后的描述", public=True),
+                       actor="张三")   # 同名覆盖
     items = (await list_styles())["items"]
     row = next(i for i in items if i["style_name"] == "测试科技蓝")
     assert row["description"] == "更新后的描述"
@@ -138,7 +150,7 @@ async def test_style_kb_crud_and_injection():
         filename = "t.csv"
         async def read(self):
             return csv_file.getvalue()
-    r = await import_styles(file=_F(), actor="张三")
+    r = await import_styles(file=_F(), actor="张三", public=True)
     assert r["imported"] == 1
     assert "测试暖木" in await style_library_text()
 

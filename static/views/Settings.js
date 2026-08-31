@@ -2,8 +2,9 @@
 const SettingsView = {
   data() {
     return {
-      styleItems: [], styleForm: { style_name: '', keywords: '', description: '', enabled: true },
-      styleImportMsg: '',
+      styleItems: [], styleForm: { style_name: '', keywords: '', description: '', enabled: true, public: false },
+      styleImportMsg: '', importPublic: false,
+      styleStats: null, styleDefault: null,
       tab: 'prompts',
       // 密码
       old_password: '', new_password: '', confirm: '', pwError: '', pwMsg: '', savingPw: false,
@@ -31,13 +32,16 @@ const SettingsView = {
   },
   methods: {
     async loadStyles() {
-      try { this.styleItems = (await api.get('/api/styles')).items || []; }
-      catch (e) { /* 静默 */ }
+      try {
+        const q = this.user ? '?actor=' + encodeURIComponent(this.user.name) : '';
+        this.styleItems = (await api.get('/api/styles' + q)).items || [];
+      } catch (e) { /* 静默 */ }
+      this.loadStyleStats();
     },
     async saveStyle() {
       try {
         await api.post('/api/styles?actor=' + encodeURIComponent((getUser() || {}).name || ''), this.styleForm);
-        this.styleForm = { style_name: '', keywords: '', description: '', enabled: true };
+        this.styleForm = { style_name: '', keywords: '', description: '', enabled: true, public: false };
         this.loadStyles();
       } catch (e) { alert('保存失败：' + e.message); }
     },
@@ -52,12 +56,34 @@ const SettingsView = {
       const fd = new FormData();
       fd.append('file', f);
       fd.append('actor', (getUser() || {}).name || 'anonymous');
+      if (this.importPublic) fd.append('public', 'true');
       try {
         const r = await api.postForm('/api/styles/import', fd);
         this.styleImportMsg = `导入 ${r.imported} 条` + (r.errors && r.errors.length ? `，${r.errors.length} 行失败` : '');
         this.loadStyles();
       } catch (e) { this.styleImportMsg = '导入失败：' + e.message; }
       ev.target.value = '';
+    },
+    // ---------- 风格偏好闭环（移植 8002）：统计 + 钉选 ----------
+    async loadStyleStats() {
+      if (!this.user) return;
+      try {
+        const r = await api.get('/api/styles/stats?actor=' + encodeURIComponent(this.user.name));
+        this.styleStats = r.items || [];
+        this.styleDefault = r.default_style || null;
+      } catch (e) { this.styleStats = []; }
+    },
+    async pinDefault(name) {
+      try {
+        await api.post('/api/styles/default?actor=' + encodeURIComponent(this.user.name), { style_name: name });
+        this.styleDefault = name;
+      } catch (e) { alert('钉选失败：' + e.message); }
+    },
+    async clearDefault() {
+      try {
+        await api.delete('/api/styles/default?actor=' + encodeURIComponent(this.user.name));
+        this.styleDefault = null;
+      } catch (e) { alert('取消失败：' + e.message); }
     },
     fmtTime,
     // ---------- 工作日志 ----------
@@ -209,10 +235,13 @@ const SettingsView = {
     </div>
 
     <div class="card" v-if="tab==='styles'">
-      <h2>风格关键词库 <span class="muted" style="font-weight:normal;font-size:13px">生成时 Agent 按关键词自动匹配视觉风格；库为空时用系统内置 8 风格</span></h2>
-      <div style="display:flex;gap:10px;align-items:center;margin:10px 0">
+      <h2>风格关键词库 <span class="muted" style="font-weight:normal;font-size:13px">生成时按关键词自动匹配视觉风格（我的库优先，空则公共库，再空用系统内置）；钉选默认后直通不再随机</span></h2>
+      <div style="display:flex;gap:10px;align-items:center;margin:10px 0;flex-wrap:wrap">
         <input ref="styleCsv" type="file" accept=".csv" style="display:none" @change="importStyles">
         <button class="btn btn-outline btn-sm" @click="$refs.styleCsv.click()">📥 导入训练数据 CSV（style_name,keywords,description）</button>
+        <label v-if="isAdmin" class="muted" style="font-size:13px;display:flex;align-items:center;gap:4px">
+          <input type="checkbox" v-model="importPublic"> 导入到公共库
+        </label>
         <a class="btn btn-outline btn-sm" style="text-decoration:none" href="/api/styles/template" download>下载模板</a>
         <span v-if="styleImportMsg" class="muted" style="font-size:13px">{{ styleImportMsg }}</span>
       </div>
@@ -220,14 +249,18 @@ const SettingsView = {
         <input v-model="styleForm.style_name" placeholder="风格名（如：科技蓝调）" required style="flex:1">
         <input v-model="styleForm.keywords" placeholder="匹配关键词（逗号分隔，如：手机,数码,芯片,参数）" style="flex:2">
         <input v-model="styleForm.description" placeholder="视觉描述词（注入生图提示词）" style="flex:2">
+        <label v-if="isAdmin" class="muted" style="font-size:13px;display:flex;align-items:center;gap:4px;white-space:nowrap">
+          <input type="checkbox" v-model="styleForm.public"> 公共
+        </label>
         <button class="btn btn-primary btn-sm">{{ styleForm.id ? '更新' : '添加' }}</button>
-        <button v-if="styleForm.id" type="button" class="btn btn-outline btn-sm" @click="styleForm={style_name:'',keywords:'',description:'',enabled:true}">取消</button>
+        <button v-if="styleForm.id" type="button" class="btn btn-outline btn-sm" @click="styleForm={style_name:'',keywords:'',description:'',enabled:true,public:false}">取消</button>
       </form>
       <table class="table" style="margin-top:10px">
-        <thead><tr><th>风格名</th><th>关键词</th><th>描述词</th><th>启用</th><th style="text-align:right">操作</th></tr></thead>
+        <thead><tr><th>风格名</th><th>归属</th><th>关键词</th><th>描述词</th><th>启用</th><th style="text-align:right">操作</th></tr></thead>
         <tbody>
           <tr v-for="r in styleItems" :key="r.id">
             <td><b>{{ r.style_name }}</b></td>
+            <td><span class="tag" :class="r.scope==='mine' ? 'tag-blue' : 'tag-gray'">{{ r.scope==='mine' ? '我的' : '公共' }}</span></td>
             <td class="muted" style="font-size:13px">{{ r.keywords || '—' }}</td>
             <td class="muted" style="font-size:13px">{{ r.description || '—' }}</td>
             <td><span class="tag" :class="r.enabled ? 'tag-green' : 'tag-gray'">{{ r.enabled ? '启用' : '停用' }}</span></td>
@@ -236,9 +269,29 @@ const SettingsView = {
               <button class="btn btn-sm btn-danger-ghost" @click="removeStyle(r)">删除</button>
             </td>
           </tr>
-          <tr v-if="!styleItems.length"><td colspan="5" class="muted" style="text-align:center;padding:18px">暂无风格条目——添加或导入训练数据后，生成时将自动匹配</td></tr>
+          <tr v-if="!styleItems.length"><td colspan="6" class="muted" style="text-align:center;padding:18px">暂无风格条目——添加或导入训练数据后，生成时将自动匹配</td></tr>
         </tbody>
       </table>
+
+      <h3 style="margin-top:22px">我的风格偏好 <span class="muted" style="font-weight:normal;font-size:13px">按你的历史任务统计；任务数 ≥3 且通过率 ≥80% 建议钉选为默认</span></h3>
+      <div style="margin:8px 0;display:flex;align-items:center;gap:10px">
+        <span class="tag" :class="styleDefault ? 'tag-blue' : 'tag-gray'">当前默认：{{ styleDefault || '未钉选（自动随机）' }}</span>
+        <button v-if="styleDefault" class="btn btn-outline btn-sm" @click="clearDefault">取消默认</button>
+      </div>
+      <table class="table" style="margin-top:6px" v-if="styleStats && styleStats.length">
+        <thead><tr><th>风格</th><th>任务数</th><th>通过/驳回</th><th>通过率</th><th>重生成次数</th><th style="text-align:right">操作</th></tr></thead>
+        <tbody>
+          <tr v-for="s in styleStats" :key="s.style_name">
+            <td><b>{{ s.style_name }}</b><span v-if="s.total>=3 && s.approval_rate!==null && s.approval_rate>=0.8" class="tag tag-green" style="margin-left:6px">建议钉选</span></td>
+            <td>{{ s.total }}</td>
+            <td>{{ s.approved }} / {{ s.rejected }}</td>
+            <td>{{ s.approval_rate===null ? '—' : (s.approval_rate*100).toFixed(0)+'%' }}</td>
+            <td>{{ s.regen_count }}</td>
+            <td style="text-align:right"><button class="btn btn-outline btn-sm" @click="pinDefault(s.style_name)">钉选为默认</button></td>
+          </tr>
+        </tbody>
+      </table>
+      <p v-else class="muted" style="font-size:13px">暂无统计——完成几个任务后这里会显示你的风格偏好</p>
     </div>
 
     <div class="card" v-if="tab==='logs'">

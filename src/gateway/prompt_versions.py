@@ -29,11 +29,32 @@ _SHARED_IMAGE_STYLE = (
     "主体清晰不被遮挡、展现完整主体不裁剪关键特征；"
     "主体质感按本篇风格执行，但必须精致干净——忌廉价塑料感、忌粗糙未完成的笔触。"
     # 主体锚定（风格库训练方法总结·六-1）：风格词只作光影色调氛围，
-    # 画面主体必须是本页文案讲的事物本身，严禁把风格词具象化成隐喻物
+    # 画面主体必须是本页文案讲的事物本身，严禁把风格词具象化成隐喻物。
+    # get_image_prompt(page_subject=...) 时本句被替换为该页的具体主体句
     "（主体锚定）画面主体必须直接描绘本页文案所讲的事物本身，"
     "风格描述词仅用于光影、色调与氛围，严禁把风格词具象化为植物、发芽、"
     "石缝等隐喻物。"
 )
+
+# 通用主体锚定句（_SHARED_IMAGE_STYLE 的锚定子串，_apply_page_subject 替换用）
+_SUBJECT_ANCHOR = (
+    "（主体锚定）画面主体必须直接描绘本页文案所讲的事物本身，"
+    "风格描述词仅用于光影、色调与氛围，严禁把风格词具象化为植物、发芽、"
+    "石缝等隐喻物。"
+)
+
+
+def _apply_page_subject(prompt: str, page_subject: str = None) -> str:
+    """动态主体锚定（2026-08-31 移植 8002）：asset_gen 已从本页文案提取画面主体时，
+    把通用锚定句替换为该主体句；无主体/模板不含锚定句则原样返回。"""
+    subject = (page_subject or "").strip()
+    if subject and _SUBJECT_ANCHOR in prompt:
+        prompt = prompt.replace(
+            _SUBJECT_ANCHOR,
+            f"（主体锚定）本页画面主体必须是：{subject}，占据画面视觉中心；"
+            f"风格描述词仅作光影色调氛围，"
+            f"严禁用与本页文案无关的象征隐喻物替代主体。")
+    return prompt
 
 DRAFT_PROMPTS = {
     "general": "请你以小红书博主的写作风格及模式，结合权威可靠信源的数据库，创作一篇图文内容。要求：简洁清晰、结构完整、总分总结构、每段加小标题、400-700字、无绝对化表述、无emoji、中文标点。",
@@ -85,12 +106,15 @@ def get_draft_prompt(mode: str) -> str:
 
 
 def get_image_prompt(mode: str, page_body: str, page_index: int = None,
-                     template: str = None, style_block: str = None) -> str:
+                     template: str = None, style_block: str = None,
+                     page_subject: str = None) -> str:
     """组装单页生图提示词：题材前缀 → 本页文案 → 风格段 → 硬约束底座 → 布局轮换。
 
     - template：用户自定义生图提示词（替代系统模板），排版轮换仍由代码追加；
     - style_block：本篇视觉风格段（src/services/style_select.py 生成，含6页统一条款）；
-      一篇 6 页传同一段 → 字体/色调/装饰全篇统一，布局随页轮换。
+      一篇 6 页传同一段 → 字体/色调/装饰全篇统一，布局随页轮换；
+    - page_subject：本页画面主体（src/services/page_subject.py 提取），有值时
+      底座通用锚定句被替换为本页具体主体句（图文对应）。
     """
     template = template or IMAGE_PROMPTS.get(mode, IMAGE_PROMPTS["general"])
     prompt = template.replace("{page_body}", page_body)
@@ -100,7 +124,7 @@ def get_image_prompt(mode: str, page_body: str, page_index: int = None,
     if page_index:
         # 追加本页专属排版指令，让 6 页构图错开（风格段不变，只变布局）
         prompt += _PAGE_LAYOUTS[(page_index - 1) % len(_PAGE_LAYOUTS)]
-    return prompt
+    return _apply_page_subject(prompt, page_subject)
 
 
 # 分页文案：由 LLM 把整篇正文改写成 6 页图上文案（替代旧的机械切割，2026-08-20）
