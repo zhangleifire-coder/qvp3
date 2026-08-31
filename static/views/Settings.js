@@ -65,6 +65,15 @@ const SettingsView = {
       ev.target.value = '';
     },
     // ---------- 风格偏好闭环（移植 8002）：统计 + 钉选 ----------
+    editStyle(r) {
+      // 行数据的 scope 需映射回表单 public 字段，否则编辑公共行保存时会
+      // 错误落入个人库（同名分叉成两条）
+      this.styleForm = {
+        style_name: r.style_name, keywords: r.keywords,
+        description: r.description, enabled: r.enabled,
+        public: r.scope === 'public',
+      };
+    },
     async loadStyleStats() {
       if (!this.user) return;
       try {
@@ -265,8 +274,8 @@ const SettingsView = {
             <td class="muted" style="font-size:13px">{{ r.description || '—' }}</td>
             <td><span class="tag" :class="r.enabled ? 'tag-green' : 'tag-gray'">{{ r.enabled ? '启用' : '停用' }}</span></td>
             <td style="text-align:right">
-              <button class="btn btn-outline btn-sm" @click="styleForm={...r}">编辑</button>
-              <button class="btn btn-sm btn-danger-ghost" @click="removeStyle(r)">删除</button>
+              <button v-if="r.scope==='mine' || isAdmin" class="btn btn-outline btn-sm" @click="editStyle(r)">编辑</button>
+              <button v-if="r.scope==='mine' || isAdmin" class="btn btn-sm btn-danger-ghost" @click="removeStyle(r)">删除</button>
             </td>
           </tr>
           <tr v-if="!styleItems.length"><td colspan="6" class="muted" style="text-align:center;padding:18px">暂无风格条目——添加或导入训练数据后，生成时将自动匹配</td></tr>

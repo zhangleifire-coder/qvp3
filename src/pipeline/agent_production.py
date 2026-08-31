@@ -584,6 +584,14 @@ async def node_agent_production(input_data: dict) -> dict:
             select(Task).where(Task.id == task_id))).scalar_one()
         if out["image_style"]:
             task_row.gen_image_style = out["image_style"]
+            # 描述词快照同步落库（015/016 口径）：否则直连重生成按名反查不到
+            # 会误触发重选，风格漂移与首图不一致
+            if not task_row.gen_image_style_desc:
+                from src.services.style_select import style_desc_for
+                d = await style_desc_for(out["image_style"],
+                                         task_row.created_by)
+                if d:
+                    task_row.gen_image_style_desc = d
         if out["content_style"] and not task_row.gen_style:
             task_row.gen_style = out["content_style"]
         claim = Claim(task_id=task_id, claim_text=query, risk_level="P1", position=1)
