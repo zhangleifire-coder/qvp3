@@ -504,26 +504,54 @@ async def node_asset_gen(input_data: dict) -> dict:
                                         style_block=style_block,
                                         page_subject=(page_subjects[len(prompts)]
                                                       if page_subjects else None)))
-    # 串行 + 间隔生成：避免测试账户限流，保证每张图有足够处理时间
-    results = []
-    seen_hashes = set()
-    extra_gen = 0
-    for i in range(1, 7):
-        _emit_progress(input_data["task_id"], "asset_gen",
-                       msg=f"生成配图 {i}/6（{style_name}）")
+    # 并行生图（2026-09-01 用户要求用 fusionai 6 并发通道）：
+    # IMAGE_GEN_PARALLEL 控制同批并发数（6=六张齐发，1=退回串行防限流）；
+    # 内容去重/尺寸校验挪到批后串行做（同批在飞时无法互相比对，批内两两比 + 与任务已有图比）
+    parallel = max(1, int(settings.image_gen_parallel or 1))
+    _emit_progress(input_data["task_id"], "asset_gen",
+                   msg=f"并行生成配图 6 张（并发 {parallel}，风格：{style_name}）")
+
+    async def _gen_page(i: int) -> tuple[int, dict]:
         r = await _generate_single_asset(
             input_data["task_id"], i, prompts[i - 1], reference_urls)
-        if not settings.mock_image_gen:
+        return i, r
+
+    results: list[dict] = [None] * 6   # type: ignore[list-item]
+    if parallel <= 1:
+        for i in range(1, 7):
+            _, r = await _gen_page(i)
+            results[i - 1] = r
+            _emit_progress(input_data["task_id"], "asset_gen", msg=f"P{i} 完成")
+    else:
+        for batch_start in range(0, 6, parallel):
+            batch = range(batch_start + 1, min(batch_start + parallel, 6) + 1)
+            outs = await asyncio.gather(*[_gen_page(i) for i in batch],
+                                        return_exceptions=True)
+            for out in outs:
+                if isinstance(out, Exception):
+                    traceback.print_exc()
+                    continue  # 单页失败不拖垮整批，落库时跳过空位
+                i, r = out
+                results[i - 1] = r
+                _emit_progress(input_data["task_id"], "asset_gen",
+                               msg=f"P{i} 完成" if not settings.mock_image_gen
+                                   else f"P{i}（mock）")
+    # 批后统一去重 + 尺寸校验：重复页换构图重生成（串行小循环）
+    seen_hashes = set()
+    extra_gen = 0
+    if not settings.mock_image_gen:
+        for i in range(1, 7):
+            r = results[i - 1]
+            if not r:
+                continue
             r, extra = await _dedupe_and_validate(r, prompts[i - 1], reference_urls,
                                                   input_data["task_id"], i, seen_hashes)
             extra_gen += extra
+            results[i - 1] = r
             if extra:
                 _emit_progress(input_data["task_id"], "asset_gen",
                                msg=f"P{i} 与已有图重复，已换构图重生成")
-        _emit_progress(input_data["task_id"], "asset_gen",
-                       msg=f"P{i} 完成" if not settings.mock_image_gen else f"P{i}（mock）")
-        results.append(r)
-        await asyncio.sleep(settings.image_gen_delay_seconds)
+    results = [r for r in results if r]
     async with SessionLocal() as session:
         for r in results:
             session.add(Asset(**r))
