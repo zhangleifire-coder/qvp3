@@ -207,7 +207,7 @@ async def node_evidence_build(input_data: dict) -> dict:
         await session.flush()
         for r in results:
             session.add(Evidence(claim_id=claim.id, source_url=r["url"] or "no-url",
-                                 source_level="P2", excerpt=(r["summary"] or "")[:500],
+                                 source_level=source_level_for(r["url"]), excerpt=(r["summary"] or "")[:500],
                                  supports=True))
         # 4. 争议预警：创建 P1 问题单（事实审核 A 域）
         if conflicts:
@@ -219,10 +219,23 @@ async def node_evidence_build(input_data: dict) -> dict:
             "cost_cny": settings.doubao_search_cost_per_call + verify_cost}
 
 
+# 信源可信度分级（2026-09-01 吸收 8002，对齐人工审核 SOP 采信优先级：
+# gov/edu 官方 > 百科类 > 普通网页；此前一律硬编码 P2。仅影响展示分级，
+# 无下游行为依赖（已核查 cross_check/risk 不读该字段）
+def source_level_for(url: str) -> str:
+    u = (url or "").lower()
+    if any(k in u for k in ("gov.cn", "edu.cn", ".gov/", ".edu/")):
+        return "P0"
+    if any(k in u for k in ("baike.baidu.com", "wikipedia.org")):
+        return "P2"
+    return "P3"
+
+
 async def node_draft_gen(input_data: dict) -> dict:
     from src.models.tasks import Task
     from src.models.drafts import Draft
-    from src.gateway.prompt_versions import get_effective_prompt
+    from src.gateway.prompt_versions import (get_effective_prompt, default_prompt,
+                                             DRAFT_POLISH_PROMPT, _DRAFT_SHARED)
     async with SessionLocal() as session:
         task = (await session.execute(
             select(Task).where(Task.id == input_data["task_id"]))).scalar_one()
@@ -230,6 +243,10 @@ async def node_draft_gen(input_data: dict) -> dict:
         mode = task.mode or "general"
         owner_id = task.created_by
     template = await get_effective_prompt("draft_gen", mode, owner_id)
+    # 人设化共享段（2026-09-01 吸收 8002）：仅系统默认模板追加——用户自定义
+    # 模板代表显式意图，不覆盖（防负优化）
+    if template == default_prompt("draft_gen", mode):
+        template = template + "\n" + _DRAFT_SHARED
     prompt = template + "\n\n" + query
     prompt_version = f"draft_{mode}_v1"
     # 驳回重生成：审核意见与系统提示词、任务 query 一起作为处理依据，
@@ -247,6 +264,26 @@ async def node_draft_gen(input_data: dict) -> dict:
     result = await call_with_failover(prompt, DEEPSEEK_MODEL, KIMI_MODEL,
                                       on_delta=_stream_reporter(
                                           input_data["task_id"], "draft_gen"))
+    total_cost = result["cost_cny"]
+    # 校稿润色（2026-09-01 吸收 8002 人工流程两轮校稿；节点内二段式实现，
+    # 对外结构零变化）：删存疑精确数字/夸大表述、去 AI 腔、补免责声明。
+    # 防负优化护栏：开关可关；润色稿长度不足原稿 60% 视为截断/跑偏，沿用原稿
+    if settings.draft_polish_enabled and len(result["text"] or "") >= 200:
+        _emit_progress(input_data["task_id"], "draft_gen", msg="校稿润色中")
+        try:
+            polished = await call_with_failover(
+                DRAFT_POLISH_PROMPT.replace("{body}", result["text"]),
+                DEEPSEEK_MODEL, KIMI_MODEL, max_retries=1,
+                on_delta=_stream_reporter(input_data["task_id"], "draft_gen"))
+            p_text = (polished["text"] or "").strip()
+            if len(p_text) >= len(result["text"]) * 0.6:
+                result = {**result, "text": p_text,
+                          "model_version": polished["model_version"],
+                          "cost_cny": polished["cost_cny"], "degraded": polished["degraded"]}
+                prompt_version += "_polished"
+            total_cost += polished["cost_cny"]
+        except Exception:
+            traceback.print_exc()  # 润色失败沿用原稿，不阻塞
     async with SessionLocal() as session:
         from sqlalchemy import func
         max_v = (await session.execute(
@@ -257,7 +294,7 @@ async def node_draft_gen(input_data: dict) -> dict:
             model_version=result["model_version"], prompt_version=prompt_version))
         await session.commit()
     return {"text": result["text"], "model_version": result["model_version"],
-            "prompt_version": prompt_version, "cost_cny": result["cost_cny"],
+            "prompt_version": prompt_version, "cost_cny": total_cost,
             "degraded": result["degraded"]}
 
 
@@ -455,12 +492,17 @@ async def node_asset_gen(input_data: dict) -> dict:
             select(PageCopy).where(PageCopy.task_id == input_data["task_id"]))
         page_list = pages.scalars().all()
         reference_urls = None
-        if mode in ("compare", "single"):
+        # general 默认纯文生图；ref_for_general_enabled 开启且有实图时同样取参考
+        #（2026-09-01 E 项，默认关；开启后提示词前缀换 single 版语义融入实景图）
+        if mode in ("compare", "single") or (
+                mode == "general" and settings.ref_for_general_enabled):
             refs = await session.execute(
                 select(Asset).where(Asset.task_id == input_data["task_id"],
                                     Asset.source_type == "official",
                                     Asset.is_illustration == False))
             reference_urls = [a.image_url for a in refs.scalars() if a.image_url]
+    if reference_urls and mode == "general":
+        mode = "single"   # 仅影响提示词前缀选择，任务本身 mode 不变
     # 自定义生图模板（提示词库启用的）替代系统模板；排版轮换仍由代码追加
     image_template = await get_effective_prompt("image_gen", mode, owner_id)
     # 风格自适应（2026-08-31）：按 query 题材从风格库加权随机选一个视觉方向，

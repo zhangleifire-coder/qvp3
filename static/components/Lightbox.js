@@ -1,12 +1,14 @@
 // 全屏图片查看器：点击配图进入，支持缩放（滚轮/双击/按钮/键盘±）、拖拽平移、
 // 左右切换（按钮/键盘 ←→）、Esc 关闭。
-// 用法：<img-lightbox :img="zoom" @close="zoom=null" />
-// zoom = {src, title, text}（单张）或 {list: [{src,title,text}...], index: n}（多张）
+// 用法：<img-lightbox :img="zoom" @close="zoom=null" @save-text="onSaveText" />
+// zoom = {src, title, text}（单张）或 {list: [{src,title,text,editable}...], index: n}（多张）
+// list 项带 editable 时文案区显示「✎ 改文案」：textarea 保存后 emit('save-text', {index, text})
 const ImgLightbox = {
   props: { img: { type: Object, default: null } },
-  emits: ['close'],
+  emits: ['close', 'save-text'],
   data() {
-    return { idx: 0, scale: 1, tx: 0, ty: 0, dragging: false, sx: 0, sy: 0 };
+    return { idx: 0, scale: 1, tx: 0, ty: 0, dragging: false, sx: 0, sy: 0,
+            editing: false, draft: '' };
   },
   computed: {
     list() {
@@ -26,6 +28,7 @@ const ImgLightbox = {
     img(v) {
       this.idx = (v && v.index) || 0;
       this.resetView();
+      this.editing = false;   // 切图退出编辑态
       if (v) {
         window.addEventListener('keydown', this.onKey);
         window.addEventListener('wheel', this.onWheel, { passive: false });
@@ -84,12 +87,25 @@ const ImgLightbox = {
     },
     onUp() { this.dragging = false; },
     onKey(e) {
+      if (this.editing) return;   // 编辑文案时按键留给输入框
       if (e.key === 'Escape') this.$emit('close');
       else if (e.key === 'ArrowLeft') this.prev();
       else if (e.key === 'ArrowRight') this.next();
       else if (e.key === '0') this.resetView();
       else if (e.key === '+' || e.key === '=') this.zoomBtn(1.25);
       else if (e.key === '-') this.zoomBtn(1 / 1.25);
+    },
+    // ── 文案编辑（2026-09-01 吸收 8002）：editable 项可 ✎ 改文案 ──
+    startEdit() {
+      this.draft = this.cur.text || '';
+      this.editing = true;
+    },
+    saveText() {
+      const t = this.draft.trim();
+      if (!t) { alert('文案不能为空'); return; }
+      this.$emit('save-text', { index: this.idx, text: t,
+                                page: (this.cur.title || '').match(/^P(\d+)/) });
+      this.editing = false;
     },
   },
   template: `
@@ -116,7 +132,20 @@ const ImgLightbox = {
     <div class="lb-caption">
       <b>{{ cur.title }}</b>
       <span v-if="multi" class="lb-counter">{{ idx + 1 }} / {{ list.length }}</span>
-      <p v-if="cur.text">{{ cur.text }}</p>
+      <template v-if="!editing">
+        <a v-if="cur.editable" href="javascript:" class="lb-edit-link"
+           @click="startEdit">✎ 改文案</a>
+        <p v-if="cur.text">{{ cur.text }}</p>
+      </template>
+      <template v-else>
+        <textarea v-model="draft" rows="4" class="lb-edit-area"
+                  placeholder="输入新文案（≤200字），保存后可立即重画该页配图"></textarea>
+        <div style="margin-top:6px;display:flex;gap:8px">
+          <button class="btn btn-primary btn-sm" @click="saveText">保存文案</button>
+          <button class="btn btn-outline btn-sm" @click="editing=false">取消</button>
+          <span class="muted" style="font-size:12px;align-self:center">{{ draft.length }}/200</span>
+        </div>
+      </template>
       <span class="muted" style="font-size:11px">滚轮/双击缩放 · 拖拽平移 · ←→ 切换 · Esc 关闭</span>
     </div>
   </div>`,

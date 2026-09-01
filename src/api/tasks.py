@@ -906,6 +906,50 @@ async def upload_refs(task_id: str, files: list[UploadFile] = File(...),
     return {"ok": True, "uploaded": uploaded, "candidates": total}
 
 
+class PageTextEditIn(BaseModel):
+    body: str = ""                 # 新文案（≤200 字，与图上文字量级一致）
+    actor: str = "anonymous"
+
+
+@router.put("/api/tasks/{task_id}/pages/{page_index}/text")
+async def edit_page_text(task_id: str, page_index: int, payload: PageTextEditIn):
+    """分页文案手动编辑（2026-09-01 吸收 8002）：预览大图发现文案问题时人直接改，
+    不必让 LLM 重写。仅更新 PageCopy.body——配图与新文案的一致性由前端随后调
+    edit_image 定点重画（修改要求=按新文案重画）保证。"""
+    from src.models.drafts import PageCopy
+    try:
+        tid = uuid.UUID(task_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid task_id")
+    if not (1 <= page_index <= 6):
+        raise HTTPException(status_code=400, detail="page_index 必须在 1-6 之间")
+    body = (payload.body or "").strip()
+    if not body:
+        raise HTTPException(status_code=400, detail="文案不能为空")
+    if len(body) > 200:
+        raise HTTPException(status_code=400,
+                            detail=f"文案过长（{len(body)} 字，上限 200）")
+    async with SessionLocal() as session:
+        task = (await session.execute(
+            select(Task).where(Task.id == tid))).scalars().first()
+        if not task:
+            raise HTTPException(status_code=404, detail="task not found")
+        row = (await session.execute(
+            select(PageCopy).where(PageCopy.task_id == tid,
+                                   PageCopy.page_index == page_index))
+        ).scalars().first()
+        if not row:
+            raise HTTPException(status_code=404, detail="page copy not found")
+        old_len = len(row.body or "")
+        row.body = body
+        await session.commit()
+    await log_action(payload.actor, "page_edit",
+                     f"手动修改第{page_index}页文案（{old_len}→{len(body)}字）",
+                     task_id=tid)
+    return {"ok": True, "page_index": page_index, "chars": len(body),
+            "note": "文案已更新；如需配图同步，请继续定点重画该页"}
+
+
 class ImageEditIn(BaseModel):
     instruction: str = ""          # 修改意见（如：文字换成「吸力对比」、换构图）
     actor: str = "anonymous"

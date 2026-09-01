@@ -16,12 +16,19 @@ _SHARED_IMAGE_STYLE = (
     # 文字：跨风格硬约束（字体族与颜色跟随本篇风格，但正确性要求全风格一致）
     "文字：大号标题（约为正文字号的2.5倍），层级分明，标题字体与颜色严格按本篇风格执行，"
     "全篇字体系统一致；每行是短句，要点间用细线或小色块分隔。"
+    # 2026-09-01 吸收 8002 人工样例规律：双色标题/深字浅底正向措辞/胶囊豁免/深框≤1
+    "主标题用双色排版：主体字深色，其中1-2个关键词用强调暖色（暖橘/砖红），"
+    "对比类标题的「VS」等对比词也用强调色。"
+    "文字默认深灰或黑色，直接排在画面的浅色留白区域上，不要底色框、不要深色衬底；"
+    "主题色彩色胶囊/圆角标签压白字做重点标注是推荐形式、不算深色框；"
+    "全套6页中深色（近黑/深灰）底文字框最多出现1次，严禁每页深色框压白字。"
     "所有文字必须清晰可读、标准中文字体，禁止艺术化变形、阴影、描边、透视扭曲，"
     "正文统一基线对齐、可印刷级清晰；每页图上文字（含标题）30-100 字，"
     "且一篇内各页文字量基本均衡（任意两页相差不超过 25 字），"
     "每页只突出一个核心信息点，不出现字号过小的文字，"
-    "图中的每一个汉字都必须是真实存在、笔画正确的汉字，严禁生成不存在的伪汉字或乱码字符，"
-    "拿不准如何正确书写的文字宁可不出现在图中；"
+    "图中的每一个汉字都必须是中国大陆规范简体字形，严禁日文新字体（実・対・変・単・図・芸）、"
+    "繁体字、异体字、自造字或乱码字符；把图中文字当作需要逐字精确复制的排版内容而非装饰纹理："
+    "给定文案一字不差，不增字、不漏字、不改写；拿不准如何正确书写的文字宁可不出现在图中；"
     "不要出现「封面/第X页」等字样。排版不要模板化（每页排版不同），"
     "图片元素不与前页重复。不出现人脸、书籍等元素，尽量不出现带文字的物体。"
     # 装饰：克制原则（具体元素跟随风格）
@@ -67,17 +74,30 @@ _IMAGE_CONSTRAINTS_EN = (
     "TYPOGRAPHY: large bold headline ~2.5x body size, clear hierarchy; "
     "typeface family and color strictly follow the unified style and stay "
     "identical across all 6 pages; short phrases per line, thin dividers or "
-    "small color ticks between points. All on-image text must be crisp, "
+    "small color ticks between points. "
+    # 2026-09-01 吸收 8002 人工样例规律：双色标题/深字浅底/胶囊豁免/深框≤1
+    "Two-tone headline: headline body in dark ink with 1-2 KEYWORDS in a warm "
+    "accent color (warm orange / brick red); in comparison cards the 'VS' or "
+    "comparison word also takes the accent color. "
+    "Text sits dark-on-light directly on pale whitespace (dark gray/black ink, "
+    "no backing box, no dark panel behind text); theme-colored CAPSULE or "
+    "rounded labels with white text are RECOMMENDED for highlights and do NOT "
+    "count as dark boxes; a dark (near-black) text panel may appear on at most "
+    "ONE of the 6 pages. "
+    "All on-image text must be crisp, "
     "print-quality standard Chinese type — no artistic distortion, no shadows, "
     "no outlines, no perspective warping; 30-100 Chinese characters per page "
     "including headline, kept balanced across the 6 pages (max 25-char "
     "difference between any two pages); one core message per page; no tiny "
     "type. "
     "HANZI RULE (critical): every Chinese character rendered on the card must "
-    "be a real, correctly-formed simplified Chinese character — never invent "
-    "pseudo-hanzi or garbled glyphs; if unsure how to write a character, "
-    "omit that word rather than render it wrong. Do NOT draw words like "
-    "「封面」or page numbers. Layout must differ page to page (no template "
+    "be a real, mainland-standard SIMPLIFIED Chinese form — never Japanese "
+    "shinjitai variants (実 対 変 単 図 芸), never traditional or variant "
+    "forms, never invented pseudo-hanzi or garbled glyphs. Treat the on-image "
+    "text as TYPESET COPY to reproduce verbatim — not decorative texture: "
+    "no added, missing or rewritten characters; if unsure how to write a "
+    "character, omit that word rather than render it wrong. Do NOT draw words "
+    "like 「封面」or page numbers. Layout must differ page to page (no template "
     "copying); image elements must not repeat across pages. No human faces, "
     "no books; avoid objects containing printed text. "
     "DECOR: restrained and consistent with the unified style — no sticker "
@@ -142,6 +162,38 @@ DRAFT_PROMPTS = {
     "single": "请你以小红书博主的写作风格，结合权威可靠信源的数据库，创作一篇单品深度测评图文。围绕单一产品/事物展开，依次讲透：它是什么、原理或关键参数、实测体验、优点、局限、安全/使用提醒、适合谁。要求：简洁清晰、总分总结构、每段加小标题、400-700字、无绝对化表述、无emoji、中文标点，事实数据需有信源支撑。",
     "compare": "请你以小红书博主的写作风格，结合权威可靠信源的数据库，创作一篇对比类图文。客观对比两个主体（产品/学校/方案等），平分笔墨，逐维度列出各自的事实参数、优劣与适用场景，最后给出取舍建议。要求：简洁清晰、总分总结构、每段加小标题、400-700字、无绝对化表述、无emoji、中文标点，事实数据需有信源支撑，不偏袒任何一方。",
 }
+
+# 正文人设化共享段（2026-09-01 吸收 8002 对齐人工流程的写作要求）：
+# 第一人称真人感人设+自然导语、标题公式（≤25字：主需关键词+核心看点+信息钩子）、
+# 细节禁令（禁 emoji/感叹号/波浪号、开头不用「作为」、非必要不用双引号）、
+# 免责声明。追加到各模式 DRAFT_PROMPTS 之后，不动各模式的结构要求与字数范围。
+_DRAFT_SHARED = (
+    "【人设与真人感】以一个合理的第一人称人设写作（亲历者/过来人/真实使用者均可），"
+    "开头用自然导语交代背景动机（如「最近不少人在纠结怎么选，我前后对比了好几款」），"
+    "避免生硬直接切入知识点；语气务实克制，像正常人在说话，"
+    "不用「家人们」「绝绝子」「天花板」等夸张网络用语。"
+    "【标题】大标题不超过25字，公式：主需关键词＋核心看点/卖点＋信息钩子"
+    "（让读者一眼知道能得到什么），强需求导向。"
+    "【细节禁令】标题与内文不用 emoji、感叹号、波浪号；开头不用「作为」；"
+    "非必要不用双引号；不用「总而言之」「综上所述」「值得注意的是」等 AI 腔套话。"
+    "【合规】涉及价格、功效、健康等内容时克制表述；"
+    "有人身安全隐患的操作必须保留安全提醒。"
+)
+
+# 校稿润色（2026-09-01 吸收 8002 对齐人工流程两轮校稿：删夸大与未证实信息、
+# 去AI腔提真人感）。draft_gen 节点内创作后二段执行，失败/过短沿用原稿；
+# 字数口径按 qvp2 现行 700 字上限（8002 同源，未动字数依赖防负优化）。
+DRAFT_POLISH_PROMPT = """你是资深内容校稿编辑。请对下面的稿件做一轮校稿润色，只输出校稿后的最终全文，不要输出任何解释。
+要求：
+1. 事实核查：对没有把握的具体数字、年份、名称，改为约数表述（如「约」「近」）或直接删去，不得保留存疑的精确表述；严禁绝对化、夸大化用词。
+2. 真人感：开头导语自然、有亲历感；删掉生硬AI腔（如「总而言之」「综上所述」「值得注意的是」等套话），语气务实克制，像正常人在说话。
+3. 标题：大标题不超过25字，保留主需关键词和看点钩子；不用emoji、感叹号、波浪号。
+4. 小标题：保持原文的小标题，不新增、不替换；个别明显冗长的可精简至8字以内。
+5. 字数：全文控制在700字以内，超出则删减次要信息，保留核心干货。
+6. 合规：涉及财产、功效成分、健康等内容的，结尾保留或补充免责声明；有人身安全隐患的操作保留安全警告。统一中文标点。
+
+稿件：
+{body}"""
 
 # 分页排版轮换指令：同一套风格词下，6 页的构图/布局必须错开，
 # 否则 gpt-image 会把每页都画成同一个模板（2026-08-20 用户反馈「每张图重复套用模版」）
@@ -239,7 +291,8 @@ PAGES_PROMPT = """你是小红书图文编辑。把下面的文章改写成 6 �
    第 6 页结尾 = 一句总结 + 适合谁/行动建议 + 一句补充。
 3. 六页文字量必须基本均衡：动笔前先规划好每页约 50-70 字的骨架，
    任意两页字数相差不得超过 25 字；严禁某页只有十几个字而另一页接近 100 字。
-4. 忠于原文的事实与数据，不得编造；次要细节留在正文，图上只放这一页的核心信息点。
+4. 忠于原文的事实与数据，不得编造；小标题与表述忠于原文、不自行改写或精简措辞；
+   次要细节留在正文，图上只放这一页的核心信息点。
 5. 全部纯文本：不用 markdown 符号（#、*、- 等），不用 emoji，无绝对化表述，中文标点。
 6. 每页文字都要语句完整通顺、能直接排版在图片上。
 

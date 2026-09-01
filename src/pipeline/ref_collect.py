@@ -41,6 +41,63 @@ def split_subjects(query: str, mode: str) -> list[str]:
     return [q]
 
 
+# ── 素材库复用（2026-09-01 吸收 8002）：搜图前先匹配历史 official 实图 ──
+# 历史任务沉淀的实图就是本地素材库：Asset.subject 存的是来源任务的 query，
+# 规范化（剥搜索修饰词与空白）后与当前 subjects 双向包含、或其 ocr_hit 命中
+# 当前主体词即复用；共享本地文件与内容 hash，免重复搜索与下载。
+# 安全边界：仅复用本地化文件仍在磁盘的（死链不挂）；confirmed 优先（人工认
+# 可质量）；单任务 ≤12 张；可用 asset_library_reuse 关闭回退纯搜索。
+_LIB_STRIP = re.compile(r"(高清|细节|侧面|实拍|外观|场景|（补搜）|怎么选|哪个好|对比|区别)")
+_LIB_SCAN = 500      # 库扫描上限（最近收录优先）
+_LIB_LIMIT = 12      # 单任务最多复用张数
+
+
+def _lib_norm(s: str) -> str:
+    return re.sub(r"\s+", "", _LIB_STRIP.sub("", s or ""))
+
+
+async def _library_matches(query: str, subjects: list[str]) -> list[dict]:
+    """从素材库匹配可复用实图，返回与候选同构的 dict 列表（已本地化免下载）。"""
+    from src.models.assets import Asset
+    from pathlib import Path
+    gen_dir = Path(__file__).resolve().parent.parent.parent / "static" / "generated"
+    norms = [_lib_norm(x) for x in subjects if _lib_norm(x)]
+    qn = _lib_norm(query)
+    if not norms and not qn:
+        return []
+    out, seen_hash = [], set()
+    async with SessionLocal() as session:
+        rows = (await session.execute(
+            select(Asset).where(
+                Asset.source_type == "official",
+                Asset.is_history == False,           # noqa: E712
+                Asset.image_url.isnot(None))
+            .order_by(Asset.created_at.desc()).limit(_LIB_SCAN))).scalars().all()
+    for a in rows:
+        if len(out) >= _LIB_LIMIT:
+            break
+        if a.hash in seen_hash or not a.image_url:
+            continue
+        # 本地文件必须仍在磁盘（ref 图为 /static/generated/ 本地化路径）
+        fname = (a.image_url or "").rsplit("/", 1)[-1]
+        if "/" not in (a.image_url or "") or not (gen_dir / fname).exists():
+            continue
+        sub_n = _lib_norm(a.subject or "")
+        hit = any(sub_n and (sub_n in n or n in sub_n) for n in norms if n)
+        if not hit and qn and sub_n:
+            hit = sub_n in qn or qn in sub_n
+        if not hit and a.ocr_hit:
+            hit = any(n and n in (a.ocr_hit or "") for n in norms)
+        if not hit:
+            continue
+        seen_hash.add(a.hash)
+        out.append({"local_url": a.image_url, "origin": a.origin_url,
+                    "title": f"素材库复用（源：{(a.subject or '')[:24]}）",
+                    "engine": "library", "hash": a.hash,
+                    "ocr_hit": (a.ocr_hit or "")[:120]})
+    return out
+
+
 async def node_ref_collect(input_data: dict) -> dict:
     task_id = input_data["task_id"]
     from src.stream.bus import bus
@@ -50,8 +107,9 @@ async def node_ref_collect(input_data: dict) -> dict:
             select(Task).where(Task.id == task_id))).scalar_one()
         mode, query = (task.mode or "general"), task.query
 
-    # 关卡仅对参考图模式生效；已有确认参考图（确认后重跑）直接跳过
-    if mode not in ("compare", "single"):
+    # 关卡仅对参考图模式生效；已有确认参考图（确认后重跑）直接跳过。
+    # ref_for_general_enabled（默认关）开启后 general 也走实景搜集（产品方向开关）
+    if mode not in ("compare", "single") and not settings.ref_for_general_enabled:
         return {"skipped": True, "reason": "general 无需参考图确认"}
     confirmed = await _confirmed_refs(task_id)
     if confirmed:
@@ -61,7 +119,21 @@ async def node_ref_collect(input_data: dict) -> dict:
     await bus.publish("agent_tool", {"tool": "image_search", "count": 0},
                       task_id=str(task_id))
 
-    # 1) 搜集：各主体 6 张；不足 10 张用整条 query 补搜
+    # 0) 素材库复用（2026-09-01 吸收 8002）：先匹配历史实图，命中免搜索免下载；
+    #    库中量已够目标则跳过搜索（省 API），不足按缺口补搜
+    lib_hits: list[dict] = []
+    if settings.asset_library_reuse:
+        try:
+            lib_hits = await _library_matches(query, subjects)
+            if lib_hits:
+                await bus.publish("agent_tool",
+                                  {"tool": "asset_library", "count": len(lib_hits),
+                                   "searched_images": len(lib_hits)},
+                                  task_id=str(task_id))
+        except Exception:  # noqa: BLE001
+            traceback.print_exc()   # 库匹配失败不阻塞，走正常搜索
+
+    # 1) 搜集：各主体 6 张；不足 10 张用整条 query 补搜（素材库已覆盖则按缺口缩减）
     from src.gateway.image_search import search_image
     collected: list[dict] = []
     seen_urls: set[str] = set()
@@ -80,25 +152,43 @@ async def node_ref_collect(input_data: dict) -> dict:
             traceback.print_exc()   # OpenSERP 不可达等：留空候选，由人工兜底
 
     try:
-        for s in subjects:
-            await _search(s, _PER_SUBJECT)
-        if len(collected) < _TARGET_MIN:
-            await _search(query, _PER_SUBJECT)
+        deficit = max(0, _TARGET_MIN - len(lib_hits))
+        if deficit > 0:
+            per = max(2, _PER_SUBJECT * deficit // max(1, _TARGET_MIN))
+            for s in subjects:
+                await _search(s, per)
+            if len(collected) < deficit:
+                await _search(query, _PER_SUBJECT)
     except Exception:  # noqa: BLE001
-        # 搜索通道整体故障：不挂起，放行降级（Agent 自行容错纯文生图）
+        # 搜索通道整体故障：素材库命中仍可用；全空则放行降级（纯文生图）
         traceback.print_exc()
-        return {"ref_gate": False, "candidates": 0,
-                "reason": "搜图通道故障，跳过确认直接生产"}
-    collected = collected[:_MAX_CANDIDATES]
+        if not lib_hits:
+            return {"ref_gate": False, "candidates": 0,
+                    "reason": "搜图通道故障，跳过确认直接生产"}
+    collected = collected[:max(0, _MAX_CANDIDATES - len(lib_hits))]
 
-    # 2) 下载本地化 + OCR 关键词初筛（命中的排前面供人工确认）
+    # 2) 素材库命中直接成候选（已本地化，免下载免 OCR）+ 新搜项下载本地化 + OCR 初筛
     from src.gateway.ocr import fetch_image_bytes, ocr_image
     from src.pipeline.nodes import _persist_image
     candidates, hits = [], 0
-    for i, c in enumerate(collected, start=1):
+    lib_hashes = set()
+    for i, c in enumerate(lib_hits, start=1):
+        lib_hashes.add(c["hash"])
+        if c["ocr_hit"]:
+            hits += 1
+        candidates.append({
+            "page_index": i, "local_url": c["local_url"], "origin": c["origin"],
+            "title": c["title"][:120], "engine": c["engine"],
+            "hash": c["hash"], "ocr_hit": c["ocr_hit"]})
+    page_seq = len(candidates)
+    for c in collected:
         try:
             data, ctype = await fetch_image_bytes(c["image_url"])
-            local_url = _persist_image(task_id, i, "ref", data, ctype)
+            digest = hashlib.md5(data).hexdigest()
+            if digest in lib_hashes:
+                continue   # 与素材库命中同图（不同来源 URL）：保留库版本即可
+            page_seq += 1
+            local_url = _persist_image(task_id, page_seq, "ref", data, ctype)
             ocr_hit = ""
             if not settings.mock_image_gen:
                 try:
@@ -112,12 +202,12 @@ async def node_ref_collect(input_data: dict) -> dict:
             if ocr_hit:
                 hits += 1
             candidates.append({
-                "page_index": i, "local_url": local_url, "origin": c["image_url"],
+                "page_index": page_seq, "local_url": local_url, "origin": c["image_url"],
                 "title": c["title"][:120], "engine": c["engine"],
-                "hash": hashlib.md5(data).hexdigest(), "ocr_hit": ocr_hit})
+                "hash": digest, "ocr_hit": ocr_hit})
             await bus.publish("agent_tool",
-                              {"tool": "image_search", "count": i,
-                               "searched_images": i}, task_id=str(task_id))
+                              {"tool": "image_search", "count": page_seq,
+                               "searched_images": page_seq}, task_id=str(task_id))
         except Exception as e:  # noqa: BLE001
             print(f"[ref_collect] 候选 {c['image_url'][:60]} 处理失败: "
                   f"{type(e).__name__}: {e}", flush=True)

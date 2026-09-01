@@ -594,12 +594,13 @@ async def node_agent_production(input_data: dict) -> dict:
                     task_row.gen_image_style_desc = d
         if out["content_style"] and not task_row.gen_style:
             task_row.gen_style = out["content_style"]
+        from src.pipeline.nodes import source_level_for
         claim = Claim(task_id=task_id, claim_text=query, risk_level="P1", position=1)
         session.add(claim)
         await session.flush()
         for e in out["evidence"]:
             session.add(Evidence(claim_id=claim.id, source_url=e["url"],
-                                 source_level="P2", excerpt=e["summary"],
+                                 source_level=source_level_for(e["url"]), excerpt=e["summary"],
                                  supports=True))
         for i, ref in enumerate(refs_localized, start=1):
             session.add(Asset(

@@ -45,6 +45,7 @@ window.api = {
   get(url) { return this._req('GET', url); },
   post(url, body) { return this._req('POST', url, body || {}); },
   postForm(url, formData) { return this._req('POST', url, undefined, formData); },
+  put(url, body) { return this._req('PUT', url, body || {}); },
   patch(url, body) { return this._req('PATCH', url, body || {}); },
   delete(url) { return this._req('DELETE', url); },
 };

@@ -370,3 +370,8 @@ input, select, textarea { font-size: 15px; }
 .lbv-btn:hover { background: rgba(255,255,255,.3); }
 .lbv-zoom { color: #ddd; font-size: 12.5px; min-width: 44px; text-align: center; font-family: monospace; }
 .af-step { color: #2f855a; }   /* 直连节点子步骤（功能名+正在做什么） */
+
+.lb-edit-link { color: var(--primary); font-size: 13px; margin-left: 10px; text-decoration: none; }
+.lb-edit-link:hover { text-decoration: underline; }
+.lb-edit-area { width: 100%; margin-top: 8px; border: 1px solid #d7dce5; border-radius: 8px;
+  padding: 8px 10px; font-size: 14px; line-height: 1.6; resize: vertical; font-family: inherit; }

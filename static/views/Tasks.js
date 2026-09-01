@@ -155,6 +155,8 @@ const TasksView = {
         src: a.display_url || a.image_url,
         title: `P${a.page_index} · AI 生成`,
         text: this.pageCopyOf(a.page_index),
+        editable: true,          // 大图预览可直接 ✎ 改文案（2026-09-01）
+        asset: a,
       }));
       const ref = this.refAssets.map(a => ({
         src: a.display_url || a.image_url,
@@ -162,6 +164,28 @@ const TasksView = {
         text: '',
       }));
       return gen.concat(ref);
+    },
+    // Lightbox ✎ 改文案落库（2026-09-01 吸收 8002）：保存后可选立即重画该页
+    async onSaveText({ index, text }) {
+      const item = (this.zoomItems())[index];
+      const m = (item && item.title || '').match(/^P(\d+)/);
+      if (!m) return;
+      const page = Number(m[1]);
+      const actor = encodeURIComponent(this.actorName);
+      try {
+        await api.put(`/api/tasks/${this.detailTask.id}/pages/${page}/text?actor=${actor}`,
+                      { body: text });
+        if (confirm(`第${page}页文案已保存。\n\n是否立即按新文案重画该页配图？（约1分钟，老图保留进历史）`)) {
+          const asset = item.asset || this.genAssets.find(a => a.page_index === page);
+          if (asset) {
+            await api.post(`/api/assets/${asset.id}/edit_image?actor=${actor}`,
+                           { instruction: `按最新文案重画：${text}` });
+            this.open({ id: this.detailTask.id });   // 刷新看重画进度/新图
+          }
+        } else {
+          this.open({ id: this.detailTask.id });
+        }
+      } catch (e) { alert('保存失败：' + e.message); }
     },
     openZoom(a, isRef) {
       const list = this.zoomItems();

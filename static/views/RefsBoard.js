@@ -163,6 +163,7 @@ const RefsBoardView = {
               <label class="ref-check">
                 <input type="checkbox" v-model="keep[a.id]" style="width:auto">
                 <span v-if="a.model_version === 'manual'" class="tag tag-blue" style="font-size:11px">手工上传</span>
+                <span v-else-if="a.model_version === 'library'" class="tag tag-gray" style="font-size:11px">素材库复用</span>
                 <span v-else-if="a.ocr_hit" class="tag tag-green" style="font-size:11px">OCR命中: {{ a.ocr_hit.slice(0, 12) }}</span>
                 <span v-else class="tag tag-gray" style="font-size:11px">无命中</span>
               </label>

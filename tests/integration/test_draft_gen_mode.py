@@ -22,8 +22,9 @@ async def test_draft_gen_uses_compare_prompt():
         tid = task.id
     with patch("src.pipeline.nodes.call_with_failover", return_value=FAKE_DRAFT):
         out = await node_draft_gen({"task_id": tid})
-    assert out["prompt_version"] == "draft_compare_v1"
+    # 2026-09-01 起默认开启校稿润色：版本号带 _polished 后缀（draft_gen 节点内二段式）
+    assert out["prompt_version"] in ("draft_compare_v1", "draft_compare_v1_polished")
     async with SessionLocal() as session:
         d = (await session.execute(
             select(Draft).where(Draft.task_id == tid))).scalar_one()
-        assert d.prompt_version == "draft_compare_v1"
+        assert d.prompt_version in ("draft_compare_v1", "draft_compare_v1_polished")
