@@ -191,12 +191,20 @@ async def test_second_reject_same_reason_still_reruns():
 
 
 async def _reject_with_marks(task_id, marks, reason=""):
-    """通过审核接口驳回并携带定点标记（需先有该角色的未完成会话）。"""
-    async with _client() as ac:
-        r = await ac.post("/api/review/action", json={
-            "task_id": str(task_id), "role": "A",
-            "reviewer_id": f"tester-A-{_uniq()}",
-            "action_type": "reject", "reason": reason, "marks": marks})
+    """通过审核接口驳回并携带定点标记（需先有该角色的未完成会话）。
+
+    2026-09-02 起驳回会自动入队重生成——helper 里拦截 scheduler.enqueue
+    （no-op），让任务停留在 rejected 状态供各用例断言旧行为语义
+    （真实自动入队行为由 test_auto_regen.py 覆盖）。"""
+    from unittest.mock import AsyncMock as _AM
+    # 让自动重生成入队失败 → 补偿回滚 rejected，任务停在旧语义的待重试状态
+    _noq = _AM(side_effect=RuntimeError("legacy-test: hold at rejected"))
+    with patch("src.stream.scheduler.scheduler.enqueue", new=_noq):
+        async with _client() as ac:
+            r = await ac.post("/api/review/action", json={
+                "task_id": str(task_id), "role": "A",
+                "reviewer_id": f"tester-A-{_uniq()}",
+                "action_type": "reject", "reason": reason, "marks": marks})
     assert r.json()["ok"] is True
 
 

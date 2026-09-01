@@ -316,3 +316,47 @@ async def partial_regen(task_id) -> dict:
     return {"regenerated": len(marks),
             "pages_rewritten": pages_to_rewrite,
             "images_regenerated": images_to_regen}
+
+
+async def auto_regen_after_reject(task_id, actor: str = "reviewer") -> dict:
+    """审核驳回后自动入队重生成（2026-09-02 用户要求：驳回即重做，不再二次确认）。
+
+    与任务中心 retry 的 rejected 分支同口径：
+    - 有定点标记 → kind=partial_regen（只重做标记页的文案+配图，其余保留）；
+    - 无标记 → 清理上一轮内容产物后全链重跑（驳回理由注入草稿提示词）。
+    供 /api/review/action 驳回落库后直接调用；失败不吞——调用方捕获留痕，
+    任务保持 rejected 仍可手动重试（绝不影响审核结论本身）。
+    """
+    from src.models.tasks import Task
+    from src.stream.scheduler import scheduler
+    from src.db.session import SessionLocal
+    async with SessionLocal() as session:
+        task = (await session.execute(
+            select(Task).where(Task.id == task_id))).scalar_one()
+        if task.status != "rejected":
+            return {"ok": False, "reason": f"任务不在 rejected 状态（{task.status}），跳过自动重生成"}
+        mark_count = len(await get_open_marks(session, task_id))
+        if not mark_count:
+            await clear_generated_content(session, task_id)
+        task.status = "draft"
+        query = task.query
+        priority = task.priority or "normal"
+        await session.commit()
+    kind = "partial_regen" if mark_count else "pipeline"
+    try:
+        await scheduler.enqueue(task_id, query, priority=priority, kind=kind)
+    except Exception:
+        # 补偿回滚：入队失败把状态还原 rejected——否则任务卡 draft，
+        # 手动重试按钮（只收 failed/rejected/cancelled）无法兜底（防负优化）
+        async with SessionLocal() as s2:
+            t2 = (await s2.execute(
+                select(Task).where(Task.id == task_id))).scalar_one()
+            if t2.status == "draft":
+                t2.status = "rejected"
+                await s2.commit()
+        raise
+    detail = (f"驳回自动重生成：{query[:50]}"
+              + (f"（定点 {mark_count} 项标记）" if mark_count else "（全链重跑，理由注入重生产）"))
+    from src.services.activity import log_action
+    await log_action(actor, "auto_regen", detail, task_id=task_id)
+    return {"ok": True, "kind": kind, "marks": mark_count}

@@ -138,7 +138,9 @@ const ReviewView = {
             : [],
         });
         this.msg = actionType === 'approve' ? '已通过'
-          : (this.marksList.length ? `已驳回（定点标记 ${this.marksList.length} 项，重试时仅重生成这些项）` : '已驳回');
+          : (this.marksList.length
+              ? `已驳回 ${this.marksList.length} 项标记，已自动重做对应内容（无需再点重试）`
+              : '已驳回，已自动重新生成全文全图（无需再点重试）');
         this.showReject = false; this.rejectReason = ''; this.marks = {};
         this.releaseTimers();
         const id = this.currentId;

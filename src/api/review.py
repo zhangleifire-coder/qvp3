@@ -125,7 +125,19 @@ async def action(payload: ActionIn):
         detail += f"；定点标记 {len(payload.marks)} 项（{items}）"
     await log_action(payload.reviewer_id, f"review_{payload.action_type}",
                      detail, task_id=tid)
-    return {"ok": True, "action": payload.action_type}
+    # 驳回即自动重生成（2026-09-02 用户要求：驳回后直接重做，不再去任务中心二次确认）：
+    # 有定点标记→只重做标记项；无标记→全链重跑。入队失败不影响审核结论
+    # （任务保持 rejected，任务中心手动重试兜底）。
+    auto = None
+    if payload.action_type == "reject":
+        try:
+            from src.services.regen import auto_regen_after_reject
+            auto = await auto_regen_after_reject(tid, payload.reviewer_id)
+        except Exception:
+            import traceback
+            traceback.print_exc()
+    return {"ok": True, "action": payload.action_type,
+            "auto_regen": auto}
 
 
 @router.get("/api/review/queue/{role}")

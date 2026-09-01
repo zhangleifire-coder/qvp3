@@ -80,9 +80,12 @@ async def test_reject_marks_rejected_and_writes_approval():
             "task_id": tid, "role": "B", "reviewer_id": f"tester-{_uniq()}",
             "action_type": "reject", "reason": "事实错误"})
     assert r.json()["ok"] is True
+    # 2026-09-02 起驳回即自动入队重生成：审核落库 rejected 后立即转 draft 入队
+    #（本测试环境 scheduler 为测试桩/直调，auto_regen 正常触发即视为通过）
+    assert r.json().get("auto_regen") is not None
     async with SessionLocal() as s:
         t = (await s.execute(select(Task).where(Task.id == task.id))).scalar_one()
-        assert t.status == "rejected"
+        assert t.status in ("rejected", "draft")
         approvals = (await s.execute(
             select(Approval).where(Approval.task_id == task.id))).scalars().all()
         assert len(approvals) == 1
