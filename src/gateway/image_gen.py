@@ -130,7 +130,8 @@ async def _generate_fusion(prompt: str, size: str) -> dict:
     """FusionAI 通道（主）：POST /images/generations，返回 b64_json → data URI。
     生图可能数分钟（官方口径），读超时 600s。"""
     url = f"{settings.fusionai_base_url.rstrip('/')}/images/generations"
-    payload = {"model": IMAGE_MODEL, "prompt": prompt, "size": size, "n": 1}
+    payload = {"model": IMAGE_MODEL, "prompt": prompt, "size": size, "n": 1,
+               "quality": settings.image_quality}
     async with httpx.AsyncClient(timeout=httpx.Timeout(connect=15.0, read=600.0,
                                                        write=30.0, pool=10.0)) as client:
         resp = await client.post(url, json=payload, headers=_fusion_headers())
@@ -156,7 +157,8 @@ async def _edit_fusion(prompt: str, reference_image_urls: list[str], size: str) 
         ext = {"image/png": "png", "image/jpeg": "jpg",
                "image/webp": "webp"}.get(ctype, "png")
         files.append(("image[]", (f"ref_{i}.{ext}", content, ctype)))
-    data = {"model": IMAGE_MODEL, "prompt": prompt, "size": size, "n": "1"}
+    data = {"model": IMAGE_MODEL, "prompt": prompt, "size": size, "n": "1",
+            "quality": settings.image_quality}
     async with httpx.AsyncClient(timeout=httpx.Timeout(connect=15.0, read=600.0,
                                                        write=60.0, pool=10.0)) as client:
         resp = await client.post(url, data=data, files=files, headers=_fusion_headers())
@@ -250,7 +252,7 @@ async def _generate(prompt: str, size: str) -> dict:
     """文生图：POST /v1/images/generations"""
     url = f"{settings.openai_image_base_url}/images/generations"
     payload = {"model": IMAGE_MODEL, "prompt": prompt, "size": size, "n": 1,
-               "response_format": "url"}
+               "response_format": "url", "quality": settings.image_quality}
     async with httpx.AsyncClient(timeout=240) as client:
         resp = await client.post(url, json=payload, headers=_headers())
         if resp.status_code >= 400:
@@ -274,7 +276,7 @@ async def _edit_with_references(prompt: str, reference_image_urls: list[str],
         files.append(("image[]", (f"ref_{i}.{ext}", content, ctype)))
     # gpt-image-2 编辑时自动高保真，传 input_fidelity 会返回 400，故不传
     data = {"model": IMAGE_MODEL, "prompt": prompt, "size": size,
-            "n": "1", "response_format": "url"}
+            "n": "1", "response_format": "url", "quality": settings.image_quality}
     async with httpx.AsyncClient(timeout=240) as client:
         resp = await client.post(url, data=data, files=files, headers=_headers())
         if resp.status_code >= 400:

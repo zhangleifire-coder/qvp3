@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     image_gen_channels: str = "fusion,linkai,moacode"  # fusion 主通道轮询优先
     image_model: str = "gpt-image-2"
     image_size: str = "1152x1536"        # 竖版（1152x1536，3:4）
+    # 生图画质档（2026-09-01）：gpt-image-2 API 默认 auto≠high，网页端等效 high——
+    # 不显式传 high 会跑 medium/low，细节纹理锐度明显下降
+    image_quality: str = "high"
     mock_image_gen: bool = False         # 开发阶段模拟生图（不调 API、不花钱）
     # 搜实景图 provider（openserp 免费默认 / doubao_ark / bing_api 预留）
     image_search_provider: str = "openserp"
