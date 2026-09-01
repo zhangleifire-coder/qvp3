@@ -5,6 +5,7 @@ const SettingsView = {
       styleItems: [], styleForm: { style_name: '', keywords: '', description: '', enabled: true, public: false },
       styleImportMsg: '', importPublic: false,
       styleStats: null, styleDefault: null,
+      sysItems: [], sysMsg: '',
       tab: 'prompts',
       // 密码
       old_password: '', new_password: '', confirm: '', pwError: '', pwMsg: '', savingPw: false,
@@ -31,6 +32,24 @@ const SettingsView = {
     },
   },
   methods: {
+    // ---------- 系统参数（admin 可切换，即时生效） ----------
+    async loadSys() {
+      try {
+        const r = await api.get('/api/system/settings?actor=' + encodeURIComponent((getUser() || {}).name || ''));
+        this.sysItems = r.items || [];
+      } catch (e) { this.sysItems = []; }
+    },
+    async toggleSys(it) {
+      const act = it.value ? '关闭' : '开启';
+      const hint = it.value ? '' : ('（' + (it.desc || '') + '）');
+      if (!confirm('确定' + act + '「' + it.title + '」？' + hint)) return;
+      try {
+        await api.put('/api/system/settings?actor=' + encodeURIComponent((getUser() || {}).name || ''),
+                      { key: it.key, value: !it.value });
+        this.sysMsg = `已${!it.value ? '开启' : '关闭'}「${it.title}」（即时生效）`;
+        this.loadSys();
+      } catch (e) { alert('修改失败：' + e.message); }
+    },
     async loadStyles() {
       try {
         const q = this.user ? '?actor=' + encodeURIComponent(this.user.name) : '';
@@ -239,7 +258,8 @@ const SettingsView = {
         <button class="tab" :class="{on: tab==='prompts'}" @click="tab='prompts'">提示词库</button>
         <button class="tab" :class="{on: tab==='logs'}" @click="tab='logs'; loadLogs()">工作日志</button>
         <button class="tab" :class="{on: tab==='styles'}" @click="tab='styles'; loadStyles()">风格关键词库</button>
-        <button class="tab" :class="{on: tab==='password'}" @click="tab='password'">修改密码</button>
+        <button v-if="isAdmin" class="tab" :class="{on: tab==='system'}" @click="tab='system'; loadSys()">系统参数</button>
+<button class="tab" :class="{on: tab==='password'}" @click="tab='password'">修改密码</button>
       </div>
     </div>
 
@@ -302,6 +322,27 @@ const SettingsView = {
       </table>
       <p v-else class="muted" style="font-size:13px">暂无统计——完成几个任务后这里会显示你的风格偏好</p>
     </div>
+    <div class="card" v-if="tab==='system'">
+      <h2>系统参数 <span class="muted" style="font-weight:normal;font-size:13px">行为开关，切换后即时生效（无需重启）；仅管理员可修改</span></h2>
+      <p v-if="sysMsg" style="color:var(--green);font-size:13px">{{ sysMsg }}</p>
+      <table class="table" style="margin-top:8px">
+        <thead><tr><th>参数</th><th>说明</th><th>状态</th><th style="text-align:right">操作</th></tr></thead>
+        <tbody>
+          <tr v-for="it in sysItems" :key="it.key">
+            <td><b>{{ it.title }}</b><div class="muted" style="font-size:11px">{{ it.key }}</div></td>
+            <td class="muted" style="font-size:12.5px;max-width:420px">{{ it.desc }}</td>
+            <td><span class="tag" :class="it.value ? 'tag-green' : 'tag-gray'">{{ it.value ? '已开启' : '已关闭' }}</span></td>
+            <td style="text-align:right">
+              <button v-if="it.editable" class="btn btn-sm" :class="it.value ? 'btn-danger-ghost' : 'btn-primary'"
+                      @click="toggleSys(it)">{{ it.value ? '关闭' : '开启' }}</button>
+              <span v-else class="muted" style="font-size:12px">仅管理员可改</span>
+            </td>
+          </tr>
+          <tr v-if="!sysItems.length"><td colspan="4" class="muted" style="text-align:center;padding:18px">加载中…</td></tr>
+        </tbody>
+      </table>
+    </div>
+
 
     <div class="card" v-if="tab==='logs'">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">

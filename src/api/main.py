@@ -19,6 +19,7 @@ from src.api.activity import router as activity_router
 from src.api.meta import router as meta_router
 from src.api.internal import router as internal_router
 from src.api.styles import router as styles_router
+from src.api.system import router as system_router
 
 
 @asynccontextmanager
@@ -27,6 +28,8 @@ async def lifespan(app: FastAPI):
     from src.stream.maintenance import cycle
     from src.stream.progress import progress
     from src.review.heartbeat import heartbeat_loop
+    from src.api.system import load_settings_from_db
+    await load_settings_from_db()   # 系统参数 web 化：启动加载覆盖 .env 默认
     await progress.start()
     await scheduler.start()
     await cycle.start()
@@ -54,6 +57,7 @@ app.include_router(activity_router)
 app.include_router(meta_router)
 app.include_router(internal_router)
 app.include_router(styles_router)
+app.include_router(system_router)
 
 # 静态前端（审核工作台 + 看板）
 STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "static"
