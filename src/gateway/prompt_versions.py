@@ -47,6 +47,84 @@ _SUBJECT_ANCHOR = (
 )
 
 
+# ═══════════════════════════════════════════════════════════════════
+# 英文生图骨架（2026-09-01 场景化扩写链路）：
+# 上游 visual_writer（nanobot 记忆会话优先/DeepSeek 回退）产出每页英文视觉
+# 描述（主体+场景+光位视角）与风格英文版，get_image_prompt(visual=...) 时
+# 走本骨架——gpt-image 系列对英文视觉指令理解更准；本页中文文案原样保留
+# （图上要写简体中文，必须逐字给出）；校准规则全部翻译保留。
+# ═══════════════════════════════════════════════════════════════════
+_IMAGE_CONSTRAINTS_EN = (
+    "FORMAT: vertical 3:4 Xiaohongshu-style image card. Overall feel: natural, "
+    "real, comfortable and restrained — like a polished magazine page, NOT a "
+    "templated collage. "
+    "BACKGROUND & BORDER: the card background and border must NOT be pure white "
+    "or pure black — use tinted colors per the unified style (cream, beige, "
+    "light khaki, charcoal etc.), edges clean. "
+    "LAYOUT: two-zone composition (text zone + image zone, top/bottom or "
+    "bottom/top), divider style per the unified style; never hard rectangular "
+    "collage; generous breathing whitespace (background occupies at least 30%). "
+    "TYPOGRAPHY: large bold headline ~2.5x body size, clear hierarchy; "
+    "typeface family and color strictly follow the unified style and stay "
+    "identical across all 6 pages; short phrases per line, thin dividers or "
+    "small color ticks between points. All on-image text must be crisp, "
+    "print-quality standard Chinese type — no artistic distortion, no shadows, "
+    "no outlines, no perspective warping; 30-100 Chinese characters per page "
+    "including headline, kept balanced across the 6 pages (max 25-char "
+    "difference between any two pages); one core message per page; no tiny "
+    "type. "
+    "HANZI RULE (critical): every Chinese character rendered on the card must "
+    "be a real, correctly-formed simplified Chinese character — never invent "
+    "pseudo-hanzi or garbled glyphs; if unsure how to write a character, "
+    "omit that word rather than render it wrong. Do NOT draw words like "
+    "「封面」or page numbers. Layout must differ page to page (no template "
+    "copying); image elements must not repeat across pages. No human faces, "
+    "no books; avoid objects containing printed text. "
+    "DECOR: restrained and consistent with the unified style — no sticker "
+    "piles, no flashy borders. "
+    "QUALITY: sharp, richly detailed, fine textures, tidy composition; no "
+    "distortion, no artifacts, no blur; subject unobstructed and complete. "
+    "SUBJECT ANCHORING: the depicted subject must be exactly what this page's "
+    "Chinese text is about; style words only affect lighting, color and mood — "
+    "never replace the subject with symbolic metaphors."
+)
+
+_PAGE_LAYOUTS_EN = [
+    "PAGE ROLE (cover): hero visual occupies ~2/3 of the card (texture per "
+    "unified style), large headline at top, one-line subtitle only, generous "
+    "whitespace.",
+    "PAGE ROLE (key points): text zone above, image below; the Chinese text "
+    "breaks into 2-3 short bullet lines, each optionally led by one consistent "
+    "small round icon, thin dividers between points, horizontal line or soft "
+    "curve separating text and image zones.",
+    "PAGE ROLE (close-up): subject close-up fills the frame (lighting per "
+    "unified style), text confined to a bottom quarter band in the style's "
+    "primary color.",
+    "PAGE ROLE (checklist): rounded-card columns, 2-4 info blocks, one "
+    "sub-headline each, clear gaps between cards, card tints within the "
+    "style's palette.",
+    "PAGE ROLE (scene): full-bleed scene image (texture per unified style), "
+    "text placed in a top whitespace zone, image and text joined by a curve "
+    "or diagonal.",
+    "PAGE ROLE (wrap-up): centered large conclusion text, at most two smaller "
+    "lines below, clean visual ending.",
+]
+
+IMAGE_PROMPTS_EN = {
+    "general": ("General topic/tutorial card, fully AI-generated, no reference "
+                "images. Render the Chinese text below verbatim on the card."),
+    "single": ("Single-product review card. Incorporate the provided real "
+               "reference photos: remove watermarks and people, no repeated "
+               "photos, not too many per page; keep text already on reference "
+               "photos, add no extra photos. Render the Chinese text below "
+               "verbatim on the card."),
+    "compare": ("Comparison card. Incorporate reference photos of BOTH "
+                "subjects on the same page (keep their order): remove "
+                "watermarks and people, no repeats. Render the Chinese text "
+                "below verbatim on the card."),
+}
+
+
 def _apply_page_subject(prompt: str, page_subject: str = None) -> str:
     """动态主体锚定（2026-08-31 移植 8002）：asset_gen 已从本页文案提取画面主体时，
     把通用锚定句替换为该主体句；无主体/模板不含锚定句则原样返回。"""
@@ -110,15 +188,35 @@ def get_draft_prompt(mode: str) -> str:
 
 def get_image_prompt(mode: str, page_body: str, page_index: int = None,
                      template: str = None, style_block: str = None,
-                     page_subject: str = None) -> str:
-    """组装单页生图提示词：题材前缀 → 本页文案 → 风格段 → 硬约束底座 → 布局轮换。
+                     page_subject: str = None, visual: str = None,
+                     style_en: str = None) -> str:
+    """组装单页生图提示词。两种模式：
 
-    - template：用户自定义生图提示词（替代系统模板），排版轮换仍由代码追加；
-    - style_block：本篇视觉风格段（src/services/style_select.py 生成，含6页统一条款）；
-      一篇 6 页传同一段 → 字体/色调/装饰全篇统一，布局随页轮换；
-    - page_subject：本页画面主体（src/services/page_subject.py 提取），有值时
-      底座通用锚定句被替换为本页具体主体句（图文对应）。
+    - 英文视觉模式（visual + style_en 由 visual_writer 扩写产出，2026-09-01）：
+      VISUAL DIRECTION（英文场景描述）→ 统一风格英文版 → 本页中文文案逐字渲染
+      → 英文约束底座 → 英文布局轮换。gpt-image 对英文视觉指令理解更准，
+      中文文案必须原样给出（图上写简体中文）。
+    - 中文回退模式（扩写失败）：题材前缀 → 本页文案 → 风格段（含6页统一条款）
+      → 中文硬约束底座 → 布局轮换，page_subject 有值时替换通用锚定句。
     """
+    if visual:
+        parts = [
+            IMAGE_PROMPTS_EN.get(mode, IMAGE_PROMPTS_EN["general"]),
+            f"\nVISUAL DIRECTION for this page (follow closely):\n{visual}",
+        ]
+        if style_en:
+            parts.append("\nUNIFIED STYLE for ALL 6 pages of this set "
+                         "(lighting/palette/typography/decor must stay "
+                         f"identical across pages, only layout varies):\n{style_en}")
+        parts.append(
+            "\nON-IMAGE TEXT (simplified Chinese, render VERBATIM on the card, "
+            "see HANZI RULE below):\n" + (page_body or ""))
+        parts.append("\nCONSTRAINTS:\n" + _IMAGE_CONSTRAINTS_EN)
+        if page_index:
+            parts.append("\n" + _PAGE_LAYOUTS_EN[(page_index - 1)
+                                                % len(_PAGE_LAYOUTS_EN)])
+        return "\n".join(parts)
+    # 中文回退模式
     template = template or IMAGE_PROMPTS.get(mode, IMAGE_PROMPTS["general"])
     prompt = template.replace("{page_body}", page_body)
     if style_block:

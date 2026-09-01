@@ -971,21 +971,26 @@ async def edit_image(asset_id: str, payload: ImageEditIn):
         page = (await session.execute(
             select(PageCopy).where(PageCopy.task_id == old.task_id,
                                    PageCopy.page_index == old.page_index))).scalars().first()
-        # prompt_used 已含本篇风格段与主体句（6页统一条款）→ 优先沿用保证同风格；
-        # 缺失时重建提示词并注入任务已锁定的风格与画面主体快照（均幂等）
+        # prompt_used 已含本篇视觉段与约束（6页统一条款）→ 优先沿用保证同风格；
+        # 缺失时重建提示词并注入任务已锁定的风格与视觉快照（均幂等）。
+        # 快照新格式 {"style_en","pages":[英文视觉]}→英文骨架；旧 [中文主体]→中文骨架
         if not old.prompt_used:
             from src.services.style_select import (ensure_task_style,
                                                    build_style_block)
             s_name, s_desc = await ensure_task_style(old.task_id)
-            subjects = (task.page_subjects
-                        if isinstance(task.page_subjects, list) else [])
+            snap = task.page_subjects
+            v_snap = snap if isinstance(snap, dict) else None
+            s_snap = snap if isinstance(snap, list) else []
+            pi = old.page_index
             base_prompt = get_image_prompt(
                 task.mode or "general",
                 page.body if page else task.query,
-                old.page_index,
-                style_block=build_style_block(s_name, s_desc),
-                page_subject=(subjects[old.page_index - 1]
-                              if 1 <= old.page_index <= len(subjects) else None))
+                pi,
+                style_block=None if v_snap else build_style_block(s_name, s_desc),
+                page_subject=(s_snap[pi - 1] if 1 <= pi <= len(s_snap) else None),
+                visual=(v_snap["pages"][pi - 1]
+                        if v_snap and 1 <= pi <= len(v_snap["pages"]) else None),
+                style_en=(v_snap["style_en"] if v_snap else None))
         else:
             base_prompt = old.prompt_used
         ref_urls = [a.image_url for a in (await session.execute(

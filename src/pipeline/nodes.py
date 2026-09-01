@@ -468,42 +468,40 @@ async def node_asset_gen(input_data: dict) -> dict:
     from src.services.style_select import ensure_task_style, build_style_block
     style_name, style_desc = await ensure_task_style(input_data["task_id"])
     style_block = build_style_block(style_name, style_desc)
-    # 分页画面主体提取（2026-08-31 移植 8002，治「图文不对应」）：生图前一次
-    # LLM 从 6 页文案提取每页具体画面主体，注入提示词替换通用主体锚定句；
-    # 失败回退 None 不阻塞出图。结果落 tasks.page_subjects（迁移 016）便于排查
-    page_subjects = None
+    # 场景化扩写（2026-09-01 升级自 8-31 的主体提取）：nanobot 记忆会话优先把
+    # 6 页中文文案扩写成英文视觉描述+风格英文版（复刻网页端 Agent 的 prompt
+    # 增强层）；成功走英文骨架，失败回退中文骨架，不阻塞出图。
+    # 快照存 tasks.page_subjects：{"style_en":…, "pages":[6]}（旧格式为中文主体数组）
+    visuals = None
     try:
-        from src.services.page_subject import extract_page_subjects
-        from src.gateway.failover import DEEPSEEK_MODEL, KIMI_MODEL
-        _emit_progress(input_data["task_id"], "asset_gen",
-                       msg="提取各页画面主体（图文对应）")
+        from src.services.visual_writer import write_page_visuals
         bodies = [(p.body or "") for p in page_list][:6]
         while len(bodies) < 6:
             bodies.append("")
-        page_subjects = await extract_page_subjects(
-            bodies,
-            llm_call=lambda p: call_with_failover(
-                p, DEEPSEEK_MODEL, KIMI_MODEL, max_retries=1))
-        if page_subjects:
+        _emit_progress(input_data["task_id"], "asset_gen",
+                       msg="场景化扩写：生成各页英文视觉描述（记忆会话）")
+        visuals = await write_page_visuals(style_name, style_desc, bodies)
+        if visuals:
             async with SessionLocal() as session:
                 t = (await session.execute(
                     select(Task).where(Task.id == input_data["task_id"]))).scalar_one()
-                t.page_subjects = page_subjects
+                t.page_subjects = visuals
                 await session.commit()
     except Exception:
         traceback.print_exc()
-        page_subjects = None
-    prompts = [get_image_prompt(mode, p.body or "", i, template=image_template,
-                                style_block=style_block,
-                                page_subject=(page_subjects[i - 1]
-                                              if page_subjects else None))
+        visuals = None
+    prompts = [get_image_prompt(
+                   mode, p.body or "", i, template=image_template,
+                   style_block=None if visuals else style_block,
+                   visual=(visuals["pages"][i - 1] if visuals else None),
+                   style_en=(visuals["style_en"] if visuals else None))
                for i, p in enumerate(page_list, start=1)]
     while len(prompts) < 6:
-        prompts.append(get_image_prompt(mode, "", len(prompts) + 1,
-                                        template=image_template,
-                                        style_block=style_block,
-                                        page_subject=(page_subjects[len(prompts)]
-                                                      if page_subjects else None)))
+        prompts.append(get_image_prompt(
+            mode, "", len(prompts) + 1, template=image_template,
+            style_block=None if visuals else style_block,
+            visual=(visuals["pages"][len(prompts)] if visuals else None),
+            style_en=(visuals["style_en"] if visuals else None)))
     # 并行生图（2026-09-01 用户要求用 fusionai 6 并发通道）：
     # IMAGE_GEN_PARALLEL 控制同批并发数（6=六张齐发，1=退回串行防限流）；
     # 内容去重/尺寸校验挪到批后串行做（同批在飞时无法互相比对，批内两两比 + 与任务已有图比）

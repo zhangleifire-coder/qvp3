@@ -122,12 +122,15 @@ async def partial_regen(task_id) -> dict:
     # 沿用任务已锁定的视觉风格（首次未选则此时选定并落库）→ 重生成页与原图同风格
     style_name, style_desc = await ensure_task_style(task_id)
     style_block = build_style_block(style_name, style_desc)
-    # 沿用首图的分页画面主体快照（迁移016）：重生成页图文对应不打折
+    # 沿用首图快照（016）：新格式 {"style_en","pages":[英文视觉描述]}→英文骨架；
+    # 旧格式 [中文主体] → 中文骨架主体句；均无 → 中文骨架通用锚定
     page_subjects = None
     async with SessionLocal() as session:
         t0 = (await session.execute(
             select(Task).where(Task.id == task_id))).scalar_one()
-        page_subjects = t0.page_subjects if isinstance(t0.page_subjects, list) else None
+        page_subjects = t0.page_subjects
+    visual_snap = page_subjects if isinstance(page_subjects, dict) else None
+    subject_snap = page_subjects if isinstance(page_subjects, list) else None
 
     page_reasons: dict[int, list[str]] = {}
     image_reasons: dict[int, list[str]] = {}
@@ -136,6 +139,17 @@ async def partial_regen(task_id) -> dict:
         bucket.setdefault(m.page_index, []).append(m.reason or "存在问题，请重做")
     pages_to_rewrite = sorted(page_reasons)
     # 文案被重写的页必须连带重生成配图（图文一致），加上直接被标记的图
+    # 人工驳回意见回写视觉记忆会话（下一次扩写自动吸收，持续迭代）
+    if image_reasons:
+        notes = [f"Page {p} rejected: {'；'.join(rs)[:120]}"
+                 for p, rs in sorted(image_reasons.items())][:6]
+        try:
+            import asyncio as _aio
+            from src.services.visual_writer import note_to_memory
+            _aio.get_running_loop().create_task(
+                note_to_memory(" | ".join(notes)))
+        except Exception:
+            pass
     images_to_regen = sorted(set(image_reasons) | set(pages_to_rewrite))
     base_input = {"task_id": task_id, "regen_round": rounds}
 
@@ -206,13 +220,16 @@ async def partial_regen(task_id) -> dict:
         ocr_cost = 0.0
         done_pages = []
         for p in images_to_regen:
-            prompt = get_image_prompt(mode, body_map.get(p, ""), p,
-                                      template=image_template,
-                                      style_block=style_block,
-                                      page_subject=(page_subjects[p - 1]
-                                                    if page_subjects
-                                                    and 1 <= p <= len(page_subjects)
-                                                    else None))
+            prompt = get_image_prompt(
+                mode, body_map.get(p, ""), p, template=image_template,
+                style_block=None if visual_snap else style_block,
+                page_subject=(subject_snap[p - 1]
+                              if subject_snap and 1 <= p <= len(subject_snap)
+                              else None),
+                visual=(visual_snap["pages"][p - 1]
+                        if visual_snap and 1 <= p <= len(visual_snap["pages"])
+                        else None),
+                style_en=(visual_snap["style_en"] if visual_snap else None))
             fb = image_reasons.get(p, []) + page_reasons.get(p, [])
             if fb:
                 prompt += ("\n\n【审核意见】该页上一版本被人工审核驳回："

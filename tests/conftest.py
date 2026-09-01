@@ -98,5 +98,7 @@ def mock_external_calls():
          patch("src.gateway.web_search.web_search", return_value=FAKE_SEARCH), \
          patch("src.gateway.web_search.deepseek_verify", return_value=FAKE_VERIFY), \
          patch("src.gateway.image_search.search_image", return_value=FAKE_IMAGES), \
-         patch("src.gateway.ocr.ocr_image", new=AsyncMock(return_value=FAKE_OCR)):
+         patch("src.gateway.ocr.ocr_image", new=AsyncMock(return_value=FAKE_OCR)),          patch("src.gateway.nanobot_client.call_agent",
+               new=AsyncMock(return_value={"text": "", "prompt_tokens": 0,
+                                           "completion_tokens": 0})):
         yield
