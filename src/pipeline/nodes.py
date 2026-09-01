@@ -440,15 +440,41 @@ async def _generate_single_asset(task_id, page_index: int, prompt: str,
             "model_version": r["model_version"], "is_illustration": False}
 
 
+def _crop_to_34(data: bytes) -> bytes:
+    """中心裁剪到严格 3:4（返回 PNG 字节）——尺寸铁律的兜底归一。"""
+    import io
+    from PIL import Image
+    img = Image.open(io.BytesIO(data))
+    w, h = img.size
+    if w / h > 0.75:      # 太宽 → 裁宽
+        nw = int(h * 0.75)
+        x = (w - nw) // 2
+        img = img.crop((x, 0, x + nw, h))
+    else:                 # 太高 → 裁高
+        nh = int(w / 0.75)
+        y = (h - nh) // 2
+        img = img.crop((0, y, w, y + nh))
+    out = io.BytesIO()
+    img.save(out, format="PNG")
+    return out.getvalue()
+
+
 async def _dedupe_and_validate(asset: dict, prompt: str, reference_urls,
-                               task_id, page_index: int, seen_hashes: set) -> tuple:
-    """内容级去重 + 尺寸校验：下载图片字节算内容 hash，与本任务已出图重复则换构图重生成一次；
-    宽高比偏离 3:4 则在 model_version 上标记（交付导出时会统一归一到 1152x1536）。
-    返回 (asset, 额外生成次数, 图片字节)。"""
+                               task_id, page_index: int, seen_hashes: set,
+                               page_body: str = "") -> tuple:
+    """内容级去重 + 尺寸铁律 + 视觉主体审核（nodes 首次生成与 regen 共用）。
+
+    - 去重：与本任务已出图重复 → 换构图重生成一次；
+    - 3:4 铁律（2026-09-01 收紧）：宽高比偏离 3:4（容差 3%）→ 重生成一次，
+      仍偏 → 中心裁剪归一到严格 3:4 并留痕 |cropped；不再允许带 badsize 交付；
+    - 视觉主体审核（图文一致性）：VL 看图比对「图中主体 vs 该页文案主题」，
+      不符 → 带主体强调重画一次，仍不符 → subject_mismatch=True 交人工把关
+      （不阻塞，审图关卡显式可见）。
+    返回 (asset, 额外生成次数)。
+    """
     import io
     from src.gateway.ocr import fetch_image_bytes
     extra = 0
-    data = None
     try:
         data, ctype = await fetch_image_bytes(asset["image_url"])
         content_hash = hashlib.md5(data).hexdigest()
@@ -460,16 +486,69 @@ async def _dedupe_and_validate(asset: dict, prompt: str, reference_urls,
             data2, ctype = await fetch_image_bytes(r2["image_url"])
             asset = r2
             data = data2
+            ctype = ctype or "image/png"
             content_hash = hashlib.md5(data).hexdigest()
         seen_hashes.add(content_hash)
-        asset["hash"] = content_hash
+
+        # ── 3:4 铁律：容差 3%；重生成一次，仍偏则中心裁剪归一 ──
         from PIL import Image
         w, h = Image.open(io.BytesIO(data)).size
-        if abs(w / h - 0.75) > 0.05:
-            asset["model_version"] += f"|badsize:{w}x{h}"
+        if abs(w / h - 0.75) > 0.03:
+            r3 = await _generate_single_asset(task_id, page_index, prompt, reference_urls)
+            extra += 1
+            data3, ctype3 = await fetch_image_bytes(r3["image_url"])
+            w3, h3 = Image.open(io.BytesIO(data3)).size
+            if abs(w3 / h3 - 0.75) <= abs(w / h - 0.75):
+                asset, data, ctype = r3, data3, (ctype3 or "image/png")
+                w, h = w3, h3
+                content_hash = hashlib.md5(data).hexdigest()
+                seen_hashes.add(content_hash)
+            if abs(w / h - 0.75) > 0.03:   # 仍偏 → 铁律兜底：裁剪归一
+                data = _crop_to_34(data)
+                ctype = "image/png"
+                content_hash = hashlib.md5(data).hexdigest()
+                seen_hashes.add(content_hash)
+                asset["model_version"] = (asset.get("model_version") or "") \
+                    + f"|cropped:{w}x{h}"
+                _emit_progress(task_id, "asset_gen",
+                               msg=f"P{page_index} 比例偏离已裁剪归一为 3:4")
+
         # 立即本地化：上游生成 URL 会过期，落盘后 image_url 指向本地副本
         asset["origin_url"] = asset["image_url"]
         asset["image_url"] = _persist_image(task_id, page_index, "p", data, ctype)
+        asset["hash"] = content_hash
+
+        # ── 视觉主体审核：图中主体必须与该页文案主题一致 ──
+        if page_body.strip():
+            from src.services.visual_check import check_subject_match
+            _emit_progress(task_id, "asset_gen",
+                           msg=f"P{page_index} 视觉主体审核中")
+            verdict = await check_subject_match(asset["image_url"], page_body)
+            if verdict and not verdict["ok"]:
+                _emit_progress(task_id, "asset_gen",
+                               msg=f"P{page_index} 主体不符（{verdict['actual']}），重画中")
+                r4 = await _generate_single_asset(
+                    task_id, page_index,
+                    prompt + f"（画面主体必须与文案一致：{page_body[:60]}）",
+                    reference_urls)
+                extra += 1
+                data4, ctype4 = await fetch_image_bytes(r4["image_url"])
+                r4["origin_url"] = r4["image_url"]
+                r4["image_url"] = _persist_image(task_id, page_index, "p2",
+                                                 data4, ctype4 or "image/png")
+                r4["hash"] = hashlib.md5(data4).hexdigest()
+                verdict2 = await check_subject_match(r4["image_url"], page_body)
+                asset = r4
+                seen_hashes.add(r4["hash"])
+                if verdict2 and not verdict2["ok"]:
+                    # 重画仍不符：标记交人工把关（不阻塞，审图关卡可见）
+                    asset["subject_mismatch"] = True
+                    asset["model_version"] = (asset.get("model_version") or "") + "|subj!"
+                    _emit_progress(task_id, "asset_gen",
+                                   msg=f"P{page_index} 重画后主体仍存疑（{verdict2['actual']}），已标记人工复核")
+                elif verdict2 and verdict2["ok"]:
+                    _emit_progress(task_id, "asset_gen",
+                                   msg=f"P{page_index} 重画后主体一致 ✓")
     except Exception:
         # 下载/解析失败不阻塞出图（OCR 节点会再暴露问题），但必须留痕，
         # 否则去重/校验/持久化静默失效（2026-08-20 缺失 hashlib 导入的教训）
@@ -584,8 +663,10 @@ async def node_asset_gen(input_data: dict) -> dict:
             r = results[i - 1]
             if not r:
                 continue
-            r, extra = await _dedupe_and_validate(r, prompts[i - 1], reference_urls,
-                                                  input_data["task_id"], i, seen_hashes)
+            body_i = (page_list[i - 1].body if i - 1 < len(page_list) else "") or ""
+            r, extra = await _dedupe_and_validate(
+                r, prompts[i - 1], reference_urls,
+                input_data["task_id"], i, seen_hashes, page_body=body_i)
             extra_gen += extra
             results[i - 1] = r
             if extra:

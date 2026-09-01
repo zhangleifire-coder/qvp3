@@ -241,7 +241,8 @@ async def partial_regen(task_id) -> dict:
             r = await _generate_single_asset(task_id, p, prompt, reference_urls)
             if not settings.mock_image_gen:
                 r, extra = await _dedupe_and_validate(
-                    r, prompt, reference_urls, task_id, p, seen_hashes)
+                    r, prompt, reference_urls, task_id, p, seen_hashes,
+                    page_body=body_map.get(p, ""))
                 extra_gen += extra
             async with SessionLocal() as session:
                 olds = (await session.execute(

@@ -24,6 +24,8 @@ class Asset(Base):
     ocr_hit = Column(Text)          # OCR 初筛命中的关键词（逗号分隔）
     # 人审工作流（011）：每页实际生图提示词 / 旧图历史标记 / 定点修改意见
     prompt_used = Column(Text)
+    # 017：视觉主体审核——图主体与该页文案不符（重画后仍不符）时 true，人工关卡把关
+    subject_mismatch = Column(Boolean, nullable=False, default=False)
     is_history = Column(Boolean, nullable=False, default=False)
     edit_note = Column(Text)
     created_at = Column(TIMESTAMP(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))

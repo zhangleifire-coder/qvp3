@@ -764,6 +764,7 @@ const TasksView = {
                   <button class="btn btn-outline btn-sm" style="margin-left:6px"
                           @click.stop="imgEdit = { asset: a, instruction: '', busy: false }">✎ 修改</button>
                   <span v-if="historyOf(a.page_index).length" class="tag tag-yellow" style="margin-left:4px;font-size:11px">历史 {{ historyOf(a.page_index).length }}</span>
+<span v-if="a.subject_mismatch" class="tag tag-red" style="margin-left:4px;font-size:11px" title="视觉审核：图中主体与该页文案不符（重画后仍存疑），请人工复核">主体待审</span>
                 </figcaption>
                 <!-- 新旧对比：该页历史图 -->
                 <div v-if="historyOf(a.page_index).length" class="hist-strip">

@@ -438,6 +438,7 @@ async def task_detail(task_id: str):
             "assets": [{"page_index": a.page_index, "source_type": a.source_type,
                         "image_url": a.image_url, "id": str(a.id),
                         "selection_status": a.selection_status,
+                        "subject_mismatch": a.subject_mismatch,
                         "ocr_hit": a.ocr_hit, "prompt_used": a.prompt_used,
                         "is_history": a.is_history, "edit_note": a.edit_note,
                         "model_version": a.model_version,   # manual=实景审图手工上传

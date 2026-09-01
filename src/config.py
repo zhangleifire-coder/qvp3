@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     # 通用模式(general)也搜集/使用实景参考图（默认关=保持纯文生图；
     # 开启后 general 任务将多一道实景审图关卡，属产品方向变化，需用户拍板）
     ref_for_general_enabled: bool = False
+    # 视觉主体审核（2026-09-01 图文一致性）：生成后 VL 看图与该页文案比对，
+    # 主体不符自动重画一次，仍不符标记 subject_mismatch 交人工把关
+    visual_subject_check_enabled: bool = True
+    visual_check_model: str = "qwen-vl-max"   # dashscope VL（复用 ocr 的 key/网关）
     mock_image_gen: bool = False         # 开发阶段模拟生图（不调 API、不花钱）
     # 搜实景图 provider（openserp 免费默认 / doubao_ark / bing_api 预留）
     image_search_provider: str = "openserp"
