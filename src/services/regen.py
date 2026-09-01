@@ -147,7 +147,11 @@ async def partial_regen(task_id) -> dict:
             import asyncio as _aio
             from src.services.visual_writer import note_to_memory
             _aio.get_running_loop().create_task(
-                note_to_memory(" | ".join(notes)))
+                note_to_memory(
+                    "Reviewer feedback (follow it in future visual directions, "
+                    "especially when choosing background tints and headline "
+                    "accent colors): "
+                    + " | ".join(notes)))
         except Exception:
             pass
     images_to_regen = sorted(set(image_reasons) | set(pages_to_rewrite))

@@ -217,6 +217,12 @@ def test_typography_rules_in_both_bases():
     assert "双色排版" in _SHARED_IMAGE_STYLE and "胶囊" in _SHARED_IMAGE_STYLE
     assert "最多出现1次" in _SHARED_IMAGE_STYLE
     assert "日文新字体" in _SHARED_IMAGE_STYLE and "一字不差" in _SHARED_IMAGE_STYLE
+    # 2026-09-01 颜色决策放开：强调色自选协调（不再固定暖橘）
+    assert "harmonizes" in _IMAGE_CONSTRAINTS_EN and "teal" in _IMAGE_CONSTRAINTS_EN
+    assert "协调的" in _SHARED_IMAGE_STYLE and "不固定某一种" in _SHARED_IMAGE_STYLE
+    from src.services.visual_writer import _VISUAL_PROMPT
+    assert "COLOUR DIRECTION" in _VISUAL_PROMPT and "sage green" in _VISUAL_PROMPT
+    assert "EXTRA attention" in _VISUAL_PROMPT   # 配色反馈优先学习
     # 双模式最终提示词均含铁律
     p_en = get_image_prompt("general", "文案", 1, visual="V", style_en="S")
     assert "Two-tone headline" in p_en and "shinjitai" in p_en

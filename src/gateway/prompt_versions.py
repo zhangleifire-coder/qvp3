@@ -16,8 +16,10 @@ _SHARED_IMAGE_STYLE = (
     # 文字：跨风格硬约束（字体族与颜色跟随本篇风格，但正确性要求全风格一致）
     "文字：大号标题（约为正文字号的2.5倍），层级分明，标题字体与颜色严格按本篇风格执行，"
     "全篇字体系统一致；每行是短句，要点间用细线或小色块分隔。"
-    # 2026-09-01 吸收 8002 人工样例规律：双色标题/深字浅底正向措辞/胶囊豁免/深框≤1
-    "主标题用双色排版：主体字深色，其中1-2个关键词用强调暖色（暖橘/砖红），"
+    # 2026-09-01 吸收 8002 人工样例规律；同日按用户要求改「模型自选协调强调色」
+    "主标题用双色排版：主体字深色，其中1-2个关键词用一个与整体配色和主题协调的"
+    "强调色（视觉描述段给出配色时优先用它；未给出时自行选雅致点缀色，"
+    "如暖橘/砖红/墨绿/雾蓝/紫檀/芥末金等，不固定某一种）；"
     "对比类标题的「VS」等对比词也用强调色。"
     "文字默认深灰或黑色，直接排在画面的浅色留白区域上，不要底色框、不要深色衬底；"
     "主题色彩色胶囊/圆角标签压白字做重点标注是推荐形式、不算深色框；"
@@ -75,10 +77,15 @@ _IMAGE_CONSTRAINTS_EN = (
     "typeface family and color strictly follow the unified style and stay "
     "identical across all 6 pages; short phrases per line, thin dividers or "
     "small color ticks between points. "
-    # 2026-09-01 吸收 8002 人工样例规律：双色标题/深字浅底/胶囊豁免/深框≤1
-    "Two-tone headline: headline body in dark ink with 1-2 KEYWORDS in a warm "
-    "accent color (warm orange / brick red); in comparison cards the 'VS' or "
-    "comparison word also takes the accent color. "
+    # 2026-09-01 吸收 8002 人工样例规律；同日按用户要求改为「模型自选协调强调色」：
+    # 不再固定暖橘——强调色由视觉描述层的配色决策给出（与底色/主题协调），
+    # 未给出时模型自行选一个与整体色板和谐的点缀色
+    "Two-tone headline: headline body in dark ink with 1-2 KEYWORDS in an "
+    "ACCENT color that harmonizes with the unified palette and the subject "
+    "(use the accent specified in the VISUAL/STYLE sections when given; "
+    "otherwise pick a tasteful accent yourself — e.g. warm orange, brick red, "
+    "teal, cobalt, plum, mustard, forest green); in comparison cards the 'VS' "
+    "or comparison word also takes the accent color. "
     "Text sits dark-on-light directly on pale whitespace (dark gray/black ink, "
     "no backing box, no dark panel behind text); theme-colored CAPSULE or "
     "rounded labels with white text are RECOMMENDED for highlights and do NOT "

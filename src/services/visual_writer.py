@@ -25,13 +25,19 @@ _VISUAL_PROMPT = """You are the visual director for a Xiaohongshu-style 6-page i
 Style trained by our team (follow it; it was calibrated from human-approved samples):
 【unified style (Chinese)】{style_name}：{style_desc}
 
-Recent feedback notes from human reviewers (learn from them, avoid repeating mistakes):
+Recent feedback notes from human reviewers (learn from them, avoid repeating mistakes; colour-related feedback deserves EXTRA attention — the team trains your colour choices through these notes):
 {notes}
 
-Task: for EACH of the 6 pages write an ENGLISH visual direction (40-80 words each) describing ONLY what to depict: concrete subject, environment/props, lighting (direction & quality), camera angle/framing, color mood. The subject MUST be exactly what that page's Chinese text is about — never replace it with symbols or metaphors. Keep all 6 pages in the SAME unified style (palette/lighting/texture), only the scene changes per page.
+COLOUR DIRECTION (decide it yourself, per topic):
+- The colour hints inside the unified style above are the DEFAULT base — you may fine-tune the exact hues to better match the topic, as long as the overall feel (e.g. low-saturation, comfortable, restrained) stays.
+- Analyse the topic's mood and pick: (a) the background tint for all 6 pages, (b) the headline ACCENT color for two-tone headlines (1-2 keywords), (c) capsule/label colors. They must harmonize with each other.
+- Reference palette of tasteful low-saturation tints: sage green / misty blue / cream pink / light khaki / champagne / muted lilac / terracotta / mint / warm beige / pale apricot … plus matching accents (warm orange, brick red, teal, cobalt, plum, mustard, forest green, rose). You are NOT limited to this palette — any harmonious choice is fine; NEVER pure white/pure black backgrounds.
+- State your colour choices explicitly inside style_en (background tint + headline accent + label colors, with a one-line reason tied to the topic).
+
+Task: for EACH of the 6 pages write an ENGLISH visual direction (40-80 words each) describing ONLY what to depict: concrete subject, environment/props, lighting (direction & quality), camera angle/framing, color mood (consistent with your colour direction). The subject MUST be exactly what that page's Chinese text is about — never replace it with symbols or metaphors. Keep all 6 pages in the SAME unified style and SAME colour direction (palette/lighting/texture), only the scene changes per page.
 
 Output STRICT JSON only, no markdown fences, no extra text:
-{{"style_en": "<one English paragraph, 40-60 words, translating the unified style's visual essence: palette, lighting, texture, typography feel, decor>",
+{{"style_en": "<one English paragraph, 50-80 words: unified visual essence INCLUDING the chosen colour direction — background tint, headline accent, label colors, lighting, texture, typography feel, decor>",
  "pages": ["<EN visual direction page 1>", "...", "...", "...", "...", "<page 6>"]}}
 
 【6 pages of Chinese on-image text】
