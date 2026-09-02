@@ -140,15 +140,17 @@ _PAGE_LAYOUTS_EN = [
 IMAGE_PROMPTS_EN = {
     "general": ("General topic/tutorial card, fully AI-generated, no reference "
                 "images. Render the Chinese text below verbatim on the card."),
-    "single": ("Single-product review card. Incorporate the provided real "
-               "reference photos: remove watermarks and people, no repeated "
-               "photos, not too many per page; keep text already on reference "
-               "photos, add no extra photos. Render the Chinese text below "
-               "verbatim on the card."),
-    "compare": ("Comparison card. Incorporate reference photos of BOTH "
-                "subjects on the same page (keep their order): remove "
-                "watermarks and people, no repeats. Render the Chinese text "
-                "below verbatim on the card."),
+    "single": ("Single-product review card. Use ONLY the reference photos "
+               "assigned to this page (they are rotated per page): remove "
+               "watermarks and people; do NOT invent photos not given to this "
+               "page; the reference photos must differ from those of the other "
+               "pages; keep text already on reference photos, add no extra "
+               "photos. Render the Chinese text below verbatim on the card."),
+    "compare": ("Comparison card. Use ONLY the reference photos assigned to "
+                "this page (rotated per page), incorporating BOTH subjects "
+                "when available (keep their order): remove watermarks and "
+                "people; the reference photos must differ from those of the "
+                "other pages. Render the Chinese text below verbatim on the card."),
 }
 
 
@@ -221,8 +223,8 @@ _PAGE_LAYOUTS = [
 
 IMAGE_PROMPTS = {
     "general": "通用科普/教程配图，纯 AI 生成、无参考图。" + "本页文案：{page_body}",
-    "single": "单品评测配图，将提供的参考实景图融入画面：去水印、去人物、实景图不重复、每页实景图不宜过多以免杂乱；不删减参考图上的文字，也不额外添加其他图片。本页文案：{page_body}",
-    "compare": "对比类配图，将两个主体的参考实景图融入画面，每页尽量同时呈现两个主体做对比（参考图顺序不能乱）：去水印、去人物、实景图不重复。本页文案：{page_body}",
+    "single": "单品评测配图，将提供的参考实景图融入画面：去水印、去人物；提供的几张参考图已按本页轮播分配，只使用分配给的这几张、不要脑补其他页没给你的图，且六页中每页参考图必须各不相同；不删减参考图上的文字，也不额外添加其他图片。本页文案：{page_body}",
+    "compare": "对比类配图，将两个主体的参考实景图融入画面，每页尽量同时呈现两个主体做对比（参考图顺序不能乱）：去水印、去人物；只使用本页分配到的参考图，且六页中每页参考图必须各不相同。本页文案：{page_body}",
 }
 
 # 旧版提示词（保留兼容：get_prompt 仍可读 draft_v1 / page_split_v1 / evidence_v1）

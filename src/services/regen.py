@@ -238,7 +238,9 @@ async def partial_regen(task_id) -> dict:
             if fb:
                 prompt += ("\n\n【审核意见】该页上一版本被人工审核驳回："
                            + "；".join(fb) + "。请重新绘制，必须避免上述问题。")
-            r = await _generate_single_asset(task_id, p, prompt, reference_urls)
+            from src.services.style_select import page_refs
+            r = await _generate_single_asset(task_id, p, prompt,
+                                             page_refs(reference_urls, p) if reference_urls else None)
             if not settings.mock_image_gen:
                 r, extra = await _dedupe_and_validate(
                     r, prompt, reference_urls, task_id, p, seen_hashes,

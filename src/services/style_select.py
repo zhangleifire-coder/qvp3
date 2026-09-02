@@ -142,3 +142,21 @@ async def ensure_task_style(task_id) -> tuple[str, str]:
 def build_style_block(name: str, desc: str) -> str:
     """组装注入每页生图提示词的风格段落（含 6 页统一条款）。"""
     return (f"（本篇视觉风格：{name}）{desc}。{_UNIFY_CLAUSE}")
+
+
+def page_refs(refs: list | None, page_index: int, per_page: int = 2) -> list:
+    """实景参考图按页轮播分配（2026-09-02 用户要求：6 张配图实景用法必须错开）。
+
+    现状问题：reference_urls 全列表不加区别传给每一页——要么 6 页都用同一张
+    主图，要么每页把全部参考图都怼进去，六页内容雷同。
+    规则：每页取 per_page 张作为该页的参考子集，按 page_index 轮转起点，
+    保证相邻页不同、单页不堆砌。refs 不足 2 张时原样返回（全给）。
+    """
+    if not refs:
+        return []
+    refs = list(refs)
+    if len(refs) <= 2:
+        return refs
+    start = (page_index - 1) % len(refs)
+    n = min(per_page, len(refs))
+    return [refs[(start + j) % len(refs)] for j in range(n)]

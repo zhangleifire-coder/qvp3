@@ -61,6 +61,9 @@ _AGENT_INSTRUCTIONS = """你是「图文生产平台」的创作 Agent，负责�
 - web_search(query, task_id)：网页检索事实证据（配额 {quota_search} 次，检索词要精准）
 - image_search(query, task_id, count)：搜实景/实物参考图（仅 single/compare 模式需要）
 - generate_images(task_id, pages, mode, image_template, reference_urls)：批量生成 6 张交付配图。
+  参考图按页分配（铁律）：reference_urls 不要整表传给每一页——第 i 页取列表中
+  第 (i-1)%N、i%N 两张作为该页参考子集（N=参考图张数），保证相邻页参考图不同、
+  单页不堆砌全部实景图。参考图仅 1-2 张时允许重复。
   必须传：pages=6 页文案原样列表、mode、image_template=下方生图模板（按第 6 步替换风格句后的版本）；
   single/compare 再传 reference_urls=image_search 结果里挑出的图片 URL。
 - ocr_image(image_url, task_id)：OCR 识别配图文字。默认跳过——系统会自动做图文

@@ -630,9 +630,12 @@ async def node_asset_gen(input_data: dict) -> dict:
     _emit_progress(input_data["task_id"], "asset_gen",
                    msg=f"并行生成配图 6 张（并发 {parallel}，风格：{style_name}）")
 
+    from src.services.style_select import page_refs
     async def _gen_page(i: int) -> tuple[int, dict]:
+        # 每页轮播分配实景参考图子集：6 页实景用法错开（用户 2026-09-02）
         r = await _generate_single_asset(
-            input_data["task_id"], i, prompts[i - 1], reference_urls)
+            input_data["task_id"], i, prompts[i - 1],
+            page_refs(reference_urls, i) if reference_urls else None)
         return i, r
 
     results: list[dict] = [None] * 6   # type: ignore[list-item]

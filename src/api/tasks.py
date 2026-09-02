@@ -1038,10 +1038,13 @@ async def edit_image(asset_id: str, payload: ImageEditIn):
                 style_en=(v_snap["style_en"] if v_snap else None))
         else:
             base_prompt = old.prompt_used
-        ref_urls = [a.image_url for a in (await session.execute(
+        ref_urls_all = [a.image_url for a in (await session.execute(
             select(Asset).where(Asset.task_id == old.task_id,
                                 Asset.source_type == "official",
                                 Asset.selection_status == "confirmed"))).scalars().all()]
+        # 定点页只用其页码对应的实景子集（与首图同页轮播口径，2026-09-02）
+        from src.services.style_select import page_refs
+        ref_urls = page_refs(ref_urls_all, old.page_index) if ref_urls_all else []
     instr = payload.instruction.strip()
     prompt = base_prompt + (f"（修改要求：{instr}）" if instr else
                             "（重新排版：换一个与之前不同的构图与配色，文字保持正确）")
