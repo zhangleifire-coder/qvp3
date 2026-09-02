@@ -23,7 +23,7 @@ _TEXT_CHECK_PROMPT = """你是图文生产平台的内容核查编辑。针对�
 1. query_clean：Query 的中文自查——错别字、语句通顺、敏感词、绝对化违规表述（最/第一/唯一/100%/保证…）。
    若有问题：query_clean = {{"issues": ["问题1", "问题2"], "suggested": "修正后的 query"}}
    若无问题：query_clean = {{"issues": [], "suggested": "（原样，无需修改）"}}
-2. body_draft：围绕 Query 起草一篇图文正文（400-700字，不计空白；总分总结构、每段加小标题、事实客观、无绝对化表述（禁：最/第一/唯一/100%/保证）、无 emoji、中文标点、不用 markdown 符号）。
+2. body_draft：围绕 Query 起草一篇图文正文（400-700字，不计空白；无绝对化表述（禁：最/第一/唯一/100%/保证）、无 emoji、中文标点、不用 markdown 符号）。结构不拘，写作风格严格按文末【人设与真人感】【信息密度】要求执行。
 3. pages_draft：把正文精炼成 6 页图上文案（第1页封面主标题12-20字+钩子；第2-5页每页一个核心信息点25-50字；第6页总结20-40字；纯文本无 markdown）。
 4. image_prompt_draft：6 页配图的生图描述草稿（每页一句，竖版3:4图文卡片，与对应页文案呼应；不要出现具体品牌 logo/人脸）。
 
@@ -162,8 +162,13 @@ async def run_text_check(task_id) -> dict:
                                              mode_desc=_MODE_DESC.get(mode, mode),
                                              user_body=user_body)
     else:
-        prompt = _TEXT_CHECK_PROMPT.format(query=query,
-                                           mode_desc=_MODE_DESC.get(mode, mode))
+        # 全新起草：追人设化共享段（2026-08-24 补齐第三条路径——用户在
+        # 文字核查关卡看到、可编辑的草稿正是本提示词产出的，此前真人感
+        # 不足的根因之一就是这里没吃 _DRAFT_SHARED）
+        from src.gateway.prompt_versions import _DRAFT_SHARED
+        prompt = (_TEXT_CHECK_PROMPT.format(query=query,
+                                            mode_desc=_MODE_DESC.get(mode, mode))
+                  + "\n" + _DRAFT_SHARED)
     from src.pipeline.nodes import _stream_reporter, _emit_progress
     branch = ("驳回定向修改" if feedback else
               "手工底稿改写" if user_body else "全新起草")

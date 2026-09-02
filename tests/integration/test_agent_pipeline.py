@@ -240,3 +240,26 @@ async def test_garble_regen_loop(agent_path):
             select(Asset).where(Asset.task_id == task_id,
                                 Asset.source_type == "ai_generated"))).scalars().all()
         assert len(ai) == 6   # mock 路径跳过扭曲质检，产物照常落库
+
+
+async def test_agent_prompt_appends_draft_persona(agent_path):
+    """Agent 路径正文提示词必须追人设化共享段（2026-08-24 补齐的根因修复）。
+
+    生产任务走 Agent，此前只有直连 nodes.py 追加 _DRAFT_SHARED，
+    Agent 路径漏追加导致正文真人感不足——此测试防止重构再丢。
+    """
+    captured = {}
+
+    async def _spy(user_message, **kwargs):
+        captured["msg"] = user_message
+        return dict(FAKE_AGENT_CALL)
+
+    with patch("src.pipeline.agent_production.nanobot_client.call_agent",
+               new=AsyncMock(side_effect=_spy)):
+        task_id = await _create_task("general")
+        await run_pipeline(task_id)
+
+    msg = captured["msg"]
+    assert "人设与真人感" in msg          # 人设共享段已注入
+    assert "信息密度" in msg              # 2026-08-24 增强段已注入
+    assert "25字" in msg                  # 标题公式守卫词

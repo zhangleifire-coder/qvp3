@@ -486,6 +486,12 @@ async def node_agent_production(input_data: dict) -> dict:
     draft_tpl = await get_effective_prompt("draft_gen", mode, owner_id)
     pages_tpl = await get_effective_prompt("page_split", None, owner_id)
     image_tpl = await get_effective_prompt("image_gen", mode, owner_id)
+    # 人设化共享段（2026-09-01 直连路径已有；2026-08-24 补齐 Agent 路径——
+    # 生产任务走 Agent，此前真人感不足的根因之一就是这里漏追加了）：
+    # 仅系统默认模板追加，用户自定义模板代表显式意图不覆盖（防负优化）
+    from src.gateway.prompt_versions import default_prompt, _DRAFT_SHARED
+    if draft_tpl == default_prompt("draft_gen", mode):
+        draft_tpl = draft_tpl + "\n" + _DRAFT_SHARED
 
     regen = input_data.get("regen") or {}
     feedbacks = regen.get("feedback") or []
