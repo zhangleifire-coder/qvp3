@@ -357,19 +357,20 @@ async def node_page_split(input_data: dict) -> dict:
     from src.gateway.prompt_versions import get_effective_prompt
 
     def _balance_issue(arr: list[str]) -> str:
-        """图上文字量校验（2026-08-31 用户要求）：每页 30-100 字且六页基本均衡。
+        """图上文字量校验（2026-08-31 用户要求；2026-09-02 提密度对齐借鉴库爆款
+        公式内页 90-130 字）：每页 80-130 字且六页基本均衡。
         返回问题描述；合格返回空串。"""
         lens = [len(p) for p in arr]
         issues = []
-        short = [f"第{i+1}页仅{l}字" for i, l in enumerate(lens) if l < 30]
-        long_ = [f"第{i+1}页{l}字" for i, l in enumerate(lens) if l > 100]
+        short = [f"第{i+1}页仅{l}字" for i, l in enumerate(lens) if l < 80]
+        long_ = [f"第{i+1}页{l}字" for i, l in enumerate(lens) if l > 130]
         if short:
-            issues.append("字数不足30字：" + "、".join(short))
+            issues.append("字数不足80字：" + "、".join(short))
         if long_:
-            issues.append("字数超100字：" + "、".join(long_))
-        if max(lens) - min(lens) > 25:
+            issues.append("字数超130字：" + "、".join(long_))
+        if max(lens) - min(lens) > 40:
             issues.append(f"各页失衡（最长{max(lens)}最短{min(lens)}，"
-                          "任意两页相差须≤25字）")
+                          "任意两页相差须≤40字）")
         return "；".join(issues)
 
     async with SessionLocal() as session:
@@ -396,7 +397,7 @@ async def node_page_split(input_data: dict) -> dict:
             return arr[:6] if len(arr) >= 6 else None
 
         _emit_progress(input_data["task_id"], "page_split",
-                       msg="分页文案生成中（每页 30-100 字、六页均衡）")
+                       msg="分页文案生成中（每页 80-130 字、六页均衡）")
         result = await call_with_failover(
             llm_prompt, DEEPSEEK_MODEL, KIMI_MODEL,
             on_delta=_stream_reporter(input_data["task_id"], "page_split"))
@@ -408,8 +409,8 @@ async def node_page_split(input_data: dict) -> dict:
         if issue:
             retry = await call_with_failover(
                 llm_prompt + "\n\n【上次输出不合格，必须修正】" + issue
-                + "。请重新输出全部 6 页：每页（含小标题与标点）30-100 字，"
-                  "各页字数相差不超过 25 字。",
+                + "。请重新输出全部 6 页：每页（含小标题与标点）80-130 字，"
+                  "各页字数相差不超过 40 字。",
                 DEEPSEEK_MODEL, KIMI_MODEL,
                 on_delta=_stream_reporter(input_data["task_id"], "page_split"))
             pages2 = _parse(retry["text"])

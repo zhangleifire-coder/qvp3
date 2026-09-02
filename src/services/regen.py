@@ -178,7 +178,7 @@ async def partial_regen(task_id) -> dict:
                            if i != p)
             if sib:
                 prompt += ("\n\n该篇其余各页现字数（均衡参照，重写后本页"
-                           f"30-100字且与它们相差不超过25字）：{sib}")
+                           f"80-130字且与它们相差不超过40字）：{sib}")
             result = await call_with_failover(prompt, DEEPSEEK_MODEL, KIMI_MODEL)
             total_cost += result["cost_cny"]
             models.add(result["model_version"])

@@ -29,9 +29,10 @@ _SHARED_IMAGE_STYLE = (
     "③关键词荧光高亮底块（强调色的浅调底块配深色字，像荧光笔划过的重点）。"
     "全套6页中近黑/深灰的大块文字底最多出现1次，严禁大面积深底压字。"
     "所有文字必须清晰可读、标准中文字体，禁止艺术化变形、阴影、描边、透视扭曲，"
-    "正文统一基线对齐、可印刷级清晰；每页图上文字（含标题）30-100 字，"
-    "且一篇内各页文字量基本均衡（任意两页相差不超过 25 字），"
-    "每页只突出一个核心信息点，不出现字号过小的文字，"
+    "正文统一基线对齐、可印刷级清晰；每页图上文字（含标题）80-130 字，"
+    "文字量大，靠分区分层排版装下并保持清晰（标题区/正文区/强调区分工明确），"
+    "且一篇内各页文字量基本均衡（任意两页相差不超过 40 字），"
+    "每页围绕一个核心信息点展开，不出现字号过小的文字，"
     "图中的每一个汉字都必须是中国大陆规范简体字形，严禁日文新字体（実・対・変・単・図・芸）、"
     "繁体字、异体字、自造字或乱码字符；把图中文字当作需要逐字精确复制的排版内容而非装饰纹理："
     "给定文案一字不差，不增字、不漏字、不改写；拿不准如何正确书写的文字宁可不出现在图中；"
@@ -102,10 +103,11 @@ _IMAGE_CONSTRAINTS_EN = (
     "most ONE of the 6 pages; never large dark areas behind text. "
     "All on-image text must be crisp, "
     "print-quality standard Chinese type — no artistic distortion, no shadows, "
-    "no outlines, no perspective warping; 30-100 Chinese characters per page "
-    "including headline, kept balanced across the 6 pages (max 25-char "
-    "difference between any two pages); one core message per page; no tiny "
-    "type. "
+    "no outlines, no perspective warping; 80-130 Chinese characters per page "
+    "including headline, kept balanced across the 6 pages (max 40-char "
+    "difference between any two pages); the page holds a lot of text, organize "
+    "it into clear zones (title / body / highlight) so everything stays legible; "
+    "one core message per page; no tiny type. "
     "HANZI RULE (critical): every Chinese character rendered on the card must "
     "be a real, mainland-standard SIMPLIFIED Chinese form — never Japanese "
     "shinjitai variants (実 対 変 単 図 芸), never traditional or variant "
@@ -334,18 +336,21 @@ def get_image_prompt(mode: str, page_body: str, page_index: int = None,
 
 # 分页文案：由 LLM 把整篇正文改写成 6 页图上文案（替代旧的机械切割，2026-08-20）
 # 2026-08-31 按用户反馈放宽字数：图上文字太少内容单薄——每页 30-100 字且六页均衡
+# 2026-09-02 再次提密度对齐借鉴库爆款公式（内页 90-130 字）：每页 80-130 字
 PAGES_PROMPT = """你是小红书图文编辑。把下面的文章改写成 6 页图上文案，用于竖版图文卡片。
 要求：
 1. 输出严格的 JSON 数组，恰好 6 个字符串，不要输出任何其他文字、解释或 markdown 代码围栏。
-2. 每页图上文字（含小标题与标点）最少 30 字、最多 100 字：
-   第 1 页封面 = 主标题 + 一句钩子 + 一行辅助说明；
-   第 2-5 页每页一个核心信息点 = 小标题 + 2-3 句干货（讲透这个点，
-   首句尽量写成一句利落的判断句，可作页面横幅副题使用）；
+2. 每页图上文字（含小标题与标点）最少 80 字、最多 130 字：
+   第 1 页封面 = 主标题（12-20字）+ 一句钩子 + 两行辅助说明；
+   第 2-5 页每页围绕一个核心信息点讲透 = 小标题 + 4-6 句干货
+   （首句尽量写成一句利落的判断句，可作页面横幅副题使用；
+   每页至少带 1-2 个具体信息点：数字/价格/步骤/参数/时限，
+   把正文里支撑这个点的细节尽量搬上图，不许抽象概括）；
    第 6 页结尾 = 一句总结 + 适合谁/行动建议 + 一句补充。
-3. 六页文字量必须基本均衡：动笔前先规划好每页约 60-85 字的骨架，
-   任意两页字数相差不得超过 25 字；严禁某页只有十几个字而另一页接近 100 字。
+3. 六页文字量必须基本均衡：动笔前先规划好每页约 90-120 字的骨架，
+   任意两页字数相差不得超过 40 字；严禁某页只有几十个字而另一页接近 130 字。
 4. 忠于原文的事实与数据，不得编造；小标题与表述忠于原文、不自行改写或精简措辞；
-   次要细节留在正文，图上只放这一页的核心信息点。
+   正文里的数字、价格、型号等具体信息优先上图，图上文案不得比正文更空泛。
 5. 全部纯文本：不用 markdown 符号（#、*、- 等），不用 emoji，无绝对化表述，中文标点。
 6. 每页文字都要语句完整通顺、能直接排版在图片上。
 
@@ -366,8 +371,8 @@ PAGE_REGEN_PROMPT = """你是小红书图文编辑。下面是一篇图文的完
 要求：
 1. 逐条解决审核意见中的问题，不得再出现同类问题。
 2. 忠于正文的事实与数据，不得编造；纯文本，不用 markdown 符号和 emoji，中文标点。
-3. 重写后整页文字（含小标题与标点）30-100 字，且与该篇其他页的文字量基本均衡
-   （相差不超过 25 字），语句完整通顺，能直接排版在图片上。
+3. 重写后整页文字（含小标题与标点）80-130 字，且与该篇其他页的文字量基本均衡
+   （相差不超过 40 字），至少带 1-2 个具体信息点，语句完整通顺，能直接排版在图片上。
 4. 只输出该页文案本身，不要输出页码、解释或任何其他文字。
 
 正文：

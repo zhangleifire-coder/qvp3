@@ -90,7 +90,7 @@ def test_english_visual_prompt_assembly():
     assert "UNIFIED STYLE" in p and "Cream minimalist" in p
     assert "桂花酸梅汤的三个要点" in p          # 中文文案逐字保留
     assert "render VERBATIM" in p
-    assert "HANZI RULE" in p and "pure white" in p and "30-100" in p
+    assert "HANZI RULE" in p and "pure white" in p and "80-130" in p
     assert "key points" in p                      # 英文布局轮换（第2页）
     assert "（主体锚定）" not in p                # 中文骨架未混入
 
@@ -98,5 +98,5 @@ def test_english_visual_prompt_assembly():
 def test_chinese_fallback_unchanged():
     """回退骨架：无 visual 时中文底座原样（含均衡/边框/锚定条款）。"""
     p = get_image_prompt("general", "正文", 1)
-    assert "30-100 字" in p and "不得使用纯白或纯黑" in p
+    assert "80-130 字" in p and "不得使用纯白或纯黑" in p
     assert "画面主体必须直接描绘本页文案所讲的事物本身" in p

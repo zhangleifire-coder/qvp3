@@ -148,5 +148,5 @@ def test_get_image_prompt_style_block_unifies_six_pages():
     assert all(block in p for p in ps)            # 风格段全篇统一
     tails = {p[p.index("本页是"):] for p in ps}    # 布局各不相同
     assert len(tails) == 6
-    assert all("标准中文字体" in p and "30-100 字" in p and "不得使用纯白或纯黑" in p
+    assert all("标准中文字体" in p and "80-130 字" in p and "不得使用纯白或纯黑" in p
                for p in ps)  # 字数均衡 + 边框禁纯白纯黑（硬约束底座）
