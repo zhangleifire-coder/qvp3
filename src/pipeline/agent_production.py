@@ -396,6 +396,62 @@ async def _garble_check_and_regen(task_id, pages: list[str], localized: list[dic
     return localized, garbled
 
 
+async def _subject_check_and_regen(task_id, pages: list[str], localized: list[dict],
+                                   image_tpl: str, mode: str) -> list[dict]:
+    """视觉主体审核（2026-09-02 补齐 Agent 路径——此前仅直连路径有，用户反馈
+    「生图与标题不匹配、实物照片牛头不对马嘴」的主要来源即 nanobot 生成的图）。
+
+    每页 VL 看图比对「图中主体 vs 该页文案主题」：不符→带主体强调重画一次→
+    仍不符→img['subject_mismatch']=True + 打 RejectMark 进人工审核队列
+    （role=系统质检，与文字扭曲同通道）。VL 不可用→跳过不误杀。
+    """
+    from src.services.visual_check import check_subject_match
+    from src.gateway.ocr import fetch_image_bytes as _fetch_bytes
+    from src.gateway.image_gen import generate_image
+    from src.pipeline.nodes import _persist_image
+    if settings.mock_image_gen:
+        return localized
+    for img in localized:
+        idx = img.get("page_index")
+        if not isinstance(idx, int) or not (1 <= idx <= len(pages)):
+            continue
+        page_text = pages[idx - 1]
+        try:
+            verdict = await check_subject_match(img["image_url"], page_text)
+        except Exception:  # noqa: BLE001
+            traceback.print_exc()
+            verdict = None
+        if verdict is None or verdict["ok"]:
+            continue
+        # 主体不符：带强调重画一次
+        try:
+            regen_prompt = (
+                image_tpl.replace("{page_body}", page_text)
+                + f"（画面主体必须与文案严格一致：{page_text[:60]}；"
+                  f"禁止画其他事物）")
+            r2 = await generate_image(regen_prompt)
+            data, ctype = await _fetch_bytes(r2["image_url"])
+            local_url = _persist_image(task_id, idx, "p", data, ctype)
+            verdict2 = await check_subject_match(local_url, page_text)
+            if verdict2 is None or verdict2["ok"]:
+                img.update(image_url=local_url,
+                           hash=hashlib.md5(data).hexdigest(),
+                           prompt_used=(img.get("prompt_used", "") + "|subjregen").strip("|"))
+                continue
+            # 重画仍不符：标记 + 人工队列
+            img.update(image_url=local_url,
+                       hash=hashlib.md5(data).hexdigest(),
+                       subject_mismatch=True,
+                       prompt_used=(img.get("prompt_used", "") + "|subj!").strip("|"))
+        except Exception:  # noqa: BLE001
+            traceback.print_exc()
+            img["subject_mismatch"] = True   # 重画通道故障：原图标记待人工
+        img.setdefault("_subj_flag_reason",
+                       f"视觉主体审核：图中主体与文案不符（{verdict.get('actual', '?')}），重画后仍存疑")
+    return localized
+
+
+
 async def node_agent_production(input_data: dict) -> dict:
     task_id = input_data["task_id"]
     from src.stream.bus import bus
@@ -530,6 +586,9 @@ async def node_agent_production(input_data: dict) -> dict:
     # ── P0-2：图上文字扭曲机器质检 + 有限重生成（OCR 字符级对撞）──
     localized, garbled = await _garble_check_and_regen(
         task_id, out["pages"], localized, image_tpl, mode)
+    # 视觉主体审核（2026-09-02 补齐 Agent 路径）：图与文案牛头不对马嘴在此拦截
+    localized = await _subject_check_and_regen(
+        task_id, out["pages"], localized, image_tpl, mode)
 
     # ── 项4：AI 双重审核（文字正确性 + 实景协调性），不达标自动调提示词重生成 ──
     # 对 OCR 判定有问题的页/需要实景嵌入的页做视觉二次审核（compare/single 全页，
@@ -610,6 +669,15 @@ async def node_agent_production(input_data: dict) -> dict:
                 image_url=ref["image_url"], origin_url=ref.get("image_url"),
                 model_version=ref.get("engine") or "search", is_illustration=False))
         # P0-2：文字扭曲重生仍失败的页 → 打 open 标记进审核队列（机器先拦，人再复核）
+        # 视觉主体审核仍存疑的页：与文字扭曲同通道进人工审核队列
+        subj_flags = {img["page_index"]: img["_subj_flag_reason"]
+                      for img in localized if img.pop("_subj_flag_reason", None)}
+        if subj_flags:
+            from src.models.review import RejectMark as _RM
+            for page_idx, reason in subj_flags.items():
+                session.add(_RM(task_id=task_id, role="系统质检",
+                                item_type="image", page_index=page_idx,
+                                reason=reason))
         if garbled:
             from src.models.review import RejectMark
             for page_idx, flags in garbled.items():
@@ -639,6 +707,7 @@ async def node_agent_production(input_data: dict) -> dict:
                 hash=img["hash"], image_url=img["image_url"],
                 origin_url=img["origin_url"] or None,
                 model_version=mv, is_illustration=False,
+                subject_mismatch=bool(img.get("subject_mismatch")),
                 prompt_used=img.get("prompt_used") or None))   # 定点修改/AI审核要复用原提示词
         await session.flush()
         # OCR：Agent 自检结果优先；Agent 未覆盖的页由后端兜底补齐
