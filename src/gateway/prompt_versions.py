@@ -21,9 +21,13 @@ _SHARED_IMAGE_STYLE = (
     "强调色（视觉描述段给出配色时优先用它；未给出时自行选雅致点缀色，"
     "如暖橘/砖红/墨绿/雾蓝/紫檀/芥末金等，不固定某一种）；"
     "对比类标题的「VS」等对比词也用强调色。"
-    "文字默认深灰或黑色，直接排在画面的浅色留白区域上，不要底色框、不要深色衬底；"
-    "主题色彩色胶囊/圆角标签压白字做重点标注是推荐形式、不算深色框；"
-    "全套6页中深色（近黑/深灰）底文字框最多出现1次，严禁每页深色框压白字。"
+    "文字默认深灰或黑色，正文直接排在画面的浅色留白区域上，不要底色框、不要深色衬底；"
+    # 2026-08-24 依 37 篇新榜高赞借鉴库训练：三类主题色标注是丰富度标配、不算深色框
+    "三类主题色标注是推荐形式、不算深色框：①主题色彩色胶囊/圆角标签压白字；"
+    "②标题下的主题深色横幅细条（墨绿/藏青/深褐等饱和深色，非近黑，白字一句副题短句，"
+    "句子取自本页给定文案，条高约为标题的一半）；"
+    "③关键词荧光高亮底块（强调色的浅调底块配深色字，像荧光笔划过的重点）。"
+    "全套6页中近黑/深灰的大块文字底最多出现1次，严禁大面积深底压字。"
     "所有文字必须清晰可读、标准中文字体，禁止艺术化变形、阴影、描边、透视扭曲，"
     "正文统一基线对齐、可印刷级清晰；每页图上文字（含标题）30-100 字，"
     "且一篇内各页文字量基本均衡（任意两页相差不超过 25 字），"
@@ -87,10 +91,15 @@ _IMAGE_CONSTRAINTS_EN = (
     "teal, cobalt, plum, mustard, forest green); in comparison cards the 'VS' "
     "or comparison word also takes the accent color. "
     "Text sits dark-on-light directly on pale whitespace (dark gray/black ink, "
-    "no backing box, no dark panel behind text); theme-colored CAPSULE or "
-    "rounded labels with white text are RECOMMENDED for highlights and do NOT "
-    "count as dark boxes; a dark (near-black) text panel may appear on at most "
-    "ONE of the 6 pages. "
+    "no backing box, no dark panel behind body text); three theme-colored "
+    "devices are RECOMMENDED and do NOT count as dark boxes: (1) theme-colored "
+    "CAPSULE or rounded labels with white text; (2) a slim saturated dark banner bar "
+    "(deep green/navy/umber — NOT near-black) right under the headline, "
+    "carrying ONE short sub-sentence in white taken verbatim from this page's "
+    "Chinese text, bar height about half the headline; (3) highlighter blocks "
+    "on keywords — a light tint of the accent color with dark text on top, "
+    "like a marker pen swipe. A large near-black text panel may appear on at "
+    "most ONE of the 6 pages; never large dark areas behind text. "
     "All on-image text must be crisp, "
     "print-quality standard Chinese type — no artistic distortion, no shadows, "
     "no outlines, no perspective warping; 30-100 Chinese characters per page "
@@ -118,23 +127,31 @@ _IMAGE_CONSTRAINTS_EN = (
 
 _PAGE_LAYOUTS_EN = [
     "PAGE ROLE (cover): hero visual occupies ~2/3 of the card (texture per "
-    "unified style), large headline at top, one-line subtitle only, generous "
-    "whitespace.",
+    "unified style), large bold headline at top scaled up (one line may span "
+    "~80% of the page width), one-line subtitle only, generous whitespace.",
     "PAGE ROLE (key points): text zone above, image below; the Chinese text "
-    "breaks into 2-3 short bullet lines, each optionally led by one consistent "
-    "small round icon, thin dividers between points, horizontal line or soft "
-    "curve separating text and image zones.",
+    "breaks into 2-3 short bullet lines, each led by one accent-color circular "
+    "numbered badge (white 1/2/3 on the circle), thin dividers between points; "
+    "optionally a slim saturated dark banner bar under the headline carrying "
+    "one short white sub-sentence from this page's Chinese text; horizontal "
+    "line or soft curve separating text and image zones.",
     "PAGE ROLE (close-up): subject close-up fills the frame (lighting per "
-    "unified style), text confined to a bottom quarter band in the style's "
-    "primary color.",
+    "unified style); the photo may sit in a rounded frame or torn-paper edge "
+    "with one small accent-color round sticker on its corner (2-4 Chinese "
+    "characters verdict word in white); text confined to a bottom quarter band "
+    "in the style's primary color.",
     "PAGE ROLE (checklist): rounded-card columns, 2-4 info blocks, one "
     "sub-headline each, clear gaps between cards, card tints within the "
-    "style's palette.",
+    "style's palette; keywords may use highlighter blocks (light accent tint "
+    "with dark text).",
     "PAGE ROLE (scene): full-bleed scene image (texture per unified style), "
     "text placed in a top whitespace zone, image and text joined by a curve "
     "or diagonal.",
     "PAGE ROLE (wrap-up): centered large conclusion text, at most two smaller "
-    "lines below, clean visual ending.",
+    "lines below; optionally a two-column quick-check contrast (green check "
+    "for the do's, brick-red cross for the don'ts) or a slim saturated dark "
+    "banner at the bottom carrying one white conclusion sentence taken from "
+    "this page's text; clean visual ending.",
 ]
 
 IMAGE_PROMPTS_EN = {
@@ -206,19 +223,28 @@ DRAFT_POLISH_PROMPT = """你是资深内容校稿编辑。请对下面的稿件�
 
 # 分页排版轮换指令：同一套风格词下，6 页的构图/布局必须错开，
 # 否则 gpt-image 会把每页都画成同一个模板（2026-08-20 用户反馈「每张图重复套用模版」）
+# 2026-08-24 依 37 篇新榜借鉴库训练注入页角色化丰富度元素：
+# 横幅金句条/圆形序号章/结论贴纸/荧光高亮/速查对比（每页至多 1-2 种，防堆砌）
 _PAGE_LAYOUTS = [
     "本页是封面页：主视觉大图占画面约三分之二（质感按本篇风格），"
-    "大标题置顶部，副标题只一行，整体留白充足。",
+    "大标题置顶部且字号加大加粗（单行可占版面宽度近八成），副标题只一行，"
+    "整体留白充足。",
     "本页是要点页：上文下图布局，正文拆成2-3个短句要点纵向排列，"
-    "每条要点前可配一枚统一的小圆图标，要点间用细线或小色块分隔"
-    "（线与色块颜色按本篇风格），文字区与图片区以水平细线或弧线过渡。",
+    "每条要点前配一枚主题强调色的圆形数字序号章（圆底白字1/2/3），"
+    "要点间用细线或小色块分隔（线与色块颜色按本篇风格）；"
+    "标题下可加一条主题深色横幅细条，内嵌本页文案中的一句副题短句（白字），"
+    "文字区与图片区以水平细线或弧线过渡。",
     "本页是特写页：主体特写充满画面（光影按本篇风格），"
-    "文字只放在底部约四分之一的主色横条区域内。",
+    "照片可用圆角相框或撕纸边框质感，照片一角可放一枚主题色圆形小贴纸"
+    "（白字2-4字点出本页结论词）；文字只放在底部约四分之一的主色横条区域内。",
     "本页是清单页：圆角卡片式分栏布局，信息分成2-4块排列，每块一个小标题，"
-    "块间留明显间距，卡片底色与背景同为本篇风格的主色系。",
+    "块间留明显间距，卡片底色与背景同为本篇风格的主色系；"
+    "每块的关键词可用荧光高亮底块（强调色浅调底配深字）标注。",
     "本页是场景页：全幅场景图铺满画面（质感按本篇风格），"
     "文字置于顶部留白区内，图与文字以弧线或斜线自然衔接。",
-    "本页是总结页：居中大字结论，下方最多两行小字，视觉收尾干净利落。",
+    "本页是总结页：居中大字结论，下方最多两行小字；"
+    "可做左右两栏速查对比（推荐项配主题绿对勾、避免项配砖红叉号），"
+    "或底部一条主题深色横幅细条收一句结论短句（白字，取自本页文案），视觉收尾干净利落。",
 ]
 
 IMAGE_PROMPTS = {
@@ -296,9 +322,10 @@ PAGES_PROMPT = """你是小红书图文编辑。把下面的文章改写成 6 �
 1. 输出严格的 JSON 数组，恰好 6 个字符串，不要输出任何其他文字、解释或 markdown 代码围栏。
 2. 每页图上文字（含小标题与标点）最少 30 字、最多 100 字：
    第 1 页封面 = 主标题 + 一句钩子 + 一行辅助说明；
-   第 2-5 页每页一个核心信息点 = 小标题 + 2-3 句干货（讲透这个点）；
+   第 2-5 页每页一个核心信息点 = 小标题 + 2-3 句干货（讲透这个点，
+   首句尽量写成一句利落的判断句，可作页面横幅副题使用）；
    第 6 页结尾 = 一句总结 + 适合谁/行动建议 + 一句补充。
-3. 六页文字量必须基本均衡：动笔前先规划好每页约 50-70 字的骨架，
+3. 六页文字量必须基本均衡：动笔前先规划好每页约 60-85 字的骨架，
    任意两页字数相差不得超过 25 字；严禁某页只有十几个字而另一页接近 100 字。
 4. 忠于原文的事实与数据，不得编造；小标题与表述忠于原文、不自行改写或精简措辞；
    次要细节留在正文，图上只放这一页的核心信息点。
