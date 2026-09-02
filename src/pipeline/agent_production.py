@@ -578,7 +578,12 @@ async def node_agent_production(input_data: dict) -> dict:
         parsed = _parse_agent_json(retry["text"])
         validated, errors = _validate_output(parsed or {})
         if validated is None:
-            raise RuntimeError(f"Agent 输出两次未通过校验: {errors}")
+            # Agent notes 常带真实失败原因（如生图通道余额不足），拼进报错
+            # 避免只见「缺 image_url」这类表象、排障要多挖一层（2026-09-03 实例）
+            agent_notes = str((parsed or {}).get("notes") or "")[:300]
+            raise RuntimeError(
+                f"Agent 输出两次未通过校验: {errors}"
+                + (f"｜Agent备注: {agent_notes}" if agent_notes else ""))
 
     out = validated
     prompt_version = (f"agent_{mode}_v1"
