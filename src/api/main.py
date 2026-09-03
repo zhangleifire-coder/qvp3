@@ -100,6 +100,14 @@ async def index():
     return FileResponse(str(STATIC_DIR / "index.html"), headers={"Cache-Control": "no-cache"})
 
 
+# 技术交接文档在线版（同事浏览器直达；源文件 docs/技术交接文档-*.md，
+# 由 scripts/build_handover.py 渲染成 static/handover.html，随发版自动更新）
+@app.get("/handover")
+async def handover():
+    return FileResponse(str(STATIC_DIR / "handover.html"),
+                        headers={"Cache-Control": "no-cache"})
+
+
 # 旧页面路径 → SPA hash 路由（兼容旧链接/书签）
 _LEGACY_ROUTES = {
     "/login": "/#/login",

@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>图文生产平台 · 技术交接文档</title>
+<style>
+  body { margin: 0; background: #f6f8fa; color: #1f2328;
+         font: 15px/1.8 "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
+  .banner { background: #1f2328; color: #fff; padding: 14px 24px; font-size: 13px; }
+  .banner b { font-size: 15px; }
+  .banner span { opacity: .75; margin-left: 12px; }
+  main { max-width: 920px; margin: 24px auto 60px; background: #fff;
+          padding: 40px 56px; border: 1px solid #d0d7de; border-radius: 8px; }
+  h1 { font-size: 26px; border-bottom: 2px solid #d0d7de; padding-bottom: 10px; }
+  h2 { font-size: 20px; border-bottom: 1px solid #d0d7de; padding-bottom: 6px;
+        margin-top: 34px; }
+  h3 { font-size: 16px; margin-top: 24px; }
+  code { background: #f0f2f4; border-radius: 4px; padding: 1px 5px;
+          font-family: Consolas, monospace; font-size: 13px; }
+  pre { background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 6px;
+         padding: 12px 14px; overflow-x: auto; line-height: 1.5; }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 14px; }
+  th, td { border: 1px solid #d0d7de; padding: 6px 10px; text-align: left; }
+  th { background: #f6f8fa; }
+  tr:nth-child(even) td { background: #fbfcfd; }
+  blockquote { margin: 0; padding: 4px 16px; color: #59636e;
+                border-left: 4px solid #d0d7de; }
+  hr { border: none; border-top: 1px solid #d0d7de; margin: 28px 0; }
+  a { color: #0969da; }
+</style>
+</head>
+<body>
+<div class="banner"><b>图文生产平台 · 技术交接文档</b>
+  <span>源文件 技术交接文档-20260903.md ｜ commit eac3470 ｜ 生成于 2026-09-03 13:22（scripts/build_handover.py，随发版自动更新）</span>
+</div>
+<main>
+<h1 id="_1">图文生产平台 · 技术交接文档</h1>
+<blockquote>
+<p>交接日期：2026-09-03 ｜ 代码版本：<code>1eb6c0b</code>
+读者：接手新改进开发的同事。读完本文应能：本地跑起全套环境、理解双路径流水线、
+安全地改提示词/节点/前端、按流程发版到测试与生产。</p>
+<p>⚠️ <strong>先读第 11 节「服务器红线」——有两台服务器绝对不能动。</strong></p>
+<p>🌐 在线版（随每次发版自动更新）：<code>http://117.34.118.115:8003/handover</code>
+（测试栈 <code>http://117.34.118.115:8001/handover</code> 同路径）</p>
+</blockquote>
+<hr />
+<h2 id="1">1. 平台是做什么的</h2>
+<p>面向内容运营的「小红书风格图文」批量生产平台：导入选题 Query → AI 取证/写正文/
+分 6 页文案/生成 6 张竖版卡片图（3:4）→ 规则机+视觉审核 → 人工核查/审图 → 签发导出。
+三种生产模式：<code>general</code>（通用科普）、<code>single</code>（单一产品实测，图生图保外观）、
+<code>compare</code>（两主体对比，双实景参考图生图）。</p>
+<p>设计原则：<strong>AI 只做创作段，业务调度、校验、审核、记账全部在后端确定性代码里</strong>；
+每个 LLM/生图调用可 mock、可重试、有幂等键、有成本记账。</p>
+<h2 id="2">2. 总体架构</h2>
+<pre><code>浏览器（Vue3 CDN 版 SPA，hash 路由，无构建步骤）
+   │  HTTP + SSE
+   ▼
+FastAPI 后端（uvicorn，单进程 asyncio）         Docker Compose（每套栈独立）
+   ├─ scheduler：进程内 asyncio 队列 + 自适应并发限流        ┌─────────────────┐
+   ├─ 双路径流水线 orchestrator                              │ qvp2-app  :8003 │
+   │    ├─ Agent 路径（生产默认，AGENT_PIPELINE_ENABLED=true） │ qvp2-postgres   │
+   │    │     └→ Nanobot 网关 :8900（OpenAI 兼容 API）        │ qvp2-openserp   │
+   │    │           └→ 创作大节点 LLM（deepseek 主/kimi 备）   └─────────────────┘
+   │    │                 └→ MCP 工具（stdio 子进程 qvp_mcp）      Nanobot 在应用容器内
+   │    └─ 直连 13 节点路径（兜底开关，秒切回）                     拉起，仅回环可达
+   ├─ 视觉审核 visual_check（dashscope qwen-vl-max）
+   ├─ rule_check / cross_check / risk_classify（纯代码，无 LLM）
+   └─ PostgreSQL 16（SQLAlchemy async + asyncpg）＋ Redis（限流/心跳）
+</code></pre>
+<p>一次 Agent 路径生产的数据流：
+导入 → 文字核查关卡（人工放行）→ 实景搜图关卡（人工筛选，compare/single 才有）→
+<code>agent_production</code> 一次调用 Nanobot 创作 Agent（内部用 MCP 工具：豆包搜索取证 →
+生图 gpt-image-2 → 逐页 OCR 自检）→ 后端收契约 JSON 做确定性收尾（图片本地化/去重/
+尺寸校验/落库 → 规则机 → 交叉核验 → 风险分级 → 人工审图 → 会签 → 快照）。</p>
+<h2 id="3">3. 技术栈清单</h2>
+<table>
+<thead>
+<tr>
+<th>层</th>
+<th>技术</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>后端</td>
+<td>Python 3.12 + FastAPI + uvicorn</td>
+<td>单进程 asyncio；<code>src/config.py</code> pydantic-settings 读 <code>.env</code></td>
+</tr>
+<tr>
+<td>ORM/DB</td>
+<td>SQLAlchemy 2 async + asyncpg + PostgreSQL 16</td>
+<td>迁移是编号 SQL（<code>migrations/001-019</code>），entrypoint 的 <code>init_db.py</code> 幂等应用</td>
+</tr>
+<tr>
+<td>缓存/限流</td>
+<td>Redis 5</td>
+<td>自适应并发限流器、审核心跳锁</td>
+</tr>
+<tr>
+<td>LLM 文本</td>
+<td>LiteLLM 适配，DeepSeek 主 / Kimi 备</td>
+<td><code>src/gateway/failover.py::call_with_failover</code>，流式回调进度</td>
+</tr>
+<tr>
+<td>创作网关</td>
+<td>nanobot-ai（<code>nanobot serve</code>，OpenAI 兼容 :8900）</td>
+<td>preset <code>qvp_main</code>（deepseek-v4-pro）；fallbackModels=kimi</td>
+</tr>
+<tr>
+<td>Agent 工具</td>
+<td>自研 MCP server <code>qvp_mcp</code>（stdio 子进程）</td>
+<td>web_search / image_search / image_gen / ocr，按 task_id 硬配额+成本回调</td>
+</tr>
+<tr>
+<td>生图</td>
+<td>gpt-image-2，三通道轮询</td>
+<td>FusionAI（主）/LinkAI/Moacode，<code>IMAGE_GEN_CHANNELS</code>；画质档 <code>high</code></td>
+</tr>
+<tr>
+<td>实景搜图</td>
+<td>OpenSERP（docker 容器）</td>
+<td><code>ref_collect</code> 搜≥10张 → OCR 初筛 → 人工关卡</td>
+</tr>
+<tr>
+<td>视觉审核</td>
+<td>dashscope qwen-vl-max</td>
+<td><code>src/services/visual_check.py</code>，图文一致性/主体匹配/错字</td>
+</tr>
+<tr>
+<td>前端</td>
+<td>Vue3 + vue-router（CDN 全局构建，<strong>无 npm/无打包</strong>）</td>
+<td><code>static/</code> 下原生 ES 模块 JS，hash 路由 <code>/#/tasks</code></td>
+</tr>
+<tr>
+<td>测试</td>
+<td>pytest + pytest-asyncio</td>
+<td>单测+集成（mock 全部外部调用），真实 PG</td>
+</tr>
+<tr>
+<td>部署</td>
+<td>git archive → scp → docker compose up -d --build</td>
+<td>服务器 Docker Hub 不通，镜像全部本地已有</td>
+</tr>
+</tbody>
+</table>
+<h2 id="4">4. 代码仓库结构</h2>
+<pre><code>code/
+├─ src/
+│  ├─ api/            FastAPI 路由（tasks/review/admin/stream/auth/dashboard…）
+│  ├─ pipeline/       流水线核心
+│  │   ├─ orchestrator.py   NODES（直连13节点）/ NODES_AGENT（10节点）+ run_pipeline
+│  │   ├─ nodes.py          execute_node（幂等/事件/SSE）+ 各直连节点实现
+│  │   ├─ agent_production.py  创作大节点：组装提示词→call_agent→契约校验→落库
+│  │   ├─ text_check.py     文字核查节点（起草正文/图上文案草稿，独立提示词）
+│  │   ├─ idempotency.py    节点事件幂等（同输入跳过，失败可重跑）
+│  │   └─ scheduler 在 src/stream/scheduler.py（asyncio 队列/限流/恢复）
+│  ├─ gateway/        外部调用网关
+│  │   ├─ failover.py       call_with_failover（LLM 主备切换，流式 on_delta）
+│  │   ├─ nanobot_client.py call_agent（SSE 聚合，session_id=任务级隔离）
+│  │   ├─ image_gen.py      gpt-image-2 三通道轮询（生成+编辑/图生图）
+│  │   ├─ image_search.py / web_search.py / ocr.py
+│  │   ├─ prompt_versions.py ★提示词库（全部生成类提示词在这，含版本演进注释）
+│  │   ├─ tool_ledger.py    MCP 工具成本台账
+│  │   └─ cost_tracker.py / litellm_adapter.py
+│  ├─ services/       业务服务（style_select 风格两级库 / regen 定点重生成 /
+│  │                   visual_check 视觉审核 / visual_writer 实景构图 / combo 组合导入）
+│  ├─ stream/         bus.py（进程内 SSE 总线）/ scheduler.py / limiter.py
+│  ├─ models/         SQLAlchemy 模型（tasks/drafts/assets/entities/review/events…）
+│  └─ config.py       全部配置项（pydantic-settings，env_file=.env）
+├─ qvp_mcp/           MCP 工具 server（4 工具+配额+成本 HTTP 回调，stdio 传输）
+├─ static/            前端（index.html + api.js + components/ + views/，无构建）
+│                     + handover.html（交接文档在线版，由脚本生成勿手改）
+├─ migrations/        001-019 编号 SQL 迁移（全部幂等，init_db.py 启动时应用）
+├─ tests/             unit/ + integration/（集成测试用真实 PG，mock LLM/Agent）
+├─ scripts/           开发辅助脚本（smoke_* 冒烟 / verify_* 校验 / build_handover.py）
+├─ docs/              历史设计文档与训练记录（改造说明-Nanobot全链Agent.md 必读）
+├─ nanobot/           nanobot 配置（config.json：provider/preset/fallback/MCP 声明）
+│                     + start-nanobot.sh（从 .env 导出密钥后启动 :8900）
+├─ docker-compose.yml 独立栈（postgres 不对宿主机开端口，仅 app:8003 对外）
+├─ .env.example       环境变量模板（真实 .env 不入库）
+└─ requirements.txt   uv 导出的锁定依赖（69 个顶层包）
+</code></pre>
+<h2 id="5">5. 核心机制详解</h2>
+<h3 id="51">5.1 双路径流水线（最重要的设计）</h3>
+<p><code>src/pipeline/orchestrator.py</code>：
+- <code>NODES</code>（直连 13 节点，定义在 nodes.py:31）：task_import → entity_bind →
+  evidence_build → draft_gen → rule_check → page_split → asset_gen → ocr_read →
+  cross_check → risk_classify → review_queue → batch_signoff → publish_snapshot
+- <code>NODES_AGENT</code>（Agent 路径，<strong>生产默认</strong>）：创作段 6 节点（entity_bind/evidence_build/
+  draft_gen/page_split/asset_gen/ocr_read）收敛为 1 个 <code>agent_production</code>，并新增
+  text_check / ref_collect 两个人工关卡：task_import → text_check → ref_collect →
+  agent_production → rule_check → cross_check → risk_classify → review_queue →
+  batch_signoff → publish_snapshot
+- 开关 <code>AGENT_PIPELINE_ENABLED</code>（.env），false 秒切回直连路径兜底。
+- 两路径<strong>同源提示词</strong>：都从 <code>get_effective_prompt(kind, mode, owner_id)</code> 取词
+  （解析顺序：用户自定义 → admin 系统覆盖 → 代码默认）。
+  ⚠️ 历史教训：同一要求必须同时注入所有路径（详见 5.3）。</p>
+<h3 id="52">5.2 三道人工关卡</h3>
+<table>
+<thead>
+<tr>
+<th>关卡</th>
+<th>状态</th>
+<th>放行 API</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>文字核查（正文/页文案草稿人工核改）</td>
+<td><code>awaiting_text</code></td>
+<td><code>POST /api/tasks/{id}/text/confirm</code>（另有 redraft/reject）</td>
+</tr>
+<tr>
+<td>实景参考图确认（compare/single）</td>
+<td><code>awaiting_refs</code></td>
+<td><code>POST /api/tasks/{id}/refs/confirm</code>（keep_ids）</td>
+</tr>
+<tr>
+<td>审图（单角色通过即生效）</td>
+<td><code>review</code></td>
+<td><code>POST /api/review/action</code>（approve/reject+定点标记）</td>
+</tr>
+</tbody>
+</table>
+<p>关卡挂起后任务回队或等待，确认后<strong>幂等续跑</strong>（已完成节点跳过）。
+人工驳回带定点标记（page/image+理由）→ <code>rejected</code> → retry 触发 <code>partial_regen</code>
+（只重生成标记项；意见注入提示词，<code>src/services/regen.py</code>）。</p>
+<h3 id="53">5.3 提示词库体系（改提示词必读）</h3>
+<p>全部在 <code>src/gateway/prompt_versions.py</code>，纯 Python 字符串常量 + 演进注释。
+关键点：
+- 正文写作的「人设与真人感+信息密度」共享段 <code>_DRAFT_SHARED</code> 必须<strong>三条路径都注入</strong>：
+  ①直连 draft_gen（nodes.py）②Agent 路径（agent_production.py 取词后 append）
+  ③text_check 起草（用户在核查关卡看到的草稿）。
+  注入条件：<code>template == default_prompt(...)</code> 时才追加——用户自定义模板代表显式意图，
+  不覆盖（防负优化）。
+- 图上文案字数契约（2026-09 起）：每页 <strong>80-130 字</strong>、六页差≤40、每页 1-2 个具体
+  信息点。该契约同样存在于：PAGES_PROMPT、Agent 契约 <code>_AGENT_INSTRUCTIONS</code>、
+  text_check 两条起草提示词、生图中/英底座、nodes.py <code>_balance_issue</code> 硬校验
+  （不达标自动带意见重试一次）。<strong>改字数口径必须 7 处同步</strong>，并更新
+  <code>tests/unit/test_page_balance.py</code> 的守卫断言。
+- 测试里有「守卫断言」锁定关键提示词片段（如 test_absorb_8002 锁「胶囊」
+  「CAPSULE」、test_page_balance 锁字数）——改提示词先跑相关测试。</p>
+<h3 id="54">5.4 生图与视觉闭环</h3>
+<ul>
+<li>生图走 MCP <code>image_gen</code> → <code>src/gateway/image_gen.py</code>：<code>IMAGE_GEN_CHANNELS</code>
+  通道轮询（fusion,linkai,moacode），<code>IMAGE_GEN_PARALLEL=6</code> 并发，size 1152x1536
+  （3:4），quality=high；MOCK_IMAGE_GEN=true 时返回占位图（联调用，不花钱）。</li>
+<li>compare/single 模式：确认后的实景参考图作为图生图 references 传入，
+  <strong>6 页实景用法必须错开</strong>（按页轮播分配，铁律，e6c550b）。</li>
+<li>落库后：本地化/去重/hash/尺寸校验 → OCR 逐页比对（错字/漏字自动重生成，
+  garble_regen loop）→ qwen-vl-max 视觉审核（图文一致/主体匹配 <code>subject_mismatch</code>）。</li>
+</ul>
+<h3 id="55">5.5 实时流与记账</h3>
+<ul>
+<li><code>src/stream/bus.py</code> 进程内事件总线 → <code>/api/stream/events</code>（SSE）：节点开始/完成/
+  失败（含 traceback）、Agent 流式增量、生图进度。前端监控页实时渲染。</li>
+<li>成本：<code>tool_ledger</code> + <code>cost_tracker</code>，节点事件记 <code>cost_estimate_cny</code>，
+  <code>/api/admin/costs</code> 汇总。Agent 工具成本经 HTTP 回调合并进节点。</li>
+</ul>
+<h2 id="6-env">6. 外部服务与密钥（.env）</h2>
+<table>
+<thead>
+<tr>
+<th>变量</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DATABASE_URL</code></td>
+<td>PG 连接（本地 5433 / 服务器容器内）</td>
+</tr>
+<tr>
+<td><code>DEEPSEEK_API_KEY</code> / <code>KIMI_API_KEY</code></td>
+<td>文本 LLM 主/备</td>
+</tr>
+<tr>
+<td><code>OPENAI_IMAGE_*</code> / <code>MOACODE_*</code> / <code>FUSIONAI_*</code></td>
+<td>gpt-image-2 三通道</td>
+</tr>
+<tr>
+<td><code>IMAGE_GEN_CHANNELS</code></td>
+<td>通道轮询顺序（⚠️ 当前 .env 只写了 fusion，无备胎）</td>
+</tr>
+<tr>
+<td><code>DASHSCOPE_API_KEY</code></td>
+<td>qwen-vl-max 视觉审核 + OCR</td>
+</tr>
+<tr>
+<td><code>AGENT_PIPELINE_ENABLED</code></td>
+<td>双路径开关</td>
+</tr>
+<tr>
+<td><code>NANOBOT_BASE_URL</code></td>
+<td>创作网关地址（本地 http://127.0.0.1:8900/v1）</td>
+</tr>
+<tr>
+<td><code>MOCK_IMAGE_GEN</code></td>
+<td>生图 mock 开关（联调必备）</td>
+</tr>
+</tbody>
+</table>
+<h2 id="7">7. 本地开发环境搭建</h2>
+<p>Windows（Git Bash）实测步骤：</p>
+<pre><code class="language-bash">cd code
+python -m venv .venv &amp;&amp; .venv/Scripts/python -m pip install -r requirements.txt
+# 1) 起本地 PG(5433)+Redis（docker run 或 compose 里的依赖服务）
+# 2) cp .env.example .env 填好密钥；本地库连接串用 5433
+DATABASE_URL=&quot;postgresql+asyncpg://qvp:qvp@localhost:5433/qvp&quot; \
+  PYTHONUTF8=1 .venv/Scripts/python init_db.py    # 幂等建表+迁移（仓库根目录）
+# 3) 起后端（注意必须用 .venv 的 python，系统 python 没装依赖）
+DATABASE_URL=&quot;postgresql+asyncpg://qvp:qvp@localhost:5433/qvp&quot; PYTHONUTF8=1 \
+  .venv/Scripts/python -m uvicorn src.api.main:app --port 8003
+# 4) 起 Nanobot（会从 .env 导出密钥，MCP 由它以 stdio 子进程拉起）
+bash nanobot/start-nanobot.sh
+# 5) 跑测试
+DATABASE_URL=&quot;postgresql+asyncpg://qvp:qvp@localhost:5433/qvp&quot; PYTHONUTF8=1 \
+  .venv/Scripts/python -m pytest tests/ -q
+</code></pre>
+<p>日常联调建议 <code>MOCK_IMAGE_GEN=true</code>（生图免费秒回）。真实出图约 1-2 分钟/张，
+一条任务全链 10-25 分钟。</p>
+<p><strong>改动后必须重启进程</strong>：后端（uvicorn）读代码在启动时；MCP 子进程继承 Nanobot
+的环境与配置快照——改 <code>.env</code> 后后端和 Nanobot <strong>都要重启</strong>，否则 MCP 还用旧值
+（实际踩过：MOCK 开关改了没生效，因为只重启了后端）。</p>
+<h2 id="8">8. 测试体系</h2>
+<ul>
+<li><code>tests/unit/</code>：提示词守卫（字数/胶囊/CAPSULE/人设段等）、均衡校验、纯函数。</li>
+<li><code>tests/integration/</code>：全流程。mock 手法：</li>
+<li>Agent 路径：<code>agent_path</code> fixture patch <code>nanobot_client.health/call_agent</code>
+    返回契约 JSON（test_agent_pipeline.py，照抄即可加用例）；</li>
+<li>直连路径：patch <code>call_with_failover</code> 返回固定文本/JSON；</li>
+<li>生图：SVG data-uri mock，验证落库/去重/hash。</li>
+<li>跑法见上节命令；单个文件约 1-5 分钟。<strong>改提示词/节点后至少跑</strong>
+  <code>test_page_balance + test_absorb_8002 + test_agent_pipeline + 相关集成</code>。</li>
+</ul>
+<h2 id="9-8003-8001">9. 发版流程（8003 → 8001）</h2>
+<pre><code class="language-bash">cd code &amp;&amp; git archive --format=tar.gz -o /tmp/deploy.tar.gz HEAD
+scp -i &lt;deploy密钥&gt; /tmp/deploy.tar.gz th@117.34.118.115:/home/th/qvp2/deploy.tar.gz
+ssh th@117.34.118.115 &quot;cd /home/th/qvp2 &amp;&amp; tar xzf deploy.tar.gz &amp;&amp; \
+  echo &lt;commit短hash&gt; &gt; .deployed_commit &amp;&amp; docker compose up -d --build&quot;
+# 测试栈同步（rsync→rebuild→风格SQL，一键）：
+ssh th@117.34.118.115 &quot;bash /home/th/qvp-test/sync_from_qvp2.sh&quot;
+# 健康检查：curl :8003/api/tasks?limit=1 与 :8001 同
+</code></pre>
+<ul>
+<li>迁移随启动幂等应用，无需手工执行。</li>
+<li>技术交接文档在线版随包自动更新：改 <code>docs/技术交接文档-*.md</code> 后运行
+  <code>.venv/Scripts/python scripts/build_handover.py</code> 重新生成 <code>static/handover.html</code>
+  并一并提交，线上 <code>/handover</code> 即为最新版。</li>
+<li><code>.deployed_commit</code> 是标记文件（tar 不含 .git，同步脚本读它显示版本），<strong>要手动 echo</strong>。</li>
+<li>服务器 Docker Hub 不通：镜像（postgres:16 等）全部用服务器本地已有镜像，勿改 tag。</li>
+</ul>
+<h2 id="10">10. 服务器布局</h2>
+<table>
+<thead>
+<tr>
+<th>端口</th>
+<th>compose 项目</th>
+<th>目录</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>8003</td>
+<td>qvp2</td>
+<td>/home/th/qvp2</td>
+<td><strong>用户生产</strong>（我们负责）</td>
+</tr>
+<tr>
+<td>8001</td>
+<td>qvptest</td>
+<td>/home/th/qvp-test</td>
+<td><strong>测试</strong>（我们负责，从 8003 同步）</td>
+</tr>
+<tr>
+<td>8002</td>
+<td>qvpdev</td>
+<td>—</td>
+<td>⛔ 同事分叉开发栈，<strong>绝不 restart/build/rm</strong></td>
+</tr>
+<tr>
+<td>8000</td>
+<td>qvp（旧栈）</td>
+<td>—</td>
+<td>⛔ 工程师马瑞辰的栈，<strong>绝对不动</strong></td>
+</tr>
+</tbody>
+</table>
+<h2 id="11">11. 服务器红线（最高优先级）</h2>
+<ol>
+<li><strong>8002、8000 两台栈绝对不能动</strong>（不 restart、不 build、不 down、不 rm、不进容器）。
+   历史上误操作过 8002 引发事故；8000 是另一工程师的生产。</li>
+<li>所有改动：本地验证（测试+真实冒烟）→ 用户确认 → 才推 8003 → 同步 8001。</li>
+<li>服务器命令只作用于 <code>/home/th/qvp2</code> 与 <code>/home/th/qvp-test</code> 两个目录。</li>
+</ol>
+<h2 id="12">12. 数据模型速览（关键表）</h2>
+<ul>
+<li><code>tasks</code>：状态机 draft/processing/awaiting_text/awaiting_refs/review/rejected/
+  approved/failed/cancelled；<code>text_review</code>（起草 JSON）、<code>text_override</code>（人工核定版）、
+  <code>gen_style</code>/<code>gen_category</code>（风格自适应回填）。</li>
+<li><code>drafts</code>（正文多版本）、<code>page_copies</code>（6 页图上文案，body 列）、
+  <code>assets</code>（source_type: ai_generated/official；selection_status: candidate/confirmed/
+  rejected；subject_mismatch）、<code>ocr_results</code>（confidence）、
+  <code>claims</code>/<code>evidences</code>（取证）、<code>node_events</code>（幂等+记账+error_class）、
+  <code>review_sessions</code>/<code>review_actions</code>/<code>approvals</code>/<code>reject_marks</code>（审核与定点驳回）、
+  <code>style_keywords</code>（两级风格库，owner_id NULL=公共）、<code>prompt_library</code>（提示词库覆盖）、
+  <code>activity_logs</code>、<code>issue</code>、<code>publish_snapshots</code>。</li>
+<li>⚠️ 列名易错点（实测踩过）：风格描述在 <code>style_keywords.description</code>；
+  资产类型是 <code>source_type</code> 不是 asset_type；页文案列是 <code>body</code> 不是 page_text；
+  activity_logs 的列是 <code>action</code>/<code>detail</code>，tasks 没有 current_node 列（current_node 是
+  API 从 node_events 推导的）。</li>
+</ul>
+<h2 id="13-spa">13. 前端（无构建 SPA）</h2>
+<ul>
+<li><code>static/index.html</code> 引 Vue3/vue-router 的 vendor 文件 + <code>api.js</code> +
+  <code>components/{Layout,StepsBar,Lightbox}.js</code> + <code>views/{Login,Dashboard,Import,Tasks,
+  TextCheck,RefsBoard,Review,Monitor,Admin,Settings,Users,Sample}.js</code>。</li>
+<li>hash 路由：<code>/#/tasks</code> 这种 <code>#</code> 后内容不会发到服务器；若浏览器把 <code>#</code> 编码成 <code>%23</code>
+  会得到后端 404（用户报过「打不开」，实为链接里的 %23）。</li>
+<li>改前端直接改 JS 文件，刷新即生效；版本戳用 <code>?v=YYYYMMDDx</code> 控制缓存。</li>
+<li>实时数据走 SSE <code>/api/stream/events</code>（监控页事件流/节点进度）。</li>
+</ul>
+<h2 id="14">14. 已知坑与经验（血泪史精选）</h2>
+<ol>
+<li><strong>Windows 本地</strong>：必须用 <code>.venv/Scripts/python.exe</code>（系统 python 没装依赖）；
+   Git Bash 调 curl 上传文件用相对路径（<code>/tmp</code> 路径转换会失败）；中文 query 参数要
+   URL 编码。仓库部分文件 CRLF，git 会警告，无碍。</li>
+<li><strong>MCP 环境缓存</strong>：<code>qvp_mcp</code> 是 Nanobot 的 stdio 子进程，读 <code>.env</code> 发生在
+   Nanobot 启动拉起子进程那一刻——改配置后「重启后端」不够，要重启 Nanobot。</li>
+<li><strong>提示词多路径</strong>：任何写作类要求都要检查 5.3 列出的全部注入点，否则只改一处
+   不生效（生产走 Agent 路径）。</li>
+<li><strong>排障顺序</strong>：<code>docker logs qvp2-app</code>（或本地 uvicorn 输出）→ SSE
+   <code>/api/stream/state</code>（含 error/debug/trace，比库里 error_class 详细）→
+   Nanobot 会话日志 <code>~/.nanobot/workspace/sessions/*.jsonl</code>（Agent 原始对话与
+   工具返回，余额不足这类真因都在这）。</li>
+<li><strong>图上文案字数</strong>：模型偶尔越界 ±5 字，硬校验会自动重试一次，仍越界保留较轻一版
+   交人工审图兜底——不要为此加死循环。</li>
+<li><strong>生图成本</strong>：一条任务 6-8 张上限（配额硬限），余额/限流错误会以任务失败收场，
+   报错现在会带 Agent 备注（1eb6c0b）。</li>
+</ol>
+<h2 id="15-backlog">15. 近期改动史与待办 backlog</h2>
+<p>近期（2026-08~09）主线，详见 git log 与 docs/：
+- 33bcffc 生图丰富度训练（横幅金句条/序号章/贴纸/高亮；新中式史料卡/政务办事指南卡风格）
+- 9fefa33 正文真人感增强（_DRAFT_SHARED 三路径注入 + 信息密度段）
+- 6a833e3 图上文案提密度（80-130 字七处同步）
+- 1eb6c0b Agent 契约失败报错带备注</p>
+<p>Backlog（未做）：
+- 两级风格库偏好闭环深化（个人库使用数据回流推荐）
+- partial_regen Agent 化（当前定点重生成仍走直连提示词）
+- <code>IMAGE_GEN_CHANNELS</code> 加备胎（当前 .env 仅 fusion，主通道挂了会全失败）
+- 前端无构建方案在视图变多后可考虑迁 Vite（可选）</p>
+<h2 id="16">16. 找谁/找什么</h2>
+<ul>
+<li>历史设计文档：<code>docs/改造说明-Nanobot全链Agent.md</code>（架构决策）、
+  <code>docs/开发思路与工作架构.md</code>、<code>docs/风格库训练方法总结.md</code>（风格训练方法论）</li>
+<li>提示词演进：<code>src/gateway/prompt_versions.py</code> 内注释按日期可当 changelog 读</li>
+<li>平台使用手册（运营视角）：web 端「样例」页与各视图内嵌说明</li>
+</ul>
+</main>
+</body>
+</html>
