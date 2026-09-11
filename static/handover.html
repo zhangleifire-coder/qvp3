@@ -33,7 +33,7 @@
 </head>
 <body>
 <div class="banner"><b>图文生产平台 · 技术交接文档</b>
-  <span>源文件 技术交接文档-20260907.md ｜ commit dev ｜ 生成于 2026-09-10 18:56（scripts/build_handover.py，随发版自动更新）</span>
+  <span>源文件 技术交接文档-20260907.md ｜ commit 11238db ｜ 生成于 2026-09-11 13:28（scripts/build_handover.py，随发版自动更新）</span>
 </div>
 <main>
 <h1 id="_1">图文生产平台 · 技术交接文档</h1>
@@ -570,22 +570,27 @@ ssh th@117.34.118.115 &quot;cd /home/th/qvp2 &amp;&amp; tar xzf deploy.tar.gz &a
 ssh th@117.34.118.115 &quot;bash /home/th/qvp-test/sync_from_qvp2.sh&quot;
 # 健康检查：curl :8003/api/tasks?limit=1 与 :8001 同
 </code></pre>
-<p>qvp3（dsh 栈，8005）——<strong>镜像本地化流程</strong>（服务器 Docker Hub 不通，基座镜像
-也拉不了，不能指望服务器 build 时 FROM 成功）：</p>
+<p>qvp3（dsh 栈，8005）——<strong>git tag 发版流（2026-09-10 起，替代 tar 包）</strong>：</p>
 <blockquote>
 <p>⚠️ <strong>qvp3 是完全独立栈：不参与 <code>sync_from_qvp2.sh</code>，不与 8003/8001 同步任何
 代码/数据/配置</strong>（用户决策 2026-09-07）。它有自己的代码目录、数据卷、记忆会话，
 发版只走本节下方的独立流程。</p>
 </blockquote>
-<pre><code class="language-bash"># 本地构建 + 导出（构建机要能拉 node:24-slim / python:3.12-slim）
-cd code &amp;&amp; docker build -f deploy/Dockerfile.dsh -t qvp3-app .
-docker save qvp3-app -o /tmp/qvp3-app.tar
-scp -i &lt;deploy密钥&gt; /tmp/qvp3-app.tar th@117.34.118.115:/home/th/qvp3/
-# 代码包同步（compose/.env/dsh_serve 等）后，服务器载入 + 起栈：
-ssh th@117.34.118.115 &quot;cd /home/th/qvp3 &amp;&amp; docker load -i qvp3-app.tar &amp;&amp; \
+<p><strong>版本仓库</strong>：服务器本地 bare 仓 <code>ssh://th@117.34.118.115/home/th/qvp3-repo.git</code>
+（2026-09-10 建，含交接包起的完整历史；密钥与运行时产物永不入库）。
+本地 push 需 deploy 密钥：<code>GIT_SSH_COMMAND="ssh -i &lt;deploy密钥&gt; -o BatchMode=yes" git push</code>。</p>
+<pre><code class="language-bash"># 1) 本地：改动入库 → 全量回归绿 → 打 tag → 推送
+cd code &amp;&amp; git add -A &amp;&amp; git commit -m &quot;&lt;本次改动摘要&gt;&quot;
+git tag -a &quot;v&lt;N&gt;-&lt;yyyymmdd&gt;&quot; -m &quot;&lt;版本摘要&gt;&quot; &amp;&amp; git push origin main --tags
+
+# 2) 服务器：按 tag 出码（替代旧 tar 包流程）+ 镜像更新
+ssh -i &lt;deploy密钥&gt; th@117.34.118.115 &quot;
+  git --git-dir=/home/th/qvp3-repo.git archive v&lt;N&gt;-&lt;yyyymmdd&gt; | tar -x -C /home/th/qvp3&quot;
+# 镜像仍走本地化（Docker Hub 不通）：本地 build → docker save → scp → 服务器 load
+# 代码未变仅配置/数据变更时可跳过镜像，直接 compose up -d
+ssh -i &lt;deploy密钥&gt; th@117.34.118.115 &quot;cd /home/th/qvp3 &amp;&amp; \
+  echo v&lt;N&gt;-&lt;yyyymmdd&gt; &gt; .deployed_commit &amp;&amp; \
   docker compose -f deploy/compose/qvp3.docker-compose.yml --project-directory . up -d&quot;
-# ⚠️ compose 文件在 deploy/compose/ 子目录，必须 --project-directory .
-#    （build context 与 ./.env 挂载等相对路径都按仓库根解析）
 # 健康检查：curl :8005/api/tasks?limit=1 与 :8005/handover
 </code></pre>
 <ul>
@@ -596,9 +601,11 @@ ssh th@117.34.118.115 &quot;cd /home/th/qvp3 &amp;&amp; docker load -i qvp3-app.
   <code>.venv/Scripts/python scripts/build_handover.py</code> 重新生成 <code>static/handover.html</code>
   并一并提交，线上 <code>/handover</code> 即为最新版（脚本自动取文件名最新的一篇，
   新日期文档无需改脚本）。</li>
-<li><code>.deployed_commit</code> 是标记文件（tar 不含 .git，同步脚本读它显示版本），<strong>要手动 echo</strong>。</li>
+<li><code>.deployed_commit</code> 现在写 <strong>tag 名</strong>（如 v11-20260910），与 git tag 一一对应。</li>
 <li>服务器 Docker Hub 不通：镜像（postgres:16 等）全部用服务器本地已有镜像，勿改 tag。</li>
 </ul>
+<p><strong>旧 tar 包流程存档（勿执行）</strong>：git archive HEAD → scp deploy.tar.gz → 解压，
+已被上方 tag 流替代（2026-09-10 起）。</p>
 <h2 id="10">10. 服务器布局</h2>
 <table>
 <thead>
