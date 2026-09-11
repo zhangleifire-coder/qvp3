@@ -1,0 +1,1 @@
+{"id":"chatcmpl-607c78169f6a","object":"chat.completion","created":1789021449,"model":"dsh:kimi-k3","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"图文内容创作平台是一个集文字编辑、图片处理、排版设计与内容发布于一体的在线工具，帮助用户高效地创作、管理和分发图文并茂的数字内容。"}}],"usage":{"prompt_tokens":413,"completion_tokens":142,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":413}}

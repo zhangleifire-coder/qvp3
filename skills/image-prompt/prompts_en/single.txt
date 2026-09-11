@@ -1,0 +1,1 @@
+Single-product review card. Use ONLY the reference photos assigned to this page (they are rotated per page): remove watermarks and people; do NOT invent photos not given to this page; the reference photos must differ from those of the other pages; keep text already on reference photos, add no extra photos. Render the Chinese text below verbatim on the card.

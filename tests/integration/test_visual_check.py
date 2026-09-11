@@ -135,6 +135,8 @@ async def test_subject_check_unavailable_skips(monkeypatch):
 async def test_visual_check_service_parses(monkeypatch):
     """visual_check 服务：mock dashscope 返回严格 JSON 解析；异常返回 None。"""
     from src.services import visual_check as VC
+    # conftest 默认关掉 VL 开关（防真实调用），本用例专测服务解析，显式打开
+    monkeypatch.setattr(settings, "visual_subject_check_enabled", True)
 
     class _Resp:
         status_code = 200
@@ -143,18 +145,16 @@ async def test_visual_check_service_parses(monkeypatch):
                     '{"ok": false, "actual": "一只狗"}'}}]}
 
     class _Client:
-        def __init__(self, *a, **kw): pass
-        async def __aenter__(self): return self
-        async def __aexit__(self, *a): return False
         async def post(self, *a, **kw): return _Resp()
 
     async def fake_to_data_url(url):
         return url
     monkeypatch.setattr("src.gateway.ocr._image_to_data_url", fake_to_data_url)
-    with patch("src.services.visual_check.httpx.AsyncClient", _Client):
+    # 共享 client（P1-7）：patch 模块级 get_client 即控制出站调用
+    with patch("src.services.visual_check.get_client", return_value=_Client()):
         r = await VC.check_subject_match("data:image/png;base64,x", "文案说猫")
     assert r == {"ok": False, "actual": "一只狗"}
 
-    with patch("src.services.visual_check.httpx.AsyncClient",
+    with patch("src.services.visual_check.get_client",
                side_effect=RuntimeError("vl down")):
         assert await VC.check_subject_match("u", "文") is None

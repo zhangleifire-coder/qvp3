@@ -139,7 +139,7 @@ async def test_agent_pipeline_produces_full_artifacts(agent_path):
 
         events = (await session.execute(
             select(NodeEvent).where(NodeEvent.task_id == task_id))).scalars().all()
-        assert len(events) == 10  # text_check + ref_collect 两关卡节点（均记 skip）
+        assert len(events) == 11  # ref_seed + text_check + ref_collect 三节点（均记 skip）
         ap = [e for e in events if e.node_name == "agent_production"][0]
         assert ap.error_class is None
         assert ap.cost_estimate_cny and ap.cost_estimate_cny > 1.2  # 文本 + 工具成本已合并
@@ -263,3 +263,34 @@ async def test_agent_prompt_appends_draft_persona(agent_path):
     assert "人设与真人感" in msg          # 人设共享段已注入
     assert "信息密度" in msg              # 2026-08-24 增强段已注入
     assert "25字" in msg                  # 标题公式守卫词
+
+
+async def test_agent_refs_section_copy_alignment(agent_path):
+    """参考图反哺创作（2026-09-07 参考图前置）：确认参考图注入 refs_section，
+    除「必须使用+图生图」外还需含文案侧一致性要求。"""
+    captured = {}
+
+    async def _spy(user_message, **kwargs):
+        captured["msg"] = user_message
+        return dict(FAKE_AGENT_CALL)
+
+    task_id = await _create_task("compare")   # text_override 预置：文字关跳过
+    async with SessionLocal() as session:
+        session.add(Asset(
+            task_id=task_id, page_index=1, subject="测试Query",
+            source_type="official", copyright_status="unknown",
+            hash=f"refs-{uuid.uuid4().hex[:8]}",
+            image_url="/static/generated/ref_aligned.png",
+            origin_url="https://example.com/ref1.jpg",
+            model_version="bing", is_illustration=False,
+            selection_status="confirmed", ocr_hit="戴森"))
+        await session.commit()
+    with patch("src.pipeline.agent_production.nanobot_client.call_agent",
+               new=AsyncMock(side_effect=_spy)):
+        await run_pipeline(task_id)
+
+    msg = captured["msg"]
+    assert "已确认实景参考图" in msg
+    assert "/static/generated/ref_aligned.png" in msg
+    assert "跳过 image_search" in msg              # 图生图指令保留
+    assert "不得写参考图里没有的内容" in msg        # 新增：文案侧一致性要求

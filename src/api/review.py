@@ -190,10 +190,14 @@ async def task_detail(task_id: str):
         draft = (await session.execute(
             select(Draft).where(Draft.task_id == tid).order_by(Draft.version.desc()))).scalars().first()
         claims = (await session.execute(select(Claim).where(Claim.task_id == tid))).scalars().all()
-        evidences = []
-        for c in claims:
-            evs = (await session.execute(select(Evidence).where(Evidence.claim_id == c.id))).scalars().all()
-            evidences.extend(evs)
+        # evidence 一次 IN 批量查 + 按 claim_id 分桶（替代 per-claim N+1），顺序不变
+        ev_by_claim: dict = {}
+        if claims:
+            for ev in (await session.execute(
+                    select(Evidence).where(
+                        Evidence.claim_id.in_([c.id for c in claims])))).scalars().all():
+                ev_by_claim.setdefault(ev.claim_id, []).append(ev)
+        evidences = [ev for c in claims for ev in ev_by_claim.get(c.id, [])]
         assets = (await session.execute(
             select(Asset).where(Asset.task_id == tid).order_by(Asset.page_index))).scalars().all()
         ocrs = (await session.execute(

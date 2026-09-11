@@ -7,7 +7,10 @@ from pathlib import Path
 from sqlalchemy import select
 from src.config import settings
 from src.db.session import SessionLocal
-from src.gateway.failover import call_with_failover, DEEPSEEK_MODEL, KIMI_MODEL
+from src.gateway.failover import call_with_failover
+# 字数契约单点：skills/page-split/contract.txt（2026-09-03 阶段2重构）
+from src.gateway.skill_loader import (PAGE_MIN_CHARS, PAGE_MAX_CHARS,
+                                      PAGE_MAX_DIFF)
 from src.quality.rules import check_rules
 from src.stream.bus import bus
 
@@ -37,9 +40,37 @@ NODES = [
 
 
 async def execute_node(task_id, node_name: str, input_data: dict, node_fn=None):
+    """执行单个流水线节点：幂等检查 → 裸跑节点函数 → 事件簿记收尾。
+
+    事务边界（2026-09-03 生产可靠性修复）：节点函数执行期间不持有任何
+    DB 会话/事务。旧实现在一个会话里跑完整个节点，长外部 I/O（LLM 单次
+    数分钟、agent_production 15-25 分钟）期间事务空闲，连接被中间层
+    （Windows Docker NAT 等）掐断，收尾 commit 抛 InterfaceError →
+    PendingRollbackError 拖垮节点。现为三段式短事务：
+      1. 短事务：幂等检查 + 落 started 事件，commit 后关闭会话；
+      2. 节点函数裸跑（节点内部自开自关短会话读写业务数据）；
+      3. 新短事务：回写 finished/failed 事件字段，commit。
+
+    取消语义：CancelledError 不经 except Exception；这里显式捕获后在短事务
+    里删除本次 started 事件（尽力而为）——等价于旧版"事件随事务回滚"，
+    中断后重试该节点会重新执行。删除失败也无碍：幂等层把未完成
+    （finished_at 为空）的事件视为可重跑，重试时删旧重建。
+
+    崩溃恢复：进程被杀时 started 事件会残留（旧实现随连接断开整体回滚、
+    无残留）——功能等价：scheduler._recover_pending 重置任务重入队后，
+    幂等检查遇到未完成事件同样删旧重建、重新执行；区别仅是任务详情
+    时间线在重跑前会短暂把该节点显示为 running。
+
+    并发前提：同一 task 的节点执行由调度器单个 _process 协程串行驱动
+    （retry/cancel 均要求任务先进入终态），不存在同幂等键的并发执行；
+    node_events 的 UNIQUE(task_id, node_name, node_idempotency_key) 是
+    最后防线。阶段 3 读不到事件行（被并发重跑删旧）时跳过簿记而不炸。
+    """
     from src.pipeline.idempotency import check_or_record_node_event
+    from src.models.events import NodeEvent
     from src.stream.bus import bus
     tid = str(task_id)
+    # ── 阶段 1：短事务做幂等检查 + 落 started 事件，立即 commit 关闭 ──
     async with SessionLocal() as session:
         event = await check_or_record_node_event(
             session, task_id, node_name, input_data)
@@ -47,48 +78,78 @@ async def execute_node(task_id, node_name: str, input_data: dict, node_fn=None):
             return {"skipped": True}
         start = datetime.now(timezone.utc)
         event.started_at = start
-        await bus.publish("node_started", {"node": node_name}, task_id=tid)
+        await session.commit()
+        event_id = event.id  # expire_on_commit=False，commit 后属性仍可读
+    await bus.publish("node_started", {"node": node_name}, task_id=tid)
+    # ── 阶段 2：节点函数裸跑，本协程不持有任何 DB 会话/事务 ──
+    try:
+        if node_fn:
+            output = await node_fn(input_data)
+        else:
+            output = {"node": node_name, "input": input_data}
+    except asyncio.CancelledError:
+        # 手工中断：删除本次 started 事件，恢复旧版"取消即无残留"语义；
+        # 清理失败不影响重试（未完成事件幂等层会删旧重建）
         try:
-            if node_fn:
-                output = await node_fn(input_data)
-            else:
-                output = {"node": node_name, "input": input_data}
-            event.finished_at = datetime.now(timezone.utc)
-            event.cost_estimate_cny = output.get("cost_cny", 0)
-            event.model_version = output.get("model_version")
-            event.prompt_version = output.get("prompt_version")
+            async with SessionLocal() as session:
+                ev = await session.get(NodeEvent, event_id)
+                if ev is not None:
+                    await session.delete(ev)
+                    await session.commit()
+        except Exception:  # noqa: BLE001
+            traceback.print_exc()
+        raise
+    except Exception as e:
+        finished = datetime.now(timezone.utc)
+        # 失败簿记尽力而为：绝不让簿记本身的 DB 问题掩盖原始错误
+        try:
+            async with SessionLocal() as session:
+                ev = await session.get(NodeEvent, event_id)
+                if ev is not None:
+                    ev.finished_at = finished
+                    ev.error_class = type(e).__name__
+                    ev.retry_count = (ev.retry_count or 0) + 1
+                    await session.commit()
+        except Exception:  # noqa: BLE001
+            traceback.print_exc()
+        await bus.publish("node_failed", {
+            "node": node_name,
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+            "elapsed": round((finished - start).total_seconds(), 2),
+        }, task_id=tid)
+        # 限流类错误即时反馈给并发限制器（乘性减），不必等整条任务失败收尾
+        from src.stream.scheduler import scheduler, is_throttled
+        if is_throttled(e):
+            await scheduler.limiter.report_throttle()
+        raise
+    # ── 阶段 3（成功路径）：新短事务回写 finished 事件 ──
+    # 这里 commit 失败按旧语义照常抛出（任务失败、重试时该节点重跑），
+    # 不吞：吞掉会让节点看似成功却留下未完成事件，重跑时重复写业务数据。
+    finished = datetime.now(timezone.utc)
+    async with SessionLocal() as session:
+        ev = await session.get(NodeEvent, event_id)
+        if ev is not None:
+            ev.finished_at = finished
+            ev.cost_estimate_cny = output.get("cost_cny", 0)
+            ev.model_version = output.get("model_version")
+            ev.prompt_version = output.get("prompt_version")
             await session.commit()
-            summary = _node_summary(node_name, output)
-            summary["elapsed"] = round((event.finished_at - start).total_seconds(), 2)
-            await bus.publish("node_finished", summary, task_id=tid)
-            return output
-        except Exception as e:
-            event.finished_at = datetime.now(timezone.utc)
-            event.error_class = type(e).__name__
-            event.retry_count = (event.retry_count or 0) + 1
-            await session.commit()
-            await bus.publish("node_failed", {
-                "node": node_name,
-                "error": str(e),
-                "traceback": traceback.format_exc(),
-                "elapsed": round((event.finished_at - start).total_seconds(), 2),
-            }, task_id=tid)
-            # 限流类错误即时反馈给并发限制器（乘性减），不必等整条任务失败收尾
-            from src.stream.scheduler import scheduler, is_throttled
-            if is_throttled(e):
-                await scheduler.limiter.report_throttle()
-            raise
+    summary = _node_summary(node_name, output)
+    summary["elapsed"] = round((finished - start).total_seconds(), 2)
+    await bus.publish("node_finished", summary, task_id=tid)
+    return output
 
 
 def _node_summary(node_name: str, output: dict) -> dict:
     """抽取节点输出的可读摘要 + 实际内容片段，供流式前端展示。"""
     s: dict = {"node": node_name}
-    if node_name == "draft_gen":
+    if node_name in ("draft_gen", "agent_draft"):
         text = output.get("text", "")
         s["preview"] = text[:220]
         s["length"] = len(text)
         s["model"] = output.get("model_version")
-    elif node_name == "asset_gen":
+    elif node_name in ("asset_gen", "agent_assets"):
         s["count"] = output.get("asset_count", 0)
         s["image_urls"] = output.get("image_urls", [])
     elif node_name == "evidence_build":
@@ -231,11 +292,61 @@ def source_level_for(url: str) -> str:
     return "P3"
 
 
+async def run_draft_gen(query: str, mode: str, template: str,
+                        feedbacks: list | None = None, regen_round: int = 1,
+                        task_id=None, on_delta=None) -> dict:
+    """正文生成核心（node_draft_gen 与 qvp_mcp draft_write 工具共用同一实现）：
+    模板+query（+驳回反馈注入）→ failover 生成 → 校稿润色二段式。
+
+    校稿润色（2026-09-01 吸收 8002 人工流程两轮校稿；节点内二段式实现，
+    对外结构零变化）：删存疑精确数字/夸大表述、去 AI 腔、补免责声明。
+    防负优化护栏：开关可关；润色稿长度不足原稿 60% 视为截断/跑偏，沿用原稿。
+
+    task_id 仅用于节点进度事件（None=独立调用，不发 node_progress）。
+    """
+    from src.gateway.prompt_versions import DRAFT_POLISH_PROMPT
+    prompt = template + "\n\n" + query
+    prompt_version = f"draft_{mode}_v1"
+    # 驳回重生成：审核意见与系统提示词、任务 query 一起作为处理依据，
+    # 要求模型逐条修正，避免同类问题遗留到下一轮审核。
+    if feedbacks:
+        lines = "\n".join(f"{i}. {r}" for i, r in enumerate(feedbacks, 1))
+        prompt += ("\n\n【重要：审核驳回反馈】本内容此前在人工审核中被驳回，"
+                   "以下是审核员提出的全部修改意见：\n" + lines +
+                   "\n请逐条针对性修正上述问题后重新创作，确保新内容不再出现同类问题。")
+        prompt_version = f"draft_{mode}_v1_regen{regen_round}"
+    if task_id is not None:
+        _emit_progress(task_id, "draft_gen", msg="正文撰写中（LLM 流式生成）")
+    result = await call_with_failover(prompt, on_delta=on_delta)
+    total_cost = result["cost_cny"]
+    if settings.draft_polish_enabled and len(result["text"] or "") >= 200:
+        if task_id is not None:
+            _emit_progress(task_id, "draft_gen", msg="校稿润色中")
+        try:
+            polished = await call_with_failover(
+                DRAFT_POLISH_PROMPT.replace("{body}", result["text"]),
+                max_retries=1,
+                on_delta=(_stream_reporter(task_id, "draft_gen")
+                          if task_id is not None else on_delta))
+            p_text = (polished["text"] or "").strip()
+            if len(p_text) >= len(result["text"]) * 0.6:
+                result = {**result, "text": p_text,
+                          "model_version": polished["model_version"],
+                          "cost_cny": polished["cost_cny"], "degraded": polished["degraded"]}
+                prompt_version += "_polished"
+            total_cost += polished["cost_cny"]
+        except Exception:
+            traceback.print_exc()  # 润色失败沿用原稿，不阻塞
+    return {"text": result["text"], "model_version": result["model_version"],
+            "prompt_version": prompt_version, "cost_cny": total_cost,
+            "degraded": result["degraded"]}
+
+
 async def node_draft_gen(input_data: dict) -> dict:
     from src.models.tasks import Task
     from src.models.drafts import Draft
     from src.gateway.prompt_versions import (get_effective_prompt, default_prompt,
-                                             DRAFT_POLISH_PROMPT, _DRAFT_SHARED)
+                                             _DRAFT_SHARED)
     async with SessionLocal() as session:
         task = (await session.execute(
             select(Task).where(Task.id == input_data["task_id"]))).scalar_one()
@@ -247,43 +358,13 @@ async def node_draft_gen(input_data: dict) -> dict:
     # 模板代表显式意图，不覆盖（防负优化）
     if template == default_prompt("draft_gen", mode):
         template = template + "\n" + _DRAFT_SHARED
-    prompt = template + "\n\n" + query
-    prompt_version = f"draft_{mode}_v1"
-    # 驳回重生成：审核意见与系统提示词、任务 query 一起作为处理依据，
-    # 要求模型逐条修正，避免同类问题遗留到下一轮审核。
     regen = input_data.get("regen") or {}
-    feedbacks = regen.get("feedback") or []
-    if feedbacks:
-        lines = "\n".join(f"{i}. {r}" for i, r in enumerate(feedbacks, 1))
-        prompt += ("\n\n【重要：审核驳回反馈】本内容此前在人工审核中被驳回，"
-                   "以下是审核员提出的全部修改意见：\n" + lines +
-                   "\n请逐条针对性修正上述问题后重新创作，确保新内容不再出现同类问题。")
-        prompt_version = f"draft_{mode}_v1_regen{regen.get('round', 1)}"
-    _emit_progress(input_data["task_id"], "draft_gen",
-                   msg="正文撰写中（LLM 流式生成）")
-    result = await call_with_failover(prompt, DEEPSEEK_MODEL, KIMI_MODEL,
-                                      on_delta=_stream_reporter(
-                                          input_data["task_id"], "draft_gen"))
-    total_cost = result["cost_cny"]
-    # 校稿润色（2026-09-01 吸收 8002 人工流程两轮校稿；节点内二段式实现，
-    # 对外结构零变化）：删存疑精确数字/夸大表述、去 AI 腔、补免责声明。
-    # 防负优化护栏：开关可关；润色稿长度不足原稿 60% 视为截断/跑偏，沿用原稿
-    if settings.draft_polish_enabled and len(result["text"] or "") >= 200:
-        _emit_progress(input_data["task_id"], "draft_gen", msg="校稿润色中")
-        try:
-            polished = await call_with_failover(
-                DRAFT_POLISH_PROMPT.replace("{body}", result["text"]),
-                DEEPSEEK_MODEL, KIMI_MODEL, max_retries=1,
-                on_delta=_stream_reporter(input_data["task_id"], "draft_gen"))
-            p_text = (polished["text"] or "").strip()
-            if len(p_text) >= len(result["text"]) * 0.6:
-                result = {**result, "text": p_text,
-                          "model_version": polished["model_version"],
-                          "cost_cny": polished["cost_cny"], "degraded": polished["degraded"]}
-                prompt_version += "_polished"
-            total_cost += polished["cost_cny"]
-        except Exception:
-            traceback.print_exc()  # 润色失败沿用原稿，不阻塞
+    result = await run_draft_gen(
+        query, mode, template,
+        feedbacks=regen.get("feedback") or [],
+        regen_round=regen.get("round", 1),
+        task_id=input_data["task_id"],
+        on_delta=_stream_reporter(input_data["task_id"], "draft_gen"))
     async with SessionLocal() as session:
         from sqlalchemy import func
         max_v = (await session.execute(
@@ -291,11 +372,10 @@ async def node_draft_gen(input_data: dict) -> dict:
                 Draft.task_id == input_data["task_id"]))).scalar() or 0
         session.add(Draft(
             task_id=input_data["task_id"], version=max_v + 1, body=result["text"],
-            model_version=result["model_version"], prompt_version=prompt_version))
+            model_version=result["model_version"],
+            prompt_version=result["prompt_version"]))
         await session.commit()
-    return {"text": result["text"], "model_version": result["model_version"],
-            "prompt_version": prompt_version, "cost_cny": total_cost,
-            "degraded": result["degraded"]}
+    return result
 
 
 async def node_rule_check(input_data: dict) -> dict:
@@ -310,6 +390,12 @@ async def node_rule_check(input_data: dict) -> dict:
                 task_id=input_data["task_id"], rule_name=r["rule_name"],
                 passed=r["passed"], details=r["details"]))
         await session.commit()
+    failed = [r for r in results if not r["passed"]]
+    _emit_progress(
+        input_data["task_id"], "rule_check",
+        msg=f"规则质检 {len(results) - len(failed)} 项通过 / {len(failed)} 项不过"
+            + (f"：{failed[0]['rule_name']} {str(failed[0].get('details') or '')[:60]}"
+               if failed else ""))
     return {"rule_results": results, "all_passed": all(r["passed"] for r in results)}
 
 
@@ -351,28 +437,87 @@ def _split_pages(text: str, n: int = 6) -> list:
     return pages[:n]
 
 
+def page_balance_issue(arr: list[str]) -> str:
+    """图上文字量校验（2026-08-31 用户要求；2026-09-02 提密度对齐借鉴库爆款
+    公式内页 90-130 字）：每页 80-130 字且六页基本均衡（数值口径见
+    skills/page-split/contract.txt）。
+    返回问题描述；合格返回空串。"""
+    lens = [len(p) for p in arr]
+    issues = []
+    short = [f"第{i+1}页仅{l}字" for i, l in enumerate(lens)
+             if l < PAGE_MIN_CHARS]
+    long_ = [f"第{i+1}页{l}字" for i, l in enumerate(lens)
+             if l > PAGE_MAX_CHARS]
+    if short:
+        issues.append(f"字数不足{PAGE_MIN_CHARS}字：" + "、".join(short))
+    if long_:
+        issues.append(f"字数超{PAGE_MAX_CHARS}字：" + "、".join(long_))
+    if max(lens) - min(lens) > PAGE_MAX_DIFF:
+        issues.append(f"各页失衡（最长{max(lens)}最短{min(lens)}，"
+                      f"任意两页相差须≤{PAGE_MAX_DIFF}字）")
+    return "；".join(issues)
+
+
+def _parse_page_list(result_text: str) -> list[str] | None:
+    """解析 LLM 分页输出（JSON 数组，容错围栏）；不足 6 页返回 None。"""
+    import json as _json
+    raw = result_text.strip()
+    if raw.startswith("```"):
+        raw = raw.strip("`").lstrip("json").strip()
+    try:
+        arr = _json.loads(raw[raw.index("["):raw.rindex("]") + 1])
+    except Exception:
+        return None
+    arr = [str(p).strip() for p in arr if str(p).strip()]
+    return arr[:6] if len(arr) >= 6 else None
+
+
+async def run_page_split_llm(text: str, template: str,
+                             task_id=None, on_delta=None) -> dict:
+    """LLM 分页核心（node_page_split 与 qvp_mcp page_split 工具共用同一实现）：
+    模板填正文 → failover → 解析 6 页 → 字数/均衡校验，不合格带意见重试一次；
+    仍不合格保留违规较轻的一版（下游审图人工关卡兜底，不因校验卡死流水线）。
+    解析/调用失败返回 pages=None——调用方退回机械切割（保证不卡死）。
+
+    task_id 仅用于节点进度事件（None=独立调用，不发 node_progress）。
+    返回 {"pages": [...] | None, "model_version", "cost_cny"}。
+    """
+    pages, model_version, cost = None, "mechanical", 0.0
+    try:
+        llm_prompt = (template.replace("{body}", text) if "{body}" in template
+                      else template + "\n\n" + text)
+        if task_id is not None:
+            _emit_progress(task_id, "page_split",
+                           msg=f"分页文案生成中（每页 {PAGE_MIN_CHARS}-{PAGE_MAX_CHARS} 字、六页均衡）")
+        result = await call_with_failover(llm_prompt, on_delta=on_delta)
+        pages = _parse_page_list(result["text"])
+        model_version, cost = result["model_version"], result["cost_cny"]
+        # 字数/均衡校验：不合格带意见重试一次；仍不合格保留违规较轻的一版
+        # （下游审图人工关卡兜底，不因校验卡死流水线）
+        issue = page_balance_issue(pages) if pages else ""
+        if issue:
+            retry = await call_with_failover(
+                llm_prompt + "\n\n【上次输出不合格，必须修正】" + issue
+                + f"。请重新输出全部 6 页：每页（含小标题与标点）"
+                  f"{PAGE_MIN_CHARS}-{PAGE_MAX_CHARS} 字，"
+                  f"各页字数相差不超过 {PAGE_MAX_DIFF} 字。",
+                on_delta=(_stream_reporter(task_id, "page_split")
+                          if task_id is not None else on_delta))
+            pages2 = _parse_page_list(retry["text"])
+            cost += retry["cost_cny"]
+            issue2 = page_balance_issue(pages2) if pages2 else ""
+            if pages2 and (not issue2 or len(issue2) < len(issue)):
+                pages = pages2
+                model_version = retry["model_version"]
+    except Exception:
+        traceback.print_exc()
+    return {"pages": pages, "model_version": model_version, "cost_cny": cost}
+
+
 async def node_page_split(input_data: dict) -> dict:
     from src.models.drafts import PageCopy
     from src.models.tasks import Task
     from src.gateway.prompt_versions import get_effective_prompt
-
-    def _balance_issue(arr: list[str]) -> str:
-        """图上文字量校验（2026-08-31 用户要求；2026-09-02 提密度对齐借鉴库爆款
-        公式内页 90-130 字）：每页 80-130 字且六页基本均衡。
-        返回问题描述；合格返回空串。"""
-        lens = [len(p) for p in arr]
-        issues = []
-        short = [f"第{i+1}页仅{l}字" for i, l in enumerate(lens) if l < 80]
-        long_ = [f"第{i+1}页{l}字" for i, l in enumerate(lens) if l > 130]
-        if short:
-            issues.append("字数不足80字：" + "、".join(short))
-        if long_:
-            issues.append("字数超130字：" + "、".join(long_))
-        if max(lens) - min(lens) > 40:
-            issues.append(f"各页失衡（最长{max(lens)}最短{min(lens)}，"
-                          "任意两页相差须≤40字）")
-        return "；".join(issues)
-
     async with SessionLocal() as session:
         text = await _latest_draft_body(session, input_data["task_id"])
         owner_id = (await session.execute(
@@ -380,45 +525,11 @@ async def node_page_split(input_data: dict) -> dict:
     # 首选 LLM 按页写图上文案；解析失败/调用失败退回机械切割（保证节点不卡死）
     pages, model_version, cost = None, "mechanical", 0.0
     try:
-        import json as _json
         template = await get_effective_prompt("page_split", None, owner_id)
-        llm_prompt = (template.replace("{body}", text) if "{body}" in template
-                      else template + "\n\n" + text)
-
-        def _parse(result_text: str) -> list[str] | None:
-            raw = result_text.strip()
-            if raw.startswith("```"):
-                raw = raw.strip("`").lstrip("json").strip()
-            try:
-                arr = _json.loads(raw[raw.index("["):raw.rindex("]") + 1])
-            except Exception:
-                return None
-            arr = [str(p).strip() for p in arr if str(p).strip()]
-            return arr[:6] if len(arr) >= 6 else None
-
-        _emit_progress(input_data["task_id"], "page_split",
-                       msg="分页文案生成中（每页 80-130 字、六页均衡）")
-        result = await call_with_failover(
-            llm_prompt, DEEPSEEK_MODEL, KIMI_MODEL,
+        r = await run_page_split_llm(
+            text, template, task_id=input_data["task_id"],
             on_delta=_stream_reporter(input_data["task_id"], "page_split"))
-        pages = _parse(result["text"])
-        model_version, cost = result["model_version"], result["cost_cny"]
-        # 字数/均衡校验：不合格带意见重试一次；仍不合格保留违规较轻的一版
-        # （下游审图人工关卡兜底，不因校验卡死流水线）
-        issue = _balance_issue(pages) if pages else ""
-        if issue:
-            retry = await call_with_failover(
-                llm_prompt + "\n\n【上次输出不合格，必须修正】" + issue
-                + "。请重新输出全部 6 页：每页（含小标题与标点）80-130 字，"
-                  "各页字数相差不超过 40 字。",
-                DEEPSEEK_MODEL, KIMI_MODEL,
-                on_delta=_stream_reporter(input_data["task_id"], "page_split"))
-            pages2 = _parse(retry["text"])
-            cost += retry["cost_cny"]
-            issue2 = _balance_issue(pages2) if pages2 else ""
-            if pages2 and (not issue2 or len(issue2) < len(issue)):
-                pages = pages2
-                model_version = retry["model_version"]
+        pages, model_version, cost = r["pages"], r["model_version"], r["cost_cny"]
     except Exception:
         traceback.print_exc()
     if pages is None:
@@ -438,7 +549,15 @@ async def _generate_single_asset(task_id, page_index: int, prompt: str,
     return {"task_id": task_id, "page_index": page_index, "hash": r["hash"],
             "image_url": r["image_url"],
             "source_type": "ai_generated", "copyright_status": "clear",
-            "model_version": r["model_version"], "is_illustration": False}
+            "model_version": r["model_version"], "is_illustration": False,
+            "channel": r.get("channel", "")}
+
+
+def _img_size(data: bytes) -> tuple:
+    """读图片尺寸（PIL 同步调用，供 asyncio.to_thread 包裹，不占事件循环）。"""
+    import io
+    from PIL import Image
+    return Image.open(io.BytesIO(data)).size
 
 
 def _crop_to_34(data: bytes) -> bytes:
@@ -492,20 +611,21 @@ async def _dedupe_and_validate(asset: dict, prompt: str, reference_urls,
         seen_hashes.add(content_hash)
 
         # ── 3:4 铁律：容差 3%；重生成一次，仍偏则中心裁剪归一 ──
+        # PIL 同步调用走 to_thread，不占事件循环（2026-09-10 P2-9 收尾）
         from PIL import Image
-        w, h = Image.open(io.BytesIO(data)).size
+        w, h = await asyncio.to_thread(_img_size, data)
         if abs(w / h - 0.75) > 0.03:
             r3 = await _generate_single_asset(task_id, page_index, prompt, reference_urls)
             extra += 1
             data3, ctype3 = await fetch_image_bytes(r3["image_url"])
-            w3, h3 = Image.open(io.BytesIO(data3)).size
+            w3, h3 = await asyncio.to_thread(_img_size, data3)
             if abs(w3 / h3 - 0.75) <= abs(w / h - 0.75):
                 asset, data, ctype = r3, data3, (ctype3 or "image/png")
                 w, h = w3, h3
                 content_hash = hashlib.md5(data).hexdigest()
                 seen_hashes.add(content_hash)
             if abs(w / h - 0.75) > 0.03:   # 仍偏 → 铁律兜底：裁剪归一
-                data = _crop_to_34(data)
+                data = await asyncio.to_thread(_crop_to_34, data)
                 ctype = "image/png"
                 content_hash = hashlib.md5(data).hexdigest()
                 seen_hashes.add(content_hash)
@@ -587,9 +707,11 @@ async def node_asset_gen(input_data: dict) -> dict:
     image_template = await get_effective_prompt("image_gen", mode, owner_id)
     # 风格自适应（2026-08-31）：按 query 题材从风格库加权随机选一个视觉方向，
     # 落库 task.gen_image_style；一篇 6 页共用同一段风格词（字体/色调/装饰统一）
-    from src.services.style_select import ensure_task_style, build_style_block
+    from src.services.style_select import (ensure_task_style, build_style_block,
+                                           style_extras_for)
     style_name, style_desc = await ensure_task_style(input_data["task_id"])
-    style_block = build_style_block(style_name, style_desc)
+    style_uw, style_pf = await style_extras_for(style_name, owner_id)
+    style_block = build_style_block(style_name, style_desc, style_uw, style_pf)
     # 场景化扩写（2026-09-01 升级自 8-31 的主体提取）：nanobot 记忆会话优先把
     # 6 页中文文案扩写成英文视觉描述+风格英文版（复刻网页端 Agent 的 prompt
     # 增强层）；成功走英文骨架，失败回退中文骨架，不阻塞出图。
@@ -677,14 +799,25 @@ async def node_asset_gen(input_data: dict) -> dict:
                 _emit_progress(input_data["task_id"], "asset_gen",
                                msg=f"P{i} 与已有图重复，已换构图重生成")
     results = [r for r in results if r]
+    if settings.mock_image_gen:
+        cost = 0.0
+    else:
+        # 分通道计费（2026-09-09）：成图按各自通道价，去重/尺寸重生按基准价
+        from src.gateway.cost_tracker import per_call_cost, refresh_rates
+        await refresh_rates()
+        base_rate = per_call_cost("gpt-image-2",
+                                  fallback=settings.image_cost_per_image_cny)
+        cost = sum(per_call_cost(f"gpt-image-2@{r.get('channel') or ''}",
+                                 fallback=base_rate) for r in results)
+        cost += extra_gen * base_rate
     async with SessionLocal() as session:
         for r in results:
+            r.pop("channel", None)  # 非 Asset 列，仅计费用
             session.add(Asset(**r))
         await session.commit()
     return {"asset_count": len(results),
             "image_urls": [r.get("image_url") for r in results if r.get("image_url")],
-            "cost_cny": 0 if settings.mock_image_gen
-                        else (len(results) + extra_gen) * settings.image_cost_per_image_cny}
+            "cost_cny": cost}
 
 
 async def node_ocr_read(input_data: dict) -> dict:
@@ -759,6 +892,13 @@ async def node_cross_check(input_data: dict) -> dict:
                 session.add(CrossCheck(task_id=input_data["task_id"], **m))
                 all_mismatches.append(m)
         await session.commit()
+    _emit_progress(
+        input_data["task_id"], "cross_check",
+        msg=f"图文对撞 {len(page_list)} 页关键字段，{len(all_mismatches)} 处不一致"
+            + (f"（首处：{all_mismatches[0]['field_name']} "
+               f"期望「{str(all_mismatches[0].get('expected'))[:20]}」"
+               f"实际「{str(all_mismatches[0].get('actual'))[:20]}」）"
+               if all_mismatches else ""))
     return {"mismatch_count": len(all_mismatches)}
 
 
@@ -793,6 +933,8 @@ async def node_risk_classify(input_data: dict) -> dict:
         rc = RiskClassification(task_id=input_data["task_id"], level=level, reasons=reasons)
         session.add(rc)
         await session.commit()
+    _emit_progress(input_data["task_id"], "risk_classify",
+                   msg=f"风险分级 {level}" + (f"：{reasons[0]}" if reasons else ""))
     return {"level": level, "reasons": reasons}
 
 
@@ -802,6 +944,8 @@ async def node_review_queue(input_data: dict) -> dict:
         for role in ["A", "B", "C"]:
             session.add(ReviewSession(task_id=input_data["task_id"], role=role))
         await session.commit()
+    _emit_progress(input_data["task_id"], "review_queue",
+                   msg="已创建 A（事实）/ B（合规）/ C（观感）三角色审核会话")
     return {"queued": ["A", "B", "C"]}
 
 
@@ -811,6 +955,8 @@ async def node_batch_signoff(input_data: dict) -> dict:
         b = Batch(risk_level="green", sampling_rate=0.20, member_count=1)
         session.add(b)
         await session.commit()
+    _emit_progress(input_data["task_id"], "batch_signoff",
+                   msg=f"批次会签完成：风险 green · 抽检 20%（批次 {str(b.id)[:8]}）")
     return {"batch_id": str(b.id)}
 
 
@@ -840,8 +986,12 @@ async def node_publish_snapshot(input_data: dict) -> dict:
                 session.add(Issue(task_id=input_data["task_id"], role="B",
                                   priority="P0", description=err))
             await session.commit()
+            _emit_progress(input_data["task_id"], "publish_snapshot",
+                           msg=f"交付校验不过（转 P0 问题单）：{delivery_errors[0]}")
             return {"delivery_errors": delivery_errors, "snapshot_created": False}
         s = PublishSnapshot(task_id=input_data["task_id"], snapshot_data={"frozen": True})
         session.add(s)
         await session.commit()
+    _emit_progress(input_data["task_id"], "publish_snapshot",
+                   msg="发布快照已生成（6 页交付校验通过：页数/页序/一页一图）")
     return {"snapshot_id": str(s.id), "delivery_errors": []}

@@ -6,6 +6,9 @@ set -e
 echo "=== 产能验证平台 启动 ==="
 PGBIN="/opt/homebrew/opt/postgresql@16/bin"
 
+# litellm 启动时不再远程拉价表（超时 ~13s 拖慢后端重启；价表走本地兜底 + DB 费率表）
+export LITELLM_LOCAL_MODEL_COST_MAP=true
+
 # 1. 启动 PostgreSQL
 echo "--- 1. 检查 PostgreSQL ---"
 if pg_isready >/dev/null 2>&1; then

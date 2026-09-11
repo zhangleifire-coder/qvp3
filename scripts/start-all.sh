@@ -11,6 +11,10 @@
 set -u
 cd "$(dirname "$0")/.."
 
+# litellm 启动时不再远程拉价表（本机到 raw.githubusercontent.com 超时 ~13s，
+# 拖慢每次后端重启；价表本就走本地兜底 + DB 费率表 020）
+export LITELLM_LOCAL_MODEL_COST_MAP=true
+
 ACTION="${1:-start}"
 BACKEND_PORT=8003
 NANOBOT_PORT=8900

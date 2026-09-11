@@ -9,14 +9,10 @@
 import json
 import traceback
 
-_SUBJECT_PROMPT = """你是小红书图文的视觉总监。下面是同一套图文的 6 页图上文案，请为每页提取一个「画面主体」：本页配图应该直接画出的具体事物。
-要求：
-1. 输出严格的 JSON 数组，恰好 6 个字符串，与 6 页一一对应，不要输出任何其他文字、解释或 markdown 代码围栏。
-2. 每个主体不超过 20 字，必须是具体可画的名词短语（如「加冰块的高脚杯牛奶」「两只碰杯的手特写」）。
-3. 禁止抽象词（如「坚韧」「温馨」「成长」），禁止与文案无关的象征隐喻物；文案讲什么就画什么。
+# 提取模板已搬入 skills/page-subject/SKILL.md（2026-09-03 阶段2重构，原样搬运）
+from src.gateway.skill_loader import skill_body as _skill_body
 
-【6 页文案】
-{pages}"""
+_SUBJECT_PROMPT = _skill_body("page-subject")
 
 
 async def extract_page_subjects(page_bodies: list, llm_call=None):
@@ -26,11 +22,10 @@ async def extract_page_subjects(page_bodies: list, llm_call=None):
     测试 mock；缺省走 failover 主备通道（单次重试，不拖慢出图链路）。
     """
     if llm_call is None:
-        from src.gateway.failover import call_with_failover, DEEPSEEK_MODEL, KIMI_MODEL
+        from src.gateway.failover import call_with_failover
 
         async def llm_call(prompt):
-            return await call_with_failover(prompt, DEEPSEEK_MODEL, KIMI_MODEL,
-                                            max_retries=1)
+            return await call_with_failover(prompt, max_retries=1)
     try:
         pages = "\n".join(f"第{i}页：{b}" for i, b in enumerate(page_bodies, 1))
         r = await llm_call(_SUBJECT_PROMPT.replace("{pages}", pages))

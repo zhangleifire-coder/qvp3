@@ -35,7 +35,7 @@ class _FakeStream:
 
 @pytest.mark.asyncio
 async def test_call_provider_streams_deltas():
-    pieces = ["秋天", "的早晨", "，露水", "挂在", "叶尖。"]
+    pieces = ["秋" * 60, "天" * 60, "的" * 60, "早" * 60, "晨。"]
     chunks = [_chunk(p) for p in pieces]
     chunks.append(_chunk(pt=10, ct=8))  # 末块带 usage
     calls = []
@@ -48,11 +48,25 @@ async def test_call_provider_streams_deltas():
                side_effect=fake_acompletion):
         r = await call_provider("deepseek/deepseek-v4-pro", "p",
                                 on_delta=lambda piece, total: calls.append((piece, total)))
-    assert r["text"] == "秋天的早晨，露水挂在叶尖。"
+    assert r["text"] == "".join(pieces)
     assert r["prompt_tokens"] == 10 and r["completion_tokens"] == 8
-    # 逐块回调：每片一次，total 单调增长
-    assert [p for p, _ in calls] == pieces
-    assert [len(t) for _, t in calls] == [2, 5, 8, 10, 13]
+    # 120 字符节流：累计每满 120 回调一次（120/240 触发），流末尾部 flush 补终态
+    assert [len(t) for _, t in calls] == [120, 240, 242]
+    assert calls[-1][1] == r["text"]   # 尾部 flush 必达完整终态
+
+
+@pytest.mark.asyncio
+async def test_call_provider_stream_short_flushes_final():
+    """全程 <120 字：无中间回调，仅流末一次尾部 flush，total=完整终态。"""
+    pieces = ["秋天", "的早晨"]
+    chunks = [_chunk(p) for p in pieces]
+    calls = []
+    with patch("src.gateway.litellm_adapter.litellm.acompletion",
+               side_effect=lambda **kw: _FakeStream(chunks)):
+        r = await call_provider("deepseek/deepseek-v4-pro", "p",
+                                on_delta=lambda piece, total: calls.append((piece, total)))
+    assert r["text"] == "秋天的早晨"
+    assert calls == [("的早晨", "秋天的早晨")]
 
 
 @pytest.mark.asyncio

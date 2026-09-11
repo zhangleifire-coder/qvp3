@@ -10,28 +10,16 @@ import base64
 import json
 import traceback
 
-import httpx
-
 from src.config import settings
+from src.gateway.http_client import get_client
 from src.gateway.ocr import fetch_image_bytes
 
 _MAX_ROUNDS = 2
 
-_VL_REVIEW_PROMPT = """你是图文交付质量审核员。下面是第 {page} 页交付配图与其目标页文案。逐项审核后只输出 JSON：
+# 视觉审核模板已搬入 skills/ai-review/SKILL.md（2026-09-03 阶段2重构，原样搬运）
+from src.gateway.skill_loader import skill_body as _skill_body
 
-【页文案】{page_text}
-【本页是 compare/single 模式：{ref_mode}（是=应有实景参考图嵌入画面）】
-
-审核项：
-1. text_ok：图中文字是否正确（有无伪汉字/异体变形/乱码/明显错字）；
-2. text_amount_ok：图中文字数量是否协调（是否信息过载堆太多字，或该有的字缺失）；
-3. ref_ok：实景图嵌入是否协调（大小/位置/对比度/不遮挡主体；无实景图时此项给 true）；
-4. bench_ok：与第二张「标杆案例」对照，本图的整体质感/排版层次/信息密度是否
-   达到同类交付水准（不要求一模一样，判断差距是否明显）。
-
-输出 JSON：{{"text_ok": true/false, "text_amount_ok": true/false, "ref_ok": true/false,
-  "bench_ok": true/false,
-  "issues": ["问题1"], "suggest": "一句具体的生图调整建议（怎么改提示词）"}}"""
+_VL_REVIEW_PROMPT = _skill_body("ai-review")
 
 
 async def get_benchmark_shot(mode: str) -> str | None:
@@ -72,14 +60,14 @@ async def _vl_review(image_url: str, page_text: str, page: int, ref_mode: bool,
             "messages": [{"role": "user", "content": content}],
             "max_tokens": 600,
         }
-        async with httpx.AsyncClient(timeout=90) as client:
-            resp = await client.post(
-                f"{settings.ocr_base_url}/chat/completions",
-                headers={"Authorization": f"Bearer {settings.dashscope_api_key}"},
-                json=payload)
-            if resp.status_code != 200:
-                return {"pass": True, "issues": [], "suggest": ""}
-            content = resp.json()["choices"][0]["message"]["content"].strip()
+        client = get_client("ai_review", timeout=90)
+        resp = await client.post(
+            f"{settings.ocr_base_url}/chat/completions",
+            headers={"Authorization": f"Bearer {settings.dashscope_api_key}"},
+            json=payload)
+        if resp.status_code != 200:
+            return {"pass": True, "issues": [], "suggest": ""}
+        content = resp.json()["choices"][0]["message"]["content"].strip()
         raw = content.strip("`").lstrip("json").strip()
         j = json.loads(raw[raw.index("{"):raw.rindex("}") + 1])
         keys = ("text_ok", "text_amount_ok", "ref_ok") + (("bench_ok",) if bench_url else ())

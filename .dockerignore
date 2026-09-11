@@ -8,3 +8,5 @@ backend.log
 static/generated
 exports
 .pytest_cache
+.vendor
+**/.vendor

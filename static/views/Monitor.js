@@ -15,9 +15,9 @@ const MonitorView = {
       connected: false, es: null, nodes: [],
       debugOn: false, showPw: false, pw: '', pwError: '', pwLoading: false,
       cancelling: '',      // 正在中断的 task_id（按钮防抖）
-      taskLogs: {},        // task_id -> [{t,k,m}] 工作日志（逐行追加，上限 200）
+      taskLogs: {},        // task_id -> [{t,k,m,node}] 工作日志（逐行追加，上限 200）
       openLog: {},         // task_id -> bool 工作日志展开（默认进行中展开）
-      agentFeed: [],       // 创作 Agent 数据流（跨任务滚动：文本增量/工具调用细节）
+      nodeView: {},        // task_id -> 节点过程直播窗选中的节点名（空=跟随当前节点）
     };
   },
   computed: {
@@ -78,9 +78,10 @@ const MonitorView = {
       return 1;
     },
     // ── 工作日志：所有细节逐行追加 ──
-    pushLog(tid, kind, msg) {
+    pushLog(tid, kind, msg, node) {
       const arr = this.taskLogs[tid] || (this.taskLogs[tid] = []);
-      arr.push({ t: new Date().toLocaleTimeString('zh-CN', { hour12: false }), k: kind, m: msg });
+      arr.push({ t: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
+                 k: kind, m: msg, node: node || '' });
       if (arr.length > 200) arr.splice(0, arr.length - 200);
       if (this.openLog[tid] === undefined) this.openLog[tid] = true;
       this.$nextTick(() => {
@@ -93,7 +94,7 @@ const MonitorView = {
       for (const t of this.shownTasks) {
         if (!this.taskLogs[t.id] && t.debug && t.debug.length) {
           const arr = t.debug.slice(-8).map(d => ({
-            t: d.ts, k: d.phase === 'error' ? 'err' : 'dim',
+            t: d.ts, k: d.phase === 'error' ? 'err' : 'dim', node: d.node || '',
             m: `[${this.nodeLabel(d.node)}] ${d.phase === 'error' ? '✗ ' : ''}${d.msg || ''}`,
           }));
           this.taskLogs[t.id] = arr;
@@ -101,24 +102,69 @@ const MonitorView = {
       }
     },
     logOf(t) { return this.taskLogs[t.id] || []; },
+    // ── 节点过程直播窗：每节点最新一帧流状态（快照 node_streams + 事件增量）──
+    nsMap(t) { return t.node_streams || {}; },
+    nsNodes(t) {
+      // 有过程数据的节点（按步骤条顺序排），供芯片切换
+      const m = this.nsMap(t);
+      return this.nodes.map(n => n.name).filter(name =>
+        m[name] && (m[name].msg || m[name].preview || m[name].chars));
+    },
+    selNode(t) {
+      const pick = this.nodeView[t.id];
+      if (pick && this.nsMap(t)[pick]) return pick;
+      return t.current_node || (this.nsNodes(t)[0] || '');
+    },
+    pickNode(t, name) {
+      this.nodeView = { ...this.nodeView,
+                        [t.id]: (this.nodeView[t.id] === name ? '' : name) };
+    },
+    nsFrame(t) { return this.nsMap(t)[this.selNode(t)] || null; },
+    nsLogs(t) {
+      const sel = this.selNode(t);
+      return (this.taskLogs[t.id] || []).filter(l => l.node === sel).slice(-12);
+    },
+    _nsFrameData(node, d) {
+      return { node, chars: d.chars || 0, preview: (d.preview || '').slice(-300),
+               msg: d.msg || d.message || '',
+               ts: new Date().toLocaleTimeString('zh-CN', { hour12: false }) };
+    },
+    applyNodeStream(tid, node, d) {
+      // node_progress / agent_progress → 任务的 node_streams 映射；
+      // 按字段合并：msg 帧不冲掉流式 chars/preview（与后端快照口径一致）
+      if (!tid || !node) return;
+      const t = this.tasks.find(x => x.id === tid);
+      if (!t) return;
+      const prev = (t.node_streams || {})[node] || {};
+      const cur = this._nsFrameData(node, d);
+      const frame = { node, ts: cur.ts,
+                      chars: cur.chars || prev.chars || 0,
+                      preview: cur.preview || prev.preview || '',
+                      msg: cur.msg || prev.msg || '' };
+      t.node_streams = { ...(t.node_streams || {}), [node]: frame };
+    },
     eventText(e) {
+      if (e.type === '__seed') return e.text;   // 快照播种帧（全局工作直播）
       const label = e.node ? this.nodeLabel(e.node) : '';
       const who = e.who || (e.task_id ? this._taskName(e.task_id) : '');
+      // 流式帧带实际内容尾部（全局工作直播：同步实际工作内容，2026-09-08）
+      const tail = (e.preview || '').replace(/\s+/g, ' ').slice(-60);
       const map = {
         task_enqueued: '入队', task_started: '开始生产', task_finished: '生产完成',
         task_failed: '失败', task_cancelled: '人工中断', node_started: '节点开始',
         node_finished: '节点完成', node_failed: '节点失败', rate_limit: '触发限流',
         concurrency: '并发调整', maintenance: '检修切换',
         node_progress: e.chars
-            ? `${label}流式生成 ${e.chars} 字`
-            : `${label}${e.msg || '进行中'}`,
-        agent_progress: e.chars ? `流式输出 ${e.chars} 字（约 ${e.tokens_est || 0} token）`
-                                : 'Agent 启动',
+            ? `${label} · 流式 ${e.chars} 字${tail ? '：…' + tail : ''}`
+            : `${label} · ${e.msg || '进行中'}`,
+        agent_progress: e.chars
+            ? `创作Agent · 流式 ${e.chars} 字 ≈${e.tokens_est || 0}token${tail ? '：…' + tail : ''}`
+            : '创作Agent · 启动',
         agent_tool: this._toolLog(e),
         export_progress: `打包 ${e.phase || ''}`,
       };
       const detail = map[e.type] || e.type;
-      return `${who}${detail}${label && e.type !== 'node_progress' ? ' · ' + label : ''}${e.msg && e.type !== 'node_progress' ? ' · ' + e.msg : ''}`;
+      return `${who}${detail}${label && !e.type.startsWith('node_progress') && e.type !== 'agent_progress' && e.type !== 'agent_tool' ? ' · ' + label : ''}`;
     },
     async cancelTask(t) {
       if (this.cancelling) return;
@@ -191,12 +237,35 @@ const MonitorView = {
       a.click();
       URL.revokeObjectURL(a.href);
     },
+    // task_*/node_* 事件后的快照重拉节流：2s 内多次事件合并为一次请求（P0-3），
+    // 高频 agent_progress/node_progress 本就走增量更新，不触发重拉
+    scheduleSnapshot() {
+      if (this._snapTimer) return;
+      this._snapTimer = setTimeout(() => { this._snapTimer = null; this.loadSnapshot(); }, 2000);
+    },
     async loadSnapshot() {
       try {
         const d = await api.get('/api/stream/state');
         this.counts = d.counts; this.limiter = d.limiter; this.tasks = d.tasks || [];
         this.seedLogs();
+        this.seedLiveFeed();   // 全局工作直播：快照播种当前各节点最新帧（开页即见工作内容）
       } catch (e) { /* 静默，等 SSE */ }
+    },
+    seedLiveFeed() {
+      // 每个进行中任务的当前节点最新帧 → 全局直播播种一行（幂等：相同内容不重复顶入）
+      for (const t of this.shownTasks) {
+        const m = t.node_streams || {};
+        const name = t.current_node && m[t.current_node] ? t.current_node : null;
+        if (!name) continue;
+        const f = m[name];
+        const text = `${this._taskName(t.id)}${this.nodeLabel(name)} · `
+          + (f.chars ? `流式 ${f.chars} 字：…${(f.preview || '').replace(/\s+/g, ' ').slice(-60)}`
+                     : (f.msg || '进行中'));
+        if (!this.events.find(e => e.type === '__seed' && e.text === text)) {
+          this.events.unshift({ ts: f.ts || '', type: '__seed', text });
+        }
+      }
+      if (this.events.length > 150) this.events.length = 150;
     },
     applyAgentEvent(d) {
       // Agent 流式/工具事件：直接更新本地任务对象（高频，不重拉快照）
@@ -210,12 +279,6 @@ const MonitorView = {
                     image_gen: '配图生成完成', ocr: 'OCR 图文自检' };
         t.stage_hint = m[d.tool] || `调用工具 ${d.tool || ''}`;
       }
-    },
-    _pushAgentFeed(kind, text) {
-      // 创作 Agent 数据流：跨任务滚动条（新事件顶入，上限 60 行）
-      this.agentFeed.unshift({ t: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
-                               k: kind, m: text });
-      if (this.agentFeed.length > 60) this.agentFeed.pop();
     },
     _taskName(tid) {
       const t = this.tasks.find(x => x.id === tid);
@@ -235,6 +298,7 @@ const MonitorView = {
           const tid = d.task_id;
           if (d.type === 'agent_progress') {
             this.applyAgentEvent(d);
+            this.applyNodeStream(tid, 'agent_production', d);
             if (tid && d.chars) {
               const t = this.tasks.find(x => x.id === tid);
               const last = (this.taskLogs[tid] || []).slice(-1)[0];
@@ -242,50 +306,49 @@ const MonitorView = {
                              k: 'stream',
                              m: `流式输出 ${d.chars} 字 ≈ ${d.tokens_est || 0} token` };
               if (last && last.k === 'stream') Object.assign(last, line);
-              else this.pushLog(tid, 'stream', line.m);
+              else this.pushLog(tid, 'stream', line.m, 'agent_production');
               if (t) t.stream = { chars: d.chars, tokens: d.tokens_est || 0, tail: d.preview || '' };
-              // 创作 Agent 数据流：文本增量（流式预览尾部 + 计数）
-              const tail = (d.preview || '').replace(/\s+/g, ' ').slice(-60);
-              this._pushAgentFeed('stream',
-                `${this._taskName(tid)} 流式 ${d.chars} 字${tail ? '：…' + tail : ''}`);
             } else if (tid && d.message) {
-              this.pushLog(tid, 'info', d.message);
+              this.pushLog(tid, 'info', d.message, 'agent_production');
             }
           } else if (d.type === 'agent_tool') {
             this.applyAgentEvent(d);
-            this.pushLog(tid, 'tool', this._toolLog(d));
-            // 工具调用细节也进创作数据流（2026-09-01 用户要求：所有步骤可见）
-            this._pushAgentFeed('tool', `${this._taskName(tid)} ${this._toolLog(d)}`);
+            this.pushLog(tid, 'tool', this._toolLog(d), 'agent_production');
           } else if (d.type === 'node_progress') {
             // 直连路径节点子步骤/流式增量：功能名 + 正在做什么（含预览尾部）
             const lbl = this.nodeLabel(d.node);
+            this.applyNodeStream(tid, d.node, d);
             if (d.chars) {
               const t2 = this.tasks.find(x => x.id === tid);
               if (t2) t2.stream = { chars: d.chars, tokens: Math.round(d.chars / 1.7),
                                     tail: (d.preview || '').slice(-120) };
               const last = (this.taskLogs[tid] || []).slice(-1)[0];
               const line = `${lbl} · 流式生成 ${d.chars} 字`;
-              if (last && last.k === 'stream') Object.assign(last, { m: line });
-              else this.pushLog(tid, 'stream', line);
-              const tail = (d.preview || '').replace(/\s+/g, ' ').slice(-60);
-              this._pushAgentFeed('stream',
-                `${this._taskName(tid)} ${lbl}流式 ${d.chars} 字${tail ? '：…' + tail : ''}`);
+              if (last && last.k === 'stream' && last.node === d.node)
+                Object.assign(last, { m: line });
+              else this.pushLog(tid, 'stream', line, d.node);
             } else {
-              this.pushLog(tid, 'info', `${lbl} · ${d.msg || '进行中'}`);
-              this._pushAgentFeed('step', `${this._taskName(tid)} ${lbl} · ${d.msg || '进行中'}`);
+              this.pushLog(tid, 'info', `${lbl} · ${d.msg || '进行中'}`, d.node);
             }
             const t3 = this.tasks.find(x => x.id === tid);
             if (t3 && d.msg) t3.stage_hint = d.msg;
           } else if (d.type.startsWith('task_') || d.type.startsWith('node_')) {
             if (tid) this.pushLog(tid, d.type.includes('failed') ? 'err' : 'info',
-                                  this._nodeLog(d));
-            this.loadSnapshot();
+                                  this._nodeLog(d), d.node);
+            // 节点（重）开始：前端同步重置该节点过程帧（与后端快照口径一致）
+            if (d.type === 'node_started' && d.node) {
+              const t4 = this.tasks.find(x => x.id === tid);
+              if (t4) t4.node_streams = { ...(t4.node_streams || {}),
+                [d.node]: { node: d.node, chars: 0, preview: '', msg: '',
+                            ts: new Date().toLocaleTimeString('zh-CN', { hour12: false }) } };
+            }
+            this.scheduleSnapshot();
           }
-          // 实时事件流：所有事件（含 agent_progress/agent_tool）都进，附任务名
+          // 全局工作直播：所有事件都进（含流式帧内容尾部，见 eventText）
           this.events.unshift({ ts: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
                                 ...d, who: tid ? this._taskName(tid) : '' });
           if (this.events.length > 150) this.events.pop();
-        } catch (e) { /* 非 JSON 帧忽略 */ }
+        } catch (e) { console.warn('monitor event handle failed', e, ev.data && ev.data.slice(0, 200)); }
       };
     },
     _toolLog(d) {
@@ -314,9 +377,9 @@ const MonitorView = {
     this.connect();
     try { this.nodes = (await api.get('/api/meta/nodes')).nodes; } catch (e) { /* 降级 */ }
   },
-  beforeUnmount() { if (this.es) this.es.close(); },
+  beforeUnmount() { if (this.es) this.es.close(); if (this._snapTimer) clearTimeout(this._snapTimer); },
   template: `
-  <app-layout title="实时监控" inline>
+  <app-layout title="实时监控">
     <div class="grid grid-5">
       <div class="stat"><div class="n">{{ counts.queued || 0 }}</div><div class="l">排队中</div></div>
       <div class="stat"><div class="n" style="color:var(--primary)">{{ counts.processing || 0 }}</div><div class="l">生产中</div></div>
@@ -368,6 +431,34 @@ const MonitorView = {
           </span>
         </div>
 
+        <!-- 节点过程直播窗：每个工作节点的过程输出（msg + 流式预览尾 300 字 + 该节点日志行） -->
+        <div v-if="nsFrame(t) && (t.status === 'processing' || debugOn)" class="ns-panel">
+          <div class="ns-chips">
+            <span class="ns-chip" :class="{on: !nodeView[t.id]}"
+                  @click="nodeView = { ...nodeView, [t.id]: '' }">跟随当前</span>
+            <span v-for="n in nsNodes(t)" :key="'ns' + n" class="ns-chip"
+                  :class="{on: selNode(t) === n && nodeView[t.id],
+                           cur: t.current_node === n && t.status === 'processing'}"
+                  @click="pickNode(t, n)">{{ nodeLabel(n) }}</span>
+          </div>
+          <div class="ns-body">
+            <div class="ns-head">
+              <span v-if="t.current_node === selNode(t) && t.status === 'processing'"
+                    class="live-dot"></span>
+              节点过程 · {{ nodeLabel(selNode(t)) }}
+              <span v-if="nsFrame(t).chars" class="muted">流式 {{ nsFrame(t).chars }} 字</span>
+              <span class="muted" style="margin-left:auto">{{ nsFrame(t).ts }}</span>
+            </div>
+            <div v-if="nsFrame(t).msg" class="ns-msg">{{ nsFrame(t).msg }}</div>
+            <pre v-if="nsFrame(t).preview" class="ns-preview">{{ nsFrame(t).preview }}</pre>
+            <div v-if="nsLogs(t).length" class="ns-logs">
+              <div v-for="(l, i) in nsLogs(t)" :key="'nl' + i" class="ec-line" :class="'ec-' + l.k">
+                <span class="ec-ts">{{ l.t }}</span> {{ l.m }}
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- 流式输出实时预览（全量透传，逐字符） -->
         <div v-if="t.stream && t.status === 'processing'" class="stream-box">
           <div class="stream-head">
@@ -410,17 +501,9 @@ const MonitorView = {
     </div>
 
     <div class="card">
-      <h2>创作 Agent 数据流 <span class="muted" style="font-weight:normal;font-size:13px">跨任务滚动：流式输出增量 + 工具调用细节</span></h2>
-      <div v-if="!agentFeed.length" class="empty" style="padding:16px 0">等待创作数据…</div>
-      <div v-for="(e, i) in agentFeed" :key="i" class="event-row agent-feed-row" :class="'af-' + e.k">
-        <span class="muted">{{ e.t }}</span>　{{ e.m }}
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>实时事件流</h2>
-      <div v-if="!events.length" class="empty" style="padding:20px 0">等待事件…</div>
-      <div v-for="(e, i) in events" :key="i" class="event-row" :class="{err: e.type.includes('failed') || e.type === 'rate_limit'}">
+      <h2>全局工作直播 <span class="muted" style="font-weight:normal;font-size:13px">跨任务滚动：各节点实际工作内容（流式帧/工具调用/节点摘要）</span></h2>
+      <div v-if="!events.length" class="empty" style="padding:20px 0">等待工作数据…</div>
+      <div v-for="(e, i) in events" :key="i" class="event-row" :class="{err: e.type && (e.type.includes('failed') || e.type === 'rate_limit')}">
         <span class="muted">{{ e.ts }}</span>　{{ eventText(e) }}
       </div>
     </div>

@@ -48,3 +48,33 @@ async def test_mock_image_gen_returns_placeholder(monkeypatch):
     assert r["image_url"].startswith("data:image/svg+xml")
     assert r["hash"]
     gen.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_openox_text_gen_reuses_linkai_path_with_own_credentials():
+    """openox 文生图复用 linkai 的 Images API 路径，仅 key/base_url 换成 openox。"""
+    with patch.object(image_gen, "_next_channel", return_value="openox"), \
+         patch.object(image_gen.settings, "openox_api_key", "sk-openox-x"), \
+         patch.object(image_gen.settings, "openox_base_url", "https://api.openox.net/v1"), \
+         patch.object(image_gen, "_generate",
+                      new=AsyncMock(return_value={"image_url": "u", "hash": "h",
+                                                  "model_version": "gpt-image-2"})) as gen:
+        await _generate_image("prompt")
+    gen.assert_awaited_once()
+    kwargs = gen.await_args.kwargs
+    assert kwargs["api_key"] == "sk-openox-x"
+    assert kwargs["base_url"] == "https://api.openox.net/v1"
+
+
+@pytest.mark.asyncio
+async def test_openox_never_handles_image_to_image():
+    """图生图轮到 openox 时直接转给支持 edits 的通道，openox 不参与图生图。"""
+    with patch.object(image_gen, "_next_channel", return_value="openox"), \
+         patch.object(image_gen, "_channels", return_value=["fusion", "openox"]), \
+         patch.object(image_gen, "_edit_fusion",
+                      new=AsyncMock(return_value={"image_url": "u", "hash": "h",
+                                                  "model_version": "gpt-image-2@fusion"})) as edit, \
+         patch.object(image_gen, "_generate", new=AsyncMock()) as gen:
+        await _generate_image("prompt", reference_image_urls=["https://x/a.png"])
+    edit.assert_awaited_once()  # 转给 fusion 的 edits，而非 openox 文生图
+    gen.assert_not_called()

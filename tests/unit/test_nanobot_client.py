@@ -32,23 +32,30 @@ def mock_transport(monkeypatch):
         return _orig_client(*args, **kwargs)
 
     monkeypatch.setattr(nanobot_client.httpx, "AsyncClient", _factory)
-    return holder
+    yield holder
+    # 共享 client（P1-7）跨用例复用会带着本用例的 mock transport，清注册表隔离
+    from src.gateway.http_client import reset_clients
+    reset_clients()
 
 
 async def test_call_agent_streams_and_aggregates(mock_transport):
+    big = "好" * 130
     mock_transport["handler"] = lambda req: _sse_response([
-        {"model": "deepseek-v4-pro", "choices": [{"delta": {"content": "你好"}}]},
+        {"model": "deepseek-v4-pro", "choices": [{"delta": {"content": big}}]},
         {"choices": [{"delta": {"content": "，世界"}}]},
         {"choices": [{"delta": {}}],
          "usage": {"prompt_tokens": 11, "completion_tokens": 22}},
     ])
     deltas = []
+    totals = []
     r = await call_agent("hi", session_id="s1",
-                         on_delta=lambda p, t: deltas.append(p))
-    assert r["text"] == "你好，世界"
+                         on_delta=lambda p, t: (deltas.append(p), totals.append(t)))
+    assert r["text"] == big + "，世界"
     assert r["model_version"] == "nanobot:deepseek-v4-pro"
     assert r["prompt_tokens"] == 11 and r["completion_tokens"] == 22
-    assert deltas == ["你好", "，世界"]
+    # 120 字符节流：首块 130 字触发一次；第二块仅 3 字不触发，流末尾部 flush 补终态
+    assert deltas == [big, "，世界"]
+    assert totals[-1] == r["text"]
 
 
 async def test_call_agent_empty_response_raises(mock_transport):
@@ -78,3 +85,12 @@ async def test_health_false_when_down(mock_transport):
         raise httpx.ConnectError("refused")
     mock_transport["handler"] = _boom
     assert await health() is False
+
+
+async def test_dsh_prefixed_model_passes_through(mock_transport):
+    """dsh 网关自带前缀的 model 不再叠加 nanobot: 前缀（防 nanobot:dsh: 双前缀）。"""
+    mock_transport["handler"] = lambda req: _sse_response([
+        {"model": "dsh:deepseek-v4-pro", "choices": [{"delta": {"content": "好"}}]},
+    ])
+    r = await call_agent("hi", session_id="s5")
+    assert r["model_version"] == "dsh:deepseek-v4-pro"

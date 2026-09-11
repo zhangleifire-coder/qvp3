@@ -1,0 +1,79 @@
+# qvp3：图文生产平台（dsh 创作网关版）独立栈 —— 灰度新栈，对外 8005
+# 与 qvp2(8003 生产) / qvptest(8001) 完全隔离：独立 compose 项目、网络、数据卷。
+# ⚠️ 红线：8002(qvpdev) / 8000(qvp 旧栈) 绝对不碰；本文件只属于 qvp3。
+# 与 qvp2 的关键差异：
+#   1) dsh_serve（Python 薄层，内嵌 dsh 子进程）替代 Nanobot，监听容器内 8901；
+#   2) 新增 qvp3_dshhome 持久卷——Agent 会话/记忆不再随容器重建蒸发（qvp2 的历史缺陷）；
+#   3) openserp 收编进本栈（qvp2 时代是独立部署的 qvp2-openserp）。
+name: qvp3
+
+services:
+  postgres:
+    image: postgres:16        # 服务器本地已有镜像（Docker Hub 直连不通）
+    container_name: qvp3-postgres
+    environment:
+      POSTGRES_USER: qvp
+      POSTGRES_PASSWORD: qvp
+      POSTGRES_DB: qvp
+    volumes:
+      - qvp3_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U qvp -d qvp"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+    restart: unless-stopped
+
+  openserp:
+    image: karust/openserp:latest   # 服务器本地已有镜像
+    container_name: qvp3-openserp
+    command: serve -a 0.0.0.0 -p 7000   # 裸 entrypoint 不带命令会打印 usage 退出（重启循环）
+    # 不对宿主机开端口，仅容器网络内 http://qvp3-openserp:7000
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.dsh
+    container_name: qvp3-app
+    env_file: .env
+    environment:
+      # 容器内服务发现（覆盖 .env 里的本机地址）
+      DATABASE_URL: postgresql+asyncpg://qvp:qvp@qvp3-postgres:5432/qvp
+      OPENSERP_BASE_URL: http://qvp3-openserp:7000
+      MCP_CALLBACK_BASE_URL: http://127.0.0.1:8005
+      # 后端创作 Agent 调用指向 dsh_serve 薄层（协议与 Nanobot 1:1，无需改客户端）
+      NANOBOT_BASE_URL: http://127.0.0.1:8901/v1
+      DSH_HOME: /data/dsh
+      DSH_SERVE_PORT: "8901"
+      DSH_MAX_CONCURRENT: "4"        # 必须与后端 MAX_CONCURRENCY 一致（消除隐形排队）
+      DSH_WORKSPACE: /app
+      # litellm 主进程不远程拉价表（容器启动快 ~6-13s；价表走本地兜底 + DB 费率表。
+      # 此前只在 MCP_EXTRA_ENV 里对 MCP 子进程设过，主后端进程漏了）
+      LITELLM_LOCAL_MODEL_COST_MAP: "true"
+      # qvp_mcp stdio 子进程（容器内 python，PYTHONPATH=/app 复用 src.gateway 与 /app/.env）
+      MCP_ENABLED: "true"
+      MCP_COMMAND: /usr/local/bin/python
+      MCP_ARGS: '["-m", "qvp_mcp"]'
+      MCP_PYTHONPATH: /app
+      MCP_TOOL_TIMEOUT_MS: "1800000"
+      MCP_EXTRA_ENV: '{"LITELLM_LOCAL_MODEL_COST_MAP": "true", "PYTHONUTF8": "1"}'
+    ports:
+      - "8005:8005"
+    volumes:
+      - ./.env:/app/.env:ro
+      - qvp3_generated:/app/static/generated
+      - qvp3_exports:/app/exports
+      - qvp3_dshhome:/data/dsh        # dsh 会话/记忆持久卷（spike 验证 d 项）
+    depends_on:
+      postgres:
+        condition: service_healthy
+      openserp:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  qvp3_pgdata:
+  qvp3_generated:
+  qvp3_exports:
+  qvp3_dshhome:

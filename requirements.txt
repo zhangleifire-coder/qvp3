@@ -206,3 +206,7 @@ yarl==1.24.5
 zipp==4.1.0
     # via importlib-metadata
 fastmcp==3.4.7
+
+# dsh_serve 组件（2026-09-07 合并）：dsh Python SDK，版本钉死（预览版有破坏性变更）
+# 其单测已纳入主回归（pyproject testpaths），venv 重建需装此项才能跑全量
+deepseek-harness-sdk==0.1.2rc1

@@ -2,7 +2,9 @@
 const AdminView = {
   data() {
     return { st: null, error: '', msg: '', timer: null, logs: [], showLogs: false,
-             costs: null, costTask: null };
+             costs: null, costTask: null,
+             rates: null, balance: null, balanceLoading: false, ratesSaving: false,
+             baselineForm: { fusion: '', kimi: '' } };
   },
   computed: {
     isAdmin() { const u = getUser(); return u && u.role === 'admin'; },
@@ -54,6 +56,54 @@ const AdminView = {
       catch (e) { this.error = e.message; }
     },
     toggleCostTask(id) { this.costTask = this.costTask === id ? null : id; },
+    async loadRates() {
+      try { this.rates = await api.get('/api/admin/rates'); }
+      catch (e) { this.error = e.message; }
+    },
+    async saveRates() {
+      if (!this.rates || !this.rates.rates) return;
+      this.ratesSaving = true; this.error = ''; this.msg = '';
+      try {
+        await api.put('/api/admin/rates', {
+          actor: getUser().name,
+          rates: this.rates.rates.map(r => ({
+            model_key: r.model_key, label: r.label || '',
+            input_hit_peak: Number(r.input_hit_peak) || 0,
+            input_miss_peak: Number(r.input_miss_peak) || 0,
+            output_peak: Number(r.output_peak) || 0,
+            offpeak_ratio: Number(r.offpeak_ratio) || 0,
+            per_call_cny: Number(r.per_call_cny) || 0,
+          })),
+        });
+        this.msg = '费率已保存并即时生效';
+        await this.loadRates();
+      } catch (e) { this.error = e.message; }
+      finally { this.ratesSaving = false; }
+    },
+    async loadBalance() {
+      this.balanceLoading = true;
+      try { this.balance = await api.get('/api/admin/balance'); }
+      catch (e) { this.error = e.message; }
+      finally { this.balanceLoading = false; }
+    },
+    fmtNum(v) { return v == null ? '-' : Number(v).toFixed(2); },
+    async saveBaseline(provider) {
+      const v = Number(this.baselineForm[provider]);
+      if (!(v >= 0)) { this.error = '请输入有效余额数字'; return; }
+      this.error = ''; this.msg = '';
+      try {
+        await api.put('/api/admin/balance_baseline', {
+          actor: getUser().name, provider, balance_cny: v });
+        this.msg = provider + ' 余额基准已录入';
+        this.baselineForm[provider] = '';
+        await this.loadBalance();
+      } catch (e) { this.error = e.message; }
+    },
+    estText(p) {
+      if (!p) return '-';
+      if (!p.ok) return p.error || '未录入基准';
+      return '¥' + Number(p.estimated_balance_cny).toFixed(2);
+    },
     fmtTime(s) { return s ? new Date(s).toLocaleString('zh-CN', { hour12: false }) : '-'; },
     fmtMoney(v) { return '¥' + Number(v || 0).toFixed(4); },
     costModeLabel(m) { return (typeof MODE !== 'undefined' && MODE[m]) ? MODE[m].label : (m || '-'); },
@@ -61,7 +111,8 @@ const AdminView = {
   },
   mounted() {
     if (!this.isAdmin) return;
-    this.load(); this.loadCosts(); this.timer = setInterval(this.load, 3000);
+    this.load(); this.loadCosts(); this.loadRates(); this.loadBalance();
+    this.timer = setInterval(this.load, 3000);
   },
   beforeUnmount() { clearInterval(this.timer); },
   template: `
@@ -105,6 +156,70 @@ const AdminView = {
         <pre v-if="showLogs" class="log-box">{{ logs.join('\\n') }}</pre>
       </div>
 
+      <div class="card">
+        <h2>费率与余额 <span class="muted" style="font-weight:normal;font-size:13px">费率改库/保存即生效（60s 内全进程刷新）；高峰=北京时间工作日 9:00-12:00、14:00-18:00，空闲按折扣价</span></h2>
+        <div class="grid grid-4" style="margin:12px 0" v-if="balance">
+          <div class="stat">
+            <div class="n" v-if="balance.deepseek && balance.deepseek.ok">¥{{ fmtNum(balance.deepseek.total_balance) }}</div>
+            <div class="n" v-else style="color:#c00;font-size:16px">{{ (balance.deepseek && balance.deepseek.error) || '拉取失败' }}</div>
+            <div class="l">DeepSeek 真实余额</div>
+          </div>
+          <div class="stat" v-if="balance.deepseek && balance.deepseek.ok">
+            <div class="n" style="font-size:16px">赠 ¥{{ fmtNum(balance.deepseek.granted_balance) }} / 充 ¥{{ fmtNum(balance.deepseek.topped_up_balance) }}</div>
+            <div class="l">赠送 / 充值（扣费优先扣赠送）</div>
+          </div>
+          <div class="stat"><div class="n">{{ fmtMoney(balance.ledger.daily_avg_7d_cny) }}</div><div class="l">近7天日均消耗（台账）</div></div>
+          <div class="stat"><div class="n">{{ balance.est_available_days == null ? '-' : balance.est_available_days + ' 天' }}</div><div class="l">预计可用天数</div></div>
+        </div>
+        <p class="muted" style="font-size:13px" v-if="balance">
+          台账口径：累计 {{ fmtMoney(balance.ledger.total_cny) }}，近24h {{ fmtMoney(balance.ledger.last_24h_cny) }}，近7天 {{ fmtMoney(balance.ledger.last_7d_cny) }}
+          <span v-if="balance.deepseek && balance.deepseek.fetched_at">；DeepSeek 余额拉取于 {{ fmtTime(balance.deepseek.fetched_at) }}</span>
+        </p>
+        <div class="grid grid-2" style="margin-bottom:12px" v-if="balance">
+          <div class="stat" v-for="p in [['fusion', 'FusionAI（生图主通道）'], ['kimi', 'Kimi（校稿文本）']]" :key="p[0]">
+            <div class="n">{{ estText(balance[p[0]]) }}</div>
+            <div class="l">{{ p[1] }} 估算余额</div>
+            <div class="muted" style="font-size:12px;margin-top:4px" v-if="balance[p[0]] && balance[p[0]].ok">
+              基准 ¥{{ fmtNum(balance[p[0]].baseline_cny) }}（{{ fmtTime(balance[p[0]].recorded_at) }} 录入）
+              − 此后台账消耗 {{ fmtMoney(balance[p[0]].consumed_since_cny) }}；
+              日均 {{ fmtMoney(balance[p[0]].daily_avg_7d_cny) }}，
+              预计可用 {{ balance[p[0]].est_available_days == null ? '-' : balance[p[0]].est_available_days + ' 天' }}
+            </div>
+            <div class="muted" style="font-size:12px;margin-top:4px" v-else>{{ balance[p[0]] && balance[p[0]].note }}</div>
+            <div style="margin-top:6px;display:flex;gap:6px">
+              <input type="number" step="0.01" min="0" v-model="baselineForm[p[0]]" placeholder="控制台实际余额（元）" style="width:160px">
+              <button class="btn btn-outline btn-sm" @click="saveBaseline(p[0])">录入基准</button>
+            </div>
+          </div>
+        </div>
+        <div style="margin:10px 0;display:flex;gap:8px">
+          <button class="btn btn-outline btn-sm" @click="loadBalance" :disabled="balanceLoading">{{ balanceLoading ? '拉取中…' : '刷新余额' }}</button>
+          <button class="btn btn-outline btn-sm" @click="loadRates">刷新费率</button>
+        </div>
+        <template v-if="rates">
+          <p class="muted" style="font-size:13px" v-if="rates.source !== 'db'">⚠️ 费率表读取失败，当前显示代码兜底值：{{ rates.error }}</p>
+          <table class="table">
+            <thead><tr>
+              <th>模型</th><th>说明</th><th>输入·命中<br>(元/1M·高峰)</th><th>输入·未命中</th>
+              <th>输出</th><th>空闲折扣</th><th>按次(元)</th><th>更新时间</th>
+            </tr></thead>
+            <tbody><tr v-for="r in rates.rates" :key="r.model_key">
+              <td class="muted">{{ r.model_key }}</td>
+              <td><input v-model="r.label" style="width:180px"></td>
+              <td><input type="number" step="0.01" min="0" v-model.number="r.input_hit_peak" style="width:80px"></td>
+              <td><input type="number" step="0.01" min="0" v-model.number="r.input_miss_peak" style="width:80px"></td>
+              <td><input type="number" step="0.01" min="0" v-model.number="r.output_peak" style="width:80px"></td>
+              <td><input type="number" step="0.05" min="0" max="1" v-model.number="r.offpeak_ratio" style="width:70px"></td>
+              <td><input type="number" step="0.05" min="0" v-model.number="r.per_call_cny" style="width:70px"></td>
+              <td class="muted" style="font-size:12px">{{ fmtTime(r.updated_at) }}</td>
+            </tr></tbody>
+          </table>
+          <div style="margin-top:10px">
+            <button class="btn btn-primary btn-sm" @click="saveRates" :disabled="ratesSaving">{{ ratesSaving ? '保存中…' : '保存费率（即时生效）' }}</button>
+          </div>
+        </template>
+      </div>
+
       <div class="card" v-if="costs">
         <h2>成本明细 <span class="muted" style="font-weight:normal;font-size:13px">全部计费事件逐项拆分，供成本决策（仅管理员可见）</span>
           <button class="btn btn-outline btn-sm" style="float:right" @click="loadCosts">刷新</button></h2>
@@ -113,6 +228,12 @@ const AdminView = {
           <div class="stat"><div class="n">{{ fmtMoney(costs.summary.total_24h_cny) }}</div><div class="l">24h 成本</div></div>
           <div class="stat"><div class="n">{{ costs.summary.task_count }}</div><div class="l">计费任务数</div></div>
           <div class="stat"><div class="n">{{ fmtMoney(costs.summary.avg_per_task_cny) }}</div><div class="l">单任务平均成本</div></div>
+        </div>
+        <div class="grid grid-4" style="margin:0 0 12px" v-if="costs.by_category">
+          <div class="stat" v-for="c in costs.by_category" :key="c.category">
+            <div class="n">{{ fmtMoney(c.cost) }}</div>
+            <div class="l">{{ c.label }}（{{ costs.summary.total_cny ? Math.round(c.cost / costs.summary.total_cny * 100) : 0 }}%）</div>
+          </div>
         </div>
         <div class="grid grid-2">
           <div>
@@ -146,7 +267,11 @@ const AdminView = {
             <table class="table" style="margin-bottom:0">
               <tbody>
                 <tr @click="toggleCostTask(t.task_id)" style="cursor:pointer">
-                  <td class="q-cell">{{ t.query }}</td>
+                  <td class="q-cell">{{ t.query }}
+                    <div class="muted" style="font-size:12px" v-if="t.by_category && t.by_category.length">
+                      <span v-for="c in t.by_category" :key="c.category" style="margin-right:8px">{{ c.label }} {{ fmtMoney(c.cost) }}</span>
+                    </div>
+                  </td>
                   <td style="width:90px">{{ costModeLabel(t.mode) }}</td>
                   <td style="width:90px">{{ costStatusLabel(t.status) }}</td>
                   <td style="width:110px">{{ fmtMoney(t.total) }}</td>
@@ -155,9 +280,9 @@ const AdminView = {
               </tbody>
             </table>
             <table v-if="costTask === t.task_id" class="table" style="background:#fafbfc">
-              <thead><tr><th>环节</th><th>模型/引擎</th><th>费用</th><th>完成时间</th></tr></thead>
+              <thead><tr><th>环节</th><th>类别</th><th>模型/引擎</th><th>费用</th><th>完成时间</th></tr></thead>
               <tbody><tr v-for="(it, i) in t.items" :key="i">
-                <td>{{ it.label }}</td><td class="muted">{{ it.model || '-' }}</td>
+                <td>{{ it.label }}</td><td class="muted">{{ it.category_label || '-' }}</td><td class="muted">{{ it.model || '-' }}</td>
                 <td>{{ fmtMoney(it.cost) }}</td><td class="muted">{{ fmtTime(it.finished_at) }}</td>
               </tr></tbody>
             </table>

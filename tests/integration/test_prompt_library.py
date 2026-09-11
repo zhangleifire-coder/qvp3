@@ -37,11 +37,16 @@ async def test_catalog_returns_system_defaults():
         r = await ac.get("/api/prompts/catalog")
     assert r.status_code == 200
     stages = {s["stage"]: s for s in r.json()["stages"]}
-    assert set(stages) == {"draft_gen", "page_split", "image_gen", "page_regen"}
+    assert set(stages) == {"draft_gen", "page_split", "image_gen", "page_regen",
+                           "polish_round1", "polish_round2", "audit_sop"}
     assert len(stages["draft_gen"]["items"]) == 3       # 三个模式
     assert stages["page_split"]["items"][0]["mode"] is None
     assert stages["image_gen"]["items"][0]["system"]    # 系统默认非空
     assert stages["page_regen"]["items"][0]["system"]   # 单页重写默认非空
+    # 2026-09-07 新注册：两轮校稿 + 审核 SOP（单模式，系统默认非空）
+    for s in ("polish_round1", "polish_round2", "audit_sop"):
+        assert stages[s]["items"][0]["mode"] is None
+        assert stages[s]["items"][0]["system"]
 
 
 @pytest.mark.asyncio

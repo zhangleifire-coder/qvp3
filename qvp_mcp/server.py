@@ -132,7 +132,8 @@ async def generate_images(task_id: str, pages: list[str], mode: str = "general",
                                    {"page": i, "total": total_pages})
                 return {"page_index": i, "prompt": prompt, "origin_url": origin_url,
                         "data": data, "ctype": ctype,
-                        "hash": hashlib.md5(data).hexdigest()}
+                        "hash": hashlib.md5(data).hexdigest(),
+                        "channel": r.get("channel", "")}
             except Exception as e:  # noqa: BLE001
                 last_err = e
                 if attempt < 2:
@@ -164,6 +165,7 @@ async def generate_images(task_id: str, pages: list[str], mode: str = "general",
     seen_hashes: set[str] = set()
     images, warnings = [], []
     extra_gen = 0
+    regen_channels: list[str] = []  # 去重重生的实际通道（分通道计费用）
     for i, body in page_list:
         r = results[i]
         if r["hash"] in seen_hashes and not settings.mock_image_gen:
@@ -177,10 +179,12 @@ async def generate_images(task_id: str, pages: list[str], mode: str = "general",
             if new_hash in seen_hashes:
                 warnings.append(f"第{i}页重生后仍重复，请人工复核")
             seen_hashes.add(new_hash)
+            regen_channels.append(r2.get("channel", ""))
             await report_usage(task_id, "image_gen_progress", 0,
                                {"page": i, "total": total_pages, "regen": True})
             r = {"page_index": i, "prompt": r["prompt"], "origin_url": r2["image_url"],
-                 "data": data, "ctype": ctype, "hash": new_hash}
+                 "data": data, "ctype": ctype, "hash": new_hash,
+                 "channel": r2.get("channel", "")}
         seen_hashes.add(r["hash"])
         local_url = _persist_image(task_id, i, "p", r["data"], r["ctype"])
         images.append({
@@ -190,7 +194,19 @@ async def generate_images(task_id: str, pages: list[str], mode: str = "general",
         })
 
     total = total_pages + extra_gen
-    cost = 0 if settings.mock_image_gen else total * settings.image_cost_per_image_cny
+    if settings.mock_image_gen:
+        cost = 0
+    else:
+        # 分通道计费（2026-09-09）：成图按各自通道价（gpt-image-2@<channel> 行），
+        # 去重重生有实际通道按通道、无行回退基准价 → 全局兜底
+        from src.gateway.cost_tracker import per_call_cost
+        base_rate = per_call_cost("gpt-image-2",
+                                  fallback=settings.image_cost_per_image_cny)
+        cost = sum(per_call_cost(f"gpt-image-2@{r.get('channel') or ''}",
+                                 fallback=base_rate)
+                   for r in results.values())
+        cost += sum(per_call_cost(f"gpt-image-2@{c}", fallback=base_rate)
+                    for c in regen_channels)
     await report_usage(task_id, "image_gen", cost, {
         "pages": total_pages, "extra_regens": extra_gen, "mode": mode,
         "parallel": settings.image_gen_parallel})
@@ -201,6 +217,10 @@ async def generate_images(task_id: str, pages: list[str], mode: str = "general",
 def main() -> None:
     mcp.run()  # stdio 传输（Nanobot 以子进程方式拉起）
 
+
+# qvp_mcp v2（2026-09-03 功能项独立化）：注册 11 个能力工具到上面的 mcp 实例
+#（创作类 7 + 校验类 4；导入即注册，实现见 tools_capabilities.py）
+from . import tools_capabilities  # noqa: F401,E402
 
 if __name__ == "__main__":
     main()

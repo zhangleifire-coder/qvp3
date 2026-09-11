@@ -1,0 +1,5 @@
+# staged 路径本地验证 override（验完删除）
+services:
+  app:
+    environment:
+      AGENT_PIPELINE_VARIANT: "staged"

@@ -7,8 +7,16 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://qvp:qvp@localhost:5432/qvp"
     redis_url: str = "redis://localhost:6379/0"
     # 文本模型（spec §1.1 已确定选型）
-    deepseek_api_key: str = "sk-xxx"      # DeepSeek 4 Pro：正文生成 + 生图提示词
-    kimi_api_key: str = "sk-yyy"          # Kimi K3：校稿检查（一轮）
+    deepseek_api_key: str = "sk-xxx"      # DeepSeek：正文生成 + 生图提示词
+    # 主模型（2026-09-10 起 deepseek-v4-flash，官方价约为 pro 的 1/3；改这里全局生效）
+    deepseek_model: str = "deepseek-v4-flash"
+    kimi_api_key: str = "sk-yyy"          # Kimi K3（备1：开放平台按量，api.moonshot.cn）
+    # 备2：Kimi Code 会员兜底线（api.kimi.com/coding，anthropic 协议）；
+    # 默认空 = 第三级自动禁用，填入老 sk-kimi- 前缀 key 即启用
+    kimi_code_api_key: str = ""
+    # 备用链开关（2026-09-10 超管控制台在线切换；system_settings 持久化）
+    text_fallback1_enabled: bool = True   # 备1 Kimi 开放平台 kimi-k3
+    text_fallback2_enabled: bool = True   # 备2 Kimi Code k3
     # 图片模型（z-image-turbo，阿里百炼，中文渲染优）
     dashscope_api_key: str = "sk-zzz"     # DashScope API key
     dashscope_base_url: str = "https://ws-7349xztoo3gwseol.cn-beijing.maas.aliyuncs.com/api/v1"
@@ -22,7 +30,11 @@ class Settings(BaseSettings):
     # 1K/2K/4K，支持 6 图并发；生图可能数分钟，读超时给足）
     fusionai_api_key: str = ""           # sk-fusion-... ；空则该通道不可用
     fusionai_base_url: str = "https://api.fusionaix.cn/v1"
-    image_gen_channels: str = "fusion,linkai,moacode"  # fusion 主通道轮询优先
+    # 通道4（备份，2026-09-08）：openox gpt-image-2（OpenAI 兼容 Images API，
+    # 只确认支持文生图 /images/generations，不参与图生图）
+    openox_api_key: str = ""             # sk-... ；空则该通道不可用
+    openox_base_url: str = "https://api.openox.net/v1"
+    image_gen_channels: str = "fusion,linkai,moacode,openox"  # fusion 主通道轮询优先
     image_model: str = "gpt-image-2"
     image_size: str = "1152x1536"        # 竖版（1152x1536，3:4）
     # 生图画质档（2026-09-01）：gpt-image-2 API 默认 auto≠high，网页端等效 high——
@@ -60,7 +72,9 @@ class Settings(BaseSettings):
     # 任务内生图并行批量（2026-08-24）：6 张按批并发调用生图 API，
     # 1=退回串行（openox 老线路防限流用），2-3=linkai 等容忍并发的线路
     image_gen_parallel: int = 2
-    image_cost_per_image_cny: float = 0.4   # 每张生图成本（元，2026-08-31 调价；原0.2 为 2026-08-19 客户确认价）
+    # 生图全局兜底价（元/张）：权威费率在 model_rates 表 gpt-image-2@<channel>
+    # 行（021，fusion=0.2 账单实证 2026-09-09），本值仅在表内无对应行时兜底
+    image_cost_per_image_cny: float = 0.4
     # OCR（阿里百炼 qwen 系列，模型可按需换 qwen3.5-ocr / qwen3-vl-flash 等）
     ocr_model: str = "qwen-vl-ocr"
     ocr_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
@@ -82,6 +96,11 @@ class Settings(BaseSettings):
     # 双路径总开关：true=创作段(evidence/正文/分页/生图/OCR)整体交给 Nanobot Agent；
     # false=原 13 节点直连路径（Nanobot 故障时秒级回退，软件工程层兜底）
     agent_pipeline_enabled: bool = False
+    # Agent 路径变体（2026-09-09）：monolith（默认，agent_production 大节点，
+    # 发版安全默认）/ staged（创作段拆为 agent_evidence/draft/pages/assets
+    # 4 个独立 Agent 节点，阶段失败只重跑该阶段、成本按节点拆分）。
+    # 仅 .env 显式设 AGENT_PIPELINE_VARIANT=staged 才走新路径
+    agent_pipeline_variant: str = "monolith"
     nanobot_base_url: str = "http://127.0.0.1:8900/v1"  # OpenAI 兼容地址（含 /v1）
     nanobot_api_key: str = ""            # 仅 bind 非 localhost 时需要（Bearer）
     nanobot_model: str = ""              # 留空 = 用 nanobot 默认模型/主备预设
@@ -94,6 +113,10 @@ class Settings(BaseSettings):
     mcp_max_web_searches_per_task: int = 3
     mcp_max_image_searches_per_task: int = 3
     mcp_max_ocr_per_task: int = 8
+    # qvp_mcp v2 能力工具（2026-09-03 功能项独立化）：每个 LLM 类/校验类工具
+    # 在每任务下的调用上限（按工具各自计，防 Agent 循环烧钱）
+    mcp_max_llm_tools_per_task: int = 5    # draft_write/page_split/page_regen 等
+    mcp_max_check_tools_per_task: int = 10  # rule_check/cross_check 等确定性校验
     # ── 审核角色权限口径 ─────────────────────────────────────────────
     # true（试运行默认）：任何账号在审核台可切换 A/B/C 任一角色审核（一人担全部工作）；
     # false（正式生产）：恢复按账号角色（users.role）锁定各自单一队列

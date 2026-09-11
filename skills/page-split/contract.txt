@@ -1,0 +1,12 @@
+# 图上文案字数契约（单一事实来源，2026-09-03 阶段2重构收敛）
+# 消费方：page-split/prompt-analyze 等提示词文本、nodes._balance_issue 硬校验、
+# agent_production._AGENT_INSTRUCTIONS 合规红线段。改动此处=改全部消费方。
+# 每页图上文字字数下限（含小标题与标点）
+PAGE_MIN_CHARS=80
+# 每页图上文字字数上限
+PAGE_MAX_CHARS=130
+# 六页字数均衡：任意两页相差上限
+PAGE_MAX_DIFF=40
+# 每页具体信息点（数字/价格/步骤/参数/时限）个数区间
+INFO_POINTS_MIN=1
+INFO_POINTS_MAX=2

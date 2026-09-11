@@ -15,6 +15,14 @@ _LIMITS = {
     "ocr": settings.mcp_max_ocr_per_task,
 }
 
+# qvp_mcp v2 能力工具（2026-09-03 功能项独立化）：LLM 类与校验类分两档限额，
+# 每个工具各自计数（kind=工具名）。未登记的 kind 上限为 0（一律拒绝）。
+LLM_TOOL_KINDS = ("draft_write", "page_split", "page_regen", "visual_write",
+                  "text_draft", "prompt_analyze", "page_subject")
+CHECK_TOOL_KINDS = ("rule_check", "cross_check", "risk_classify", "visual_check")
+_LIMITS.update({k: settings.mcp_max_llm_tools_per_task for k in LLM_TOOL_KINDS})
+_LIMITS.update({k: settings.mcp_max_check_tools_per_task for k in CHECK_TOOL_KINDS})
+
 
 class TaskQuotas:
     def __init__(self):

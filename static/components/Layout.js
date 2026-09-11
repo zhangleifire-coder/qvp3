@@ -8,6 +8,7 @@ const AppLayout = {
       const items = [
         { path: '/', icon: '📈', label: '工作台' },
         { path: '/import', icon: '📥', label: '任务导入' },
+        { path: '/monitor', icon: '📡', label: '实时监控' },
         { path: '/textcheck', icon: '✍️', label: '文字核查', badge: 'text' },
         { path: '/refs', icon: '🖼️', label: '实景审图', badge: 'refs' },
         { path: '/review', icon: '📋', label: '任务审核', badge: 'review' },

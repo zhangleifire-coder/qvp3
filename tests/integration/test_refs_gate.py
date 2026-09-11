@@ -132,18 +132,26 @@ async def test_style_kb_crud_and_injection():
     await upsert_style(StyleIn(style_name="测试科技蓝", keywords="手机,数码",
                                description="深蓝科技光感", public=True), actor="张三")
     await upsert_style(StyleIn(style_name="测试科技蓝", keywords="手机",
-                               description="更新后的描述", public=True),
+                               description="更新后的描述",
+                               use_when="数码参数类题材优先",
+                               pitfalls="用深蓝主色；文字高对比",
+                               public=True),
                        actor="张三")   # 同名覆盖
     items = (await list_styles())["items"]
     row = next(i for i in items if i["style_name"] == "测试科技蓝")
     assert row["description"] == "更新后的描述"
+    assert row["use_when"] == "数码参数类题材优先"
+    assert row["pitfalls"] == "用深蓝主色；文字高对比"
+    assert row["source"] == "manual"
 
     text = await style_library_text()
     assert text is not None and "测试科技蓝" in text and "更新后的描述" in text
+    # 迁移 023：use_when/pitfalls 随条目带上（Agent 带完整信号自选）
+    assert "适用：数码参数类题材优先" in text and "忌讳：用深蓝主色；文字高对比" in text
 
-    # CSV 导入
+    # CSV 导入（含迁移 023 新列）
     import io
-    csv_file = io.BytesIO("style_name,keywords,description\n测试暖木,家具,装修,暖木色居家\n"
+    csv_file = io.BytesIO('style_name,keywords,description,use_when,pitfalls\n测试暖木,"家具,装修",暖木色居家,家居题材优先,用自然光\n'
                           .encode("utf-8"))
 
     class _F:
@@ -152,7 +160,8 @@ async def test_style_kb_crud_and_injection():
             return csv_file.getvalue()
     r = await import_styles(file=_F(), actor="张三", public=True)
     assert r["imported"] == 1
-    assert "测试暖木" in await style_library_text()
+    text2 = await style_library_text()
+    assert "测试暖木" in text2 and "适用：家居题材优先" in text2
 
     await delete_style(row["id"], actor="张三")
     await delete_style(next(i["id"] for i in (await list_styles())["items"]

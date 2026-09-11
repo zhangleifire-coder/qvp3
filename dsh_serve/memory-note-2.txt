@@ -1,0 +1,2 @@
+Remember this reviewer feedback for future visual directions (do not output anything else, just acknowledge briefly):
+Reviewer feedback (follow it in future visual directions, especially when choosing background tints and headline accent colors): Page 1 rejected: 看看文案对比，本条的要求 | Page 4 rejected: AI 审核未通过：text_char_mismatch，请人工复核

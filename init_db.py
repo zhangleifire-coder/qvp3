@@ -47,6 +47,13 @@ async def main() -> None:
                     name, role, pw,
                 )
         print("[init] 账号就绪（张三/李四/王五，新部署初始密码 1qaz@WSX，已存在账号不重置）")
+
+        # WS3 公共风格库单一事实来源：data/styles.json → 公共条目幂等 upsert。
+        # 纪律：公共库改动一律改 json；管理页只管个人库与临时停用（enabled 不被冲掉）。
+        sys.path.insert(0, str(Path(__file__).resolve().parent / "scripts"))
+        from sync_styles import sync_public_styles
+        n = await sync_public_styles(conn)
+        print(f"[init] 公共风格库已同步 {n} 条（data/styles.json）")
     finally:
         await conn.close()
 

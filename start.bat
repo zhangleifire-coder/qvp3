@@ -1,6 +1,9 @@
 @echo off
 rem 图文生产平台 一键启动（双击运行；stop/status 可拖到本文件后加参数不可用，请用 Git Bash）
 cd /d "%~dp0"
+rem litellm 启动时不再远程拉价表（本机到 raw.githubusercontent.com 会超时 ~13s，
+rem 拖慢每次后端重启；价表本就走本地兜底 + DB 费率表）
+set LITELLM_LOCAL_MODEL_COST_MAP=true
 where bash >nul 2>nul
 if %errorlevel%==0 (
   bash scripts/start-all.sh %1

@@ -46,6 +46,8 @@ def _row(r: StyleKeyword, owner_name: str = None) -> dict:
     return {
         "id": str(r.id), "style_name": r.style_name, "keywords": r.keywords,
         "description": r.description, "enabled": r.enabled,
+        "use_when": r.use_when or "", "pitfalls": r.pitfalls or "",
+        "source": r.source or "manual",
         "owner_id": str(r.owner_id) if r.owner_id else None,
         "owner_name": owner_name,           # NULL owner → None（前端显示「公共」）
         "scope": "public" if r.owner_id is None else "mine",
@@ -75,6 +77,8 @@ class StyleIn(BaseModel):
     style_name: str
     keywords: str = ""
     description: str = ""
+    use_when: str = ""         # 适用题材条件（≤40 字，喂选型打分）
+    pitfalls: str = ""         # 风格专属避坑（≤3 条、单条 ≤30 字、正向优先）
     enabled: bool = True
     public: bool = False      # 写入公共库（仅 admin；默认写个人库）
 
@@ -103,12 +107,17 @@ async def upsert_style(payload: StyleIn, actor: str = ""):
         if row:
             row.keywords = payload.keywords.strip()
             row.description = payload.description.strip()
+            row.use_when = payload.use_when.strip()
+            row.pitfalls = payload.pitfalls.strip()
             row.enabled = payload.enabled
         else:
             session.add(StyleKeyword(
                 owner_id=None if payload.public else uid,
                 style_name=name, keywords=payload.keywords.strip(),
                 description=payload.description.strip(),
+                use_when=payload.use_when.strip(),
+                pitfalls=payload.pitfalls.strip(),
+                source="manual",
                 enabled=payload.enabled))
         await session.commit()
     await log_action(actor, "style_kb",
@@ -157,8 +166,8 @@ async def delete_style(style_id: str, actor: str = ""):
 @router.post("/api/styles/import")
 async def import_styles(file: UploadFile = File(...), actor: str = Form(""),
                         public: bool = Form(False)):
-    """CSV 批量导入训练数据：列 style_name,keywords,description（同 owner 内同名
-    覆盖）。默认导入操作者个人库；admin 传 public=true 导入公共库。"""
+    """CSV 批量导入训练数据：列 style_name,keywords,description[,use_when,pitfalls]
+    （同 owner 内同名覆盖）。默认导入操作者个人库；admin 传 public=true 导入公共库。"""
     content = await file.read()
     reader = csv.DictReader(io.StringIO(content.decode("utf-8-sig")))
     imported, errors = 0, []
@@ -178,12 +187,17 @@ async def import_styles(file: UploadFile = File(...), actor: str = Form(""),
                 if exist:
                     exist.keywords = (row.get("keywords") or "").strip()
                     exist.description = (row.get("description") or "").strip()
+                    exist.use_when = (row.get("use_when") or "").strip()
+                    exist.pitfalls = (row.get("pitfalls") or "").strip()
                 else:
                     session.add(StyleKeyword(
                         owner_id=None if public else uid,
                         style_name=name,
                         keywords=(row.get("keywords") or "").strip(),
-                        description=(row.get("description") or "").strip()))
+                        description=(row.get("description") or "").strip(),
+                        use_when=(row.get("use_when") or "").strip(),
+                        pitfalls=(row.get("pitfalls") or "").strip(),
+                        source="manual"))
                 imported += 1
             except Exception as e:  # noqa: BLE001
                 errors.append({"row": dict(row), "error": str(e)})
@@ -196,7 +210,8 @@ async def import_styles(file: UploadFile = File(...), actor: str = Form(""),
 
 
 async def style_library_text() -> str | None:
-    """Agent 风格判定注入文本：启用的公共条目（名称+描述词）；库空返回 None（用内置）。"""
+    """Agent 风格判定注入文本：启用的公共条目（名称+描述词，迁移 023 起非空的
+    use_when/pitfalls 随条目带上，Agent 带着完整信号自选）；库空返回 None（用内置）。"""
     async with SessionLocal() as session:
         rows = list((await session.execute(
             select(StyleKeyword).where(StyleKeyword.enabled,
@@ -204,16 +219,27 @@ async def style_library_text() -> str | None:
             .order_by(StyleKeyword.created_at))).scalars().all())
     if not rows:
         return None
-    return "\n".join(f"- {r.style_name}：{r.description}" for r in rows)
+    lines = []
+    for r in rows:
+        line = f"- {r.style_name}：{r.description}"
+        extras = []
+        if (r.use_when or "").strip():
+            extras.append(f"适用：{r.use_when.strip()}")
+        if (r.pitfalls or "").strip():
+            extras.append(f"忌讳：{r.pitfalls.strip()}")
+        if extras:
+            line += f"（{'；'.join(extras)}）"
+        lines.append(line)
+    return "\n".join(lines)
 
 
 @router.get("/api/styles/template")
 async def styles_template():
     """CSV 导入模板下载。"""
     from fastapi.responses import Response
-    csv_text = ("style_name,keywords,description\n"
-                "科技蓝调,手机,数码,芯片,参数,深蓝主色调配科技光感、几何线条、数据可视化元素\n"
-                "暖木家居,家具,装修,木纹,客厅,暖木色系、自然光、居家生活场景\n")
+    csv_text = ("style_name,keywords,description,use_when,pitfalls\n"
+                "科技蓝调,\"手机,数码,芯片,参数\",深蓝主色调配科技光感、几何线条、数据可视化元素,数码/参数类题材优先,用深色系配色；文字用高对比色\n"
+                "暖木家居,\"家具,装修,木纹,客厅\",暖木色系、自然光、居家生活场景,家居/装修题材优先,用自然光实景感\n")
     return Response(content=csv_text, media_type="text/csv; charset=utf-8",
                     headers={"Content-Disposition":
                              "attachment; filename=style_keywords_template.csv"})

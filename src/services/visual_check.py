@@ -9,9 +9,8 @@
 """
 import json
 
-import httpx
-
 from src.config import settings
+from src.gateway.http_client import get_client
 
 _CHECK_PROMPT = """你是图片质检员。看这张图文卡片，回答两个问题：
 1. 图中画面主体是什么（15字内）？
@@ -41,14 +40,13 @@ async def check_subject_match(image_url: str, page_text: str) -> dict | None:
             ]}],
             "max_tokens": 200,
         }
-        async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.post(
-                f"{settings.ocr_base_url}/chat/completions",
-                headers={"Authorization": f"Bearer {settings.dashscope_api_key}"},
-                json=payload)
-            if resp.status_code != 200:
-                return None
-            raw = (resp.json()["choices"][0]["message"]["content"] or "").strip()
+        resp = await get_client("visual_check", timeout=60).post(
+            f"{settings.ocr_base_url}/chat/completions",
+            headers={"Authorization": f"Bearer {settings.dashscope_api_key}"},
+            json=payload)
+        if resp.status_code != 200:
+            return None
+        raw = (resp.json()["choices"][0]["message"]["content"] or "").strip()
         if raw.startswith("```"):
             raw = raw.strip("`").lstrip("json").strip()
         obj = json.loads(raw[raw.index("{"):raw.rindex("}") + 1])

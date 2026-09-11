@@ -1,5 +1,4 @@
 import re
-import httpx
 import litellm
 from src.config import settings
 
@@ -20,14 +19,15 @@ async def web_search(query: str, count: int = 6) -> list:
 async def deepseek_verify(query: str) -> tuple:
     """DeepSeek 联网搜索独立验证，返回 (总结文本, 成本元)（用于与豆包结构化来源交叉校验）。"""
     from src.gateway.cost_tracker import estimate_cost
+    from src.gateway.failover import DEEPSEEK_MODEL
     r = await litellm.aresponses(
-        model="deepseek/deepseek-v4-pro", input=query,
+        model=DEEPSEEK_MODEL, input=query,
         tools=[{"type": "web_search"}], api_key=settings.deepseek_api_key)
     text = r.output_text if hasattr(r, "output_text") else str(r)
     cost = 0.0
     usage = getattr(r, "usage", None)
     if usage:
-        cost = estimate_cost("deepseek/deepseek-v4-pro",
+        cost = estimate_cost(DEEPSEEK_MODEL,
                              getattr(usage, "prompt_tokens", 0) or 0,
                              getattr(usage, "completion_tokens", 0) or 0)
     return text, cost
@@ -64,10 +64,11 @@ async def _search_doubao(query: str, count: int) -> list:
     }
     headers = {"Content-Type": "application/json",
                "Authorization": f"Bearer {settings.doubao_search_key}"}
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(url, json=body, headers=headers)
-        resp.raise_for_status()
-        data = resp.json()
+    from src.gateway.http_client import get_client
+    # 共享 client（与 image_search 同 timeout 一组，P1-7）
+    resp = await get_client("search", timeout=30).post(url, json=body, headers=headers)
+    resp.raise_for_status()
+    data = resp.json()
     results = []
     for item in data.get("Result", {}).get("WebResults", []):
         results.append({

@@ -488,6 +488,8 @@ const TasksView = {
       if (!b) return '0B';
       return b >= 1048576 ? (b / 1048576).toFixed(1) + 'MB' : Math.round(b / 1024) + 'KB';
     },
+    renderMd,   // md.js：正文按文档格式渲染（#/## 标题不裸显）
+    thumbOf,    // api.js：网格缩略图（384 宽 webp），灯箱才载原图
     // ── 编辑 / 删除 ──
     canEdit(t) { return ['draft', 'failed', 'rejected', 'cancelled'].includes(t.status); },
     canDelete(t) { return t.status !== 'processing'; },
@@ -709,7 +711,7 @@ const TasksView = {
             <div class="img-grid ref-grid">
               <figure v-for="a in refCandidates()" :key="a.id"
                       :class="{unchecked: !refKeep[a.id]}">
-                <img :src="a.display_url || a.image_url" loading="lazy" alt="" @click="openZoom(a, true)">
+                <img :src="thumbOf(a)" loading="lazy" alt="" @click="openZoom(a, true)">
                 <label class="ref-check">
                   <input type="checkbox" v-model="refKeep[a.id]" style="width:auto">
                   <span v-if="a.ocr_hit" class="tag tag-green" style="font-size:11px">OCR命中: {{ a.ocr_hit.slice(0, 14) }}</span>
@@ -743,7 +745,7 @@ const TasksView = {
 
           <template v-if="detail.draft">
             <h3>正文（{{ detail.draft.model_version }}）</h3>
-            <p class="article-body">{{ detail.draft.body }}</p>
+            <div class="article-body md" v-html="renderMd(detail.draft.body)"></div>
           </template>
 
           <template v-if="detail.page_copies && detail.page_copies.length">
@@ -758,7 +760,7 @@ const TasksView = {
             <h3>交付配图（{{ genAssets.length }}）<span class="muted" style="font-weight:normal;font-size:13px">不满意的图可点「修改」定点重新生产，老图存历史可对比</span></h3>
             <div class="img-grid">
               <figure v-for="a in genAssets" :key="a.page_index">
-                <img :src="a.display_url || a.image_url" loading="lazy" alt="" @click="openZoom(a, false)">
+                <img :src="thumbOf(a)" loading="lazy" alt="" @click="openZoom(a, false)">
                 <figcaption class="muted">
                   P{{ a.page_index }} · AI 生成
                   <button class="btn btn-outline btn-sm" style="margin-left:6px"
@@ -770,7 +772,7 @@ const TasksView = {
                 <div v-if="historyOf(a.page_index).length" class="hist-strip">
                   <span v-for="h in historyOf(a.page_index)" :key="h.id" class="hist-item"
                         @click="openZoom(h, false)">
-                    <img :src="h.display_url || h.image_url" loading="lazy" alt="" title="旧版（点击查看大图对比）">
+                    <img :src="thumbOf(h)" loading="lazy" alt="" title="旧版（点击查看大图对比）">
                     <span class="muted" style="font-size:10px">旧</span>
                   </span>
                 </div>
@@ -782,7 +784,7 @@ const TasksView = {
             <h3>实景参考图（{{ refAssets.length }}）<span class="muted" style="font-weight:normal;font-size:13px">仅作生图参考，不随内容交付</span></h3>
             <div class="img-grid">
               <figure v-for="a in refAssets" :key="a.page_index">
-                <img :src="a.display_url || a.image_url" loading="lazy" alt="" @click="openZoom(a, true)">
+                <img :src="thumbOf(a)" loading="lazy" alt="" @click="openZoom(a, true)">
                 <figcaption class="muted">参考 {{ a.page_index }} · 实景抓取</figcaption>
               </figure>
             </div>

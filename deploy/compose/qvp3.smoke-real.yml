@@ -1,0 +1,7 @@
+# 真实出图冒烟专用 override：临时关闭 MOCK（用完以 `up -d` 不带本文件即还原）
+# 后端与 MCP 子进程都要覆盖（OS 环境变量优先于 /app/.env）
+services:
+  app:
+    environment:
+      MOCK_IMAGE_GEN: "false"
+      MCP_EXTRA_ENV: '{"LITELLM_LOCAL_MODEL_COST_MAP": "true", "PYTHONUTF8": "1", "MOCK_IMAGE_GEN": "false"}'

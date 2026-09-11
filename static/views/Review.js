@@ -36,6 +36,7 @@ const ReviewView = {
     },
   },
   methods: {
+    thumbOf,    // api.js：网格缩略图
     fmtTime, roleName,
     riskTag(r) { return RISK[r] || null; },
     modeLabel(m) { return MODE[m] ? MODE[m].label : (m || '-'); },
@@ -256,7 +257,7 @@ const ReviewView = {
               <h2>交付配图 <span class="muted" style="font-weight:normal;font-size:13px">有问题的图可点「标问题」定点驳回，重试只重做该图</span></h2>
               <div class="img-grid">
                 <figure v-for="a in genAssets" :key="a.page_index">
-                  <img :src="a.display_url || a.image_url" loading="lazy" alt="" @click="openZoom(a, false)">
+                  <img :src="thumbOf(a)" loading="lazy" alt="" @click="openZoom(a, false)">
                   <figcaption class="muted">P{{ a.page_index }}
                     <button class="btn btn-sm" :class="isMarked('image', a.page_index) ? 'btn-danger' : 'btn-outline'"
                             style="margin-left:6px" @click.stop="toggleMark('image', a.page_index); showReject = true">
@@ -270,7 +271,7 @@ const ReviewView = {
               <h2>实景参考图 <span class="muted" style="font-weight:normal;font-size:13px">仅作生图参考，不随内容交付</span></h2>
               <div class="img-grid">
                 <figure v-for="a in refAssets" :key="a.page_index">
-                  <img :src="a.display_url || a.image_url" loading="lazy" alt="" @click="openZoom(a, true)">
+                  <img :src="thumbOf(a)" loading="lazy" alt="" @click="openZoom(a, true)">
                   <figcaption class="muted">参考 {{ a.page_index }} · 实景抓取</figcaption>
                 </figure>
               </div>

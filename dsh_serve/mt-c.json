@@ -1,0 +1,1 @@
+{"messages": [{"role": "user", "content": "只调用一次 mcp__qvp__draft_write 工具（query=\"便携榨汁杯怎么选\"，task_id=mt-c-001），不要调用任何其他工具。然后报告：返回正文的字数、content_style 字段值、正文开头两句话。"}], "session_id": "mt-c-001", "stream": false}

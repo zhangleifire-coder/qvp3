@@ -17,6 +17,7 @@
 Agent 路径（nanobot）已有 LLM 风格判定，不走本模块。
 """
 import random
+import re
 
 from sqlalchemy import select, text
 
@@ -29,14 +30,26 @@ _UNIFY_CLAUSE = (
     "同一装饰语言，只有每页布局可以不同。"
 )
 
+# use_when 命中权重减半（迁移 023）：use_when 是长句，全权重会淹没 keywords 短词命中
+_USE_WHEN_WEIGHT = 0.5
+# use_when 分词：按分隔符切成 ≥2 字候选词做子串命中计分
+_UW_SPLIT_RE = re.compile(r"[,，、/；;\s]+")
 
-def _score(query: str, keywords: str) -> int:
-    """query 对一条风格 keywords 的命中数（小写子串匹配，逗号分隔词表）。"""
+
+def _score(query: str, keywords: str, use_when: str = "") -> float:
+    """query 对一条风格的命中分：keywords 命中数 + use_when 命中数×0.5。
+
+    keywords 小写子串匹配（逗号分隔词表）；use_when（迁移 023）切词后同样
+    子串命中但权重减半，避免长文本淹没 keywords。空 use_when 退化为旧行为。
+    """
     q = (query or "").lower()
     if not q:
         return 0
-    return sum(1 for kw in (keywords or "").split(",")
-               if kw.strip() and kw.strip().lower() in q)
+    score = sum(1 for kw in (keywords or "").split(",")
+                if kw.strip() and kw.strip().lower() in q)
+    uw_hits = sum(1 for tok in _UW_SPLIT_RE.split(use_when or "")
+                  if len(tok.strip()) >= 2 and tok.strip().lower() in q)
+    return score + uw_hits * _USE_WHEN_WEIGHT
 
 
 async def _default_style(owner_id) -> str | None:
@@ -49,9 +62,10 @@ async def _default_style(owner_id) -> str | None:
             {"u": str(owner_id)})).scalar()
 
 
-async def style_desc_for(style_name: str, owner_id=None) -> str | None:
-    """按风格名反查描述词：个人库（含停用条目，保持已选定风格稳定）→ 公共库
-    → 内置库；查不到返回 None。供钉选直通与「存为我的风格」预填使用。"""
+async def style_entry_for(style_name: str, owner_id=None) -> dict | None:
+    """按风格名反查完整条目 {description, use_when, pitfalls}：
+    个人库（含停用条目，保持已选定风格稳定）→ 公共库 → 内置库；
+    查不到返回 None。供钉选直通/「存为我的风格」预填/风格段组装使用。"""
     name = (style_name or "").strip()
     if not name:
         return None
@@ -62,19 +76,39 @@ async def style_desc_for(style_name: str, owner_id=None) -> str | None:
                     StyleKeyword.owner_id == owner_id,
                     StyleKeyword.style_name == name))).scalars().first()
             if row and row.description:
-                return row.description.strip()
+                return {"description": row.description.strip(),
+                        "use_when": (row.use_when or "").strip(),
+                        "pitfalls": (row.pitfalls or "").strip()}
         row = (await session.execute(
             select(StyleKeyword).where(
                 StyleKeyword.owner_id.is_(None),
                 StyleKeyword.style_name == name))).scalars().first()
         if row and row.description:
-            return row.description.strip()
+            return {"description": row.description.strip(),
+                    "use_when": (row.use_when or "").strip(),
+                    "pitfalls": (row.pitfalls or "").strip()}
     from src.services.combo import IMAGE_STYLE_LIBRARY
-    return dict(IMAGE_STYLE_LIBRARY).get(name)
+    desc = dict(IMAGE_STYLE_LIBRARY).get(name)
+    return {"description": desc, "use_when": "", "pitfalls": ""} if desc else None
+
+
+async def style_desc_for(style_name: str, owner_id=None) -> str | None:
+    """按风格名反查描述词（style_entry_for 的便捷封装）。"""
+    entry = await style_entry_for(style_name, owner_id)
+    return entry["description"] if entry else None
+
+
+async def style_extras_for(style_name: str, owner_id=None) -> tuple[str, str]:
+    """按风格名反查 (use_when, pitfalls)；查不到/为空返回 ("", "")（退化为旧行为）。"""
+    entry = await style_entry_for(style_name, owner_id)
+    if not entry:
+        return "", ""
+    return entry["use_when"], entry["pitfalls"]
 
 
 async def _candidates(owner_id=None):
-    """按两级库优先级取启用候选：个人库 → 公共库 → 内置（[(名, 描述, keywords)]）。"""
+    """按两级库优先级取启用候选：个人库 → 公共库 → 内置
+    （[(名, 描述, keywords, use_when)]，内置兜底无 keywords/use_when）。"""
     async with SessionLocal() as session:
         if owner_id is not None:
             rows = list((await session.execute(
@@ -82,17 +116,22 @@ async def _candidates(owner_id=None):
                                            StyleKeyword.owner_id == owner_id)
                 .order_by(StyleKeyword.created_at))).scalars().all())
             if rows:
-                return [(r.style_name, (r.description or "").strip(), r.keywords)
-                        for r in rows], "personal"
+                return [(r.style_name, (r.description or "").strip(), r.keywords,
+                         (r.use_when or "").strip()) for r in rows], "personal"
         rows = list((await session.execute(
             select(StyleKeyword).where(StyleKeyword.enabled,
                                        StyleKeyword.owner_id.is_(None))
             .order_by(StyleKeyword.created_at))).scalars().all())
         if rows:
-            return [(r.style_name, (r.description or "").strip(), r.keywords)
-                    for r in rows], "public"
-    from src.services.combo import IMAGE_STYLE_LIBRARY
-    return [(n, d, "") for n, d in IMAGE_STYLE_LIBRARY], "builtin"
+            return [(r.style_name, (r.description or "").strip(), r.keywords,
+                     (r.use_when or "").strip()) for r in rows], "public"
+    from src.services.combo import load_style_entries, IMAGE_STYLE_LIBRARY
+    entries = load_style_entries()
+    if entries:
+        return [(s["style_name"].strip(), str(s.get("description", "")).strip(),
+                 ",".join(s.get("keywords") or []),
+                 str(s.get("use_when", "")).strip()) for s in entries], "builtin"
+    return [(n, d, "", "") for n, d in IMAGE_STYLE_LIBRARY], "builtin"
 
 
 async def select_image_style(query: str, owner_id=None) -> tuple[str, str]:
@@ -104,7 +143,7 @@ async def select_image_style(query: str, owner_id=None) -> tuple[str, str]:
             return default, desc
         # 钉的风格已被删且查不到描述 → 视为未钉，走正常选择
     entries, _scope = await _candidates(owner_id)
-    scored = [(n, d, _score(query, kw)) for n, d, kw in entries]
+    scored = [(n, d, _score(query, kw, uw)) for n, d, kw, uw in entries]
     weights = [s for _, _, s in scored]
     if sum(weights) <= 0:
         name, desc, _ = random.choice(scored)
@@ -139,9 +178,19 @@ async def ensure_task_style(task_id) -> tuple[str, str]:
     return name, desc
 
 
-def build_style_block(name: str, desc: str) -> str:
-    """组装注入每页生图提示词的风格段落（含 6 页统一条款）。"""
-    return (f"（本篇视觉风格：{name}）{desc}。{_UNIFY_CLAUSE}")
+def build_style_block(name: str, desc: str, use_when: str = "",
+                      pitfalls: str = "") -> str:
+    """组装注入每页生图提示词的风格段落（含 6 页统一条款）。
+
+    迁移 023：use_when/pitfalls 非空时拼「适用/本风格忌讳」段；
+    均空时与升级前逐字节一致（回滚设计：置空即退化）。
+    """
+    block = f"（本篇视觉风格：{name}）{desc}。"
+    if use_when.strip():
+        block += f"适用：{use_when.strip()}。"
+    if pitfalls.strip():
+        block += f"本风格忌讳：{pitfalls.strip()}。"
+    return block + _UNIFY_CLAUSE
 
 
 def page_refs(refs: list | None, page_index: int, per_page: int = 2) -> list:

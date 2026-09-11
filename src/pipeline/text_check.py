@@ -1,13 +1,20 @@
 """text_check：query 中文自查 + 文案/生图描述起草（人工核查前置，2026-08-27）。
 
-状态链：draft → text_check（本模块，自动）→ awaiting_text（人工最终核查）
-→ 放行进入生产（审图 → agent 生图）。
+状态链：draft → ref_seed（搜图①自动，2026-09-07 两段式实景搜图）→
+text_check（本模块，自动；有 text_ref 创作参考图时其信息段反哺起草提示词）
+→ awaiting_text（人工最终核查）→ ref_collect（搜图②：text_ref 叠加新搜，
+人工确认关 awaiting_refs）→ 放行进入生产（审图 → agent 生图）。
 
 LLM 一次调用产出 JSON：
 - query_clean：query 中文自查结果（错别字/语句/敏感/绝对化违规 + 修正建议）
 - pages_draft：6 页图上文案草稿（人工核查基准，贴合 PAGES_PROMPT 规范）
 - image_prompt_draft：生图描述草稿（人工核查基准）
 - issues：发现的问题列表（空=通过，可直接放行）
+
+起草解析成功后、落库前对 body_draft 做两轮 Kimi 校稿（2026-09-07
+「DeepSeek 生文，Kimi 两轮校稿修正」）：round1 事实/真人感/字数/标题，
+round2 终校；仅校正文（pages/image_prompts 不动），单轮失败/返回空/长度
+护栏触发均不阻断，留痕存 text_review.polish。
 """
 import json
 
@@ -15,28 +22,13 @@ from sqlalchemy import select
 
 from src.config import settings
 from src.db.session import SessionLocal
-from src.gateway.failover import call_with_failover
+from src.gateway.failover import call_with_failover, KIMI_MODEL, deepseek_model
 from src.models.tasks import Task
 
-_TEXT_CHECK_PROMPT = """你是图文生产平台的内容核查编辑。针对下面的 Query，产出三样东西（只输出 JSON，不要其它文字）：
+# 起草三式提示词已搬入 skills/text-draft/（2026-09-03 阶段2重构，原样搬运）
+from src.gateway import skill_loader as _skills
 
-1. query_clean：Query 的中文自查——错别字、语句通顺、敏感词、绝对化违规表述（最/第一/唯一/100%/保证…）。
-   若有问题：query_clean = {{"issues": ["问题1", "问题2"], "suggested": "修正后的 query"}}
-   若无问题：query_clean = {{"issues": [], "suggested": "（原样，无需修改）"}}
-2. body_draft：围绕 Query 起草一篇图文正文（400-700字，不计空白；无绝对化表述（禁：最/第一/唯一/100%/保证）、无 emoji、中文标点、不用 markdown 符号）。结构不拘，写作风格严格按文末【人设与真人感】【信息密度】要求执行。
-3. pages_draft：把正文浓缩成 6 页图上文案，每页（含小标题与标点）80-130 字、六页基本均衡（第1页封面：主标题12-20字+钩子+两行辅助说明；第2-5页每页一个核心信息点：小标题+4-6句干货，至少带1-2个具体信息点；第6页总结+适合谁+行动建议；正文里的数字、价格等具体信息优先上图；纯文本无 markdown）。
-4. image_prompt_draft：6 页配图的生图描述草稿（每页一句，竖版3:4图文卡片，与对应页文案呼应；不要出现具体品牌 logo/人脸）。
-
-【Query】
-{query}
-
-【生产模式】{mode_desc}
-
-输出 JSON 结构：
-{{"query_clean": {{"issues": [], "suggested": ""}},
-  "body_draft": "正文全文（400-700字）",
-  "pages_draft": ["P1", "P2", "P3", "P4", "P5", "P6"],
-  "image_prompt_draft": ["P1描述", "P2描述", "P3描述", "P4描述", "P5描述", "P6描述"]}}"""
+_TEXT_CHECK_PROMPT = _skills.fragment("text-draft", "check")
 
 _MODE_DESC = {
     "general": "通用科普/教程，纯文生图",
@@ -45,54 +37,10 @@ _MODE_DESC = {
 }
 
 # 手工内容导入模式：用户自带正文，AI 只改写优化（保留事实与观点），不重写
-_TEXT_REWRITE_PROMPT = """你是图文生产平台的内容编辑。用户已根据 Query 手写了一篇正文。
-你的任务是在【完整保留用户全部事实、观点与信息】的前提下改写优化这篇正文，并产出配套核查内容（只输出 JSON，不要其它文字）：
-
-1. query_clean：Query 的中文自查——错别字、语句通顺、敏感词、绝对化违规表述（最/第一/唯一/100%/保证…）。
-   若有问题：query_clean = {{"issues": ["问题1", "问题2"], "suggested": "修正后的 query"}}
-   若无问题：query_clean = {{"issues": [], "suggested": "（原样，无需修改）"}}
-2. body_draft：改写优化后的正文（400-700字，不计空白）。改写原则：保留用户的全部事实与观点，不新增未经用户提及的事实；
-   优化结构为总分总、每段加小标题；表达流畅客观；无绝对化表述（禁：最/第一/唯一/100%/保证）、无 emoji、中文标点、不用 markdown 符号。
-3. pages_draft：把改写后正文浓缩成 6 页图上文案，每页（含小标题与标点）80-130 字、六页基本均衡（第1页封面：主标题12-20字+钩子+两行辅助说明；第2-5页每页一个核心信息点：小标题+4-6句干货，至少带1-2个具体信息点；第6页总结+适合谁+行动建议；用户正文里的数字、价格等具体信息优先上图；纯文本无 markdown）。
-4. image_prompt_draft：6 页配图的生图描述草稿（每页一句，竖版3:4图文卡片，与对应页文案呼应；不要出现具体品牌 logo/人脸）。
-
-【Query】
-{query}
-
-【生产模式】{mode_desc}
-
-【用户手写正文（改写底稿，事实以此为准）】
-{user_body}
-
-输出 JSON 结构：
-{{"query_clean": {{"issues": [], "suggested": ""}},
-  "body_draft": "改写优化后的正文全文（400-700字）",
-  "pages_draft": ["P1", "P2", "P3", "P4", "P5", "P6"],
-  "image_prompt_draft": ["P1描述", "P2描述", "P3描述", "P4描述", "P5描述", "P6描述"]}}"""
+_TEXT_REWRITE_PROMPT = _skills.fragment("text-draft", "rewrite")
 
 # 驳回重写模式：人工核查员对具体条目标记修改意见 → 只改标记处，其余原样保留
-_TEXT_FEEDBACK_PROMPT = """你是图文生产平台的内容编辑。人工核查员对当前草稿的【以下条目】提出了驳回标记与修改意见。
-请只针对这些被标记的条目进行修改（严格按意见执行）；未标记的条目必须原样保留、一字不改。其余仍需满足通用规范：无绝对化表述（禁：最/第一/唯一/100%/保证）、无 emoji、中文标点、不用 markdown 符号。
-
-【驳回标记与修改意见】
-{marks_block}
-
-【当前草稿】
-Query：{query}
-正文：
-{body}
-
-6 页图上文案：
-{pages}
-
-6 条生图描述：
-{image_prompts}
-{manual_section}
-输出 JSON 结构（完整输出修改后的全部内容，未修改条目原样包含）：
-{{"query_clean": {{"issues": [], "suggested": ""}},
-  "body_draft": "修改后的正文全文（400-700字）",
-  "pages_draft": ["P1", "P2", "P3", "P4", "P5", "P6"],
-  "image_prompt_draft": ["P1描述", "P2描述", "P3描述", "P4描述", "P5描述", "P6描述"]}}"""
+_TEXT_FEEDBACK_PROMPT = _skills.fragment("text-draft", "feedback")
 
 # 条目标记的中文说明（驳回意见注入用）
 _TARGET_LABELS = {
@@ -111,9 +59,30 @@ def _target_label(target: str) -> str:
     return target
 
 # 解析失败重试时附加的强约束（Kimi 偶发未转义英文双引号破坏 JSON）
-_STRICT_JSON_SUFFIX = ("\n\n【重要】上一次输出无法通过 JSON 解析。请确保：只输出一个合法 JSON 对象；"
-                       "字符串内部如需引用请使用中文引号“”，严禁未转义的英文双引号；"
-                       "全部输出必须在 JSON 的最后一个 } 处结束。")
+_STRICT_JSON_SUFFIX = _skills.fragment("text-draft", "strict_json_suffix")
+
+
+def _refs_feedback_section(refs) -> str:
+    """已确认实景参考图反哺起草（2026-09-07 参考图前置，吸收 8002）：
+    ref_collect 关卡人工确认的参考图信息段，追加到三式起草提示词之后——
+    正文/页文案提及的场景、细节须与参考图实际画面贴合（图文一致）。
+    风格仿 agent_production refs_section；无确认图时由调用方跳过（零差异）。
+    """
+    lines = []
+    for i, a in enumerate(refs, 1):
+        meta = []
+        if a.origin_url:
+            meta.append(f"来源: {a.origin_url}")
+        if a.ocr_hit:
+            meta.append(f"OCR命中: {a.ocr_hit}")
+        if a.subject:
+            meta.append(f"主体: {a.subject}")
+        lines.append(f"  {i}. {a.image_url}"
+                     + (f"（{'，'.join(meta)}）" if meta else ""))
+    return ("\n【已确认实景参考图（人工筛选后保留）】\n"
+            + "\n".join(lines)
+            + "\n要求：正文与各页图上文案提及的场景、物体、颜色、结构等细节"
+              "需与以上参考图的实际画面贴合，不得编写参考图里没有的内容。\n")
 
 
 def _parse_json(text: str) -> dict | None:
@@ -127,6 +96,71 @@ def _parse_json(text: str) -> dict | None:
         return None
 
 
+def body_rule_issues(body: str) -> list[str]:
+    """正文自动规则检查：禁词 + 字数（人工核查提示，不阻断）。
+    run_text_check 与 qvp_mcp text_draft 工具共用同一实现。"""
+    body_issues = []
+    for w in ("绝对", "100%", "第一", "唯一", "永久", "终身", "保证", "疗效"):
+        if w in body:
+            body_issues.append(f"正文含禁用词「{w}」")
+    if "最" in body:
+        body_issues.append("正文含「最」（含一切搭配，请改「很/十分/更/相对」）")
+    import re as _re
+    n_chars = len(_re.sub(r"\s", "", body))
+    if body and not (400 <= n_chars <= 700):
+        body_issues.append(f"正文字数 {n_chars}（要求 400-700 字）")
+    return body_issues
+
+
+# 校稿长度护栏：校后正文不足校前 60% 视为截断/跑偏，弃用该轮结果保留前文
+# （与 nodes.run_draft_gen 的 DRAFT_POLISH 护栏同语义）；两轮各自独立判定
+_POLISH_MIN_RATIO = 0.6
+
+
+async def _polish_body(task_id, body: str, owner_id, on_delta=None) -> tuple:
+    """Kimi 两轮校稿（DeepSeek 生文 → Kimi 主校两轮修正，2026-09-07）。
+
+    - 模型：Kimi 主、DeepSeek 备（call_with_failover(KIMI, DEEPSEEK)）。
+    - 提示词：get_effective_prompt("polish_round1/2") 三级覆盖（用户自定义
+      → admin 库覆盖 → skills/polish 代码默认），{body} 引用待校正文。
+      校稿可能带出 Markdown 标记（#/## 小标题）——属预期，前端按文档格式
+      渲染（static/md.js），后端不剥离（2026-09-08 用户决策）。
+    - 容错：单轮调用异常/返回空 → failed，跳过该轮不阻断（保留校前文本）；
+      长度护栏（校后 < 校前 60%）→ skipped，弃用该轮结果。
+    返回 (校后正文, 留痕 dict)。
+    """
+    from src.gateway.prompt_versions import get_effective_prompt
+    from src.pipeline.nodes import _emit_progress
+    trace = {"round1": "skipped", "round2": "skipped", "model": {},
+             "cost_cny": 0.0}
+    text = body
+    for n in (1, 2):
+        _emit_progress(task_id, "text_check",
+                       msg=f"Kimi 校稿·第{n}轮" + ("（终校）" if n == 2 else ""))
+        try:
+            tpl = await get_effective_prompt(f"polish_round{n}", None, owner_id)
+            r = await call_with_failover(tpl.replace("{body}", text),
+                                         KIMI_MODEL, deepseek_model(),
+                                         max_retries=1, on_delta=on_delta)
+        except Exception as e:  # 校稿失败不阻断起草落库
+            trace[f"round{n}"] = "failed"
+            trace.setdefault("errors", []).append(
+                f"round{n}: {type(e).__name__}: {e}"[:200])
+            continue
+        trace["cost_cny"] += r.get("cost_cny") or 0
+        trace["model"][f"round{n}"] = r.get("model_version")
+        polished = (r.get("text") or "").strip()
+        if not polished:
+            trace[f"round{n}"] = "failed"
+            continue
+        if len(polished) < len(text) * _POLISH_MIN_RATIO:
+            trace[f"round{n}"] = "skipped"   # 护栏触发：弃用该轮，保留前文
+            continue
+        text = polished
+        trace[f"round{n}"] = "ok"
+    return text, trace
+
+
 async def run_text_check(task_id) -> dict:
     """draft → text_check → 存 text_review → awaiting_text。返回产出摘要。
 
@@ -137,10 +171,18 @@ async def run_text_check(task_id) -> dict:
         task = (await session.execute(
             select(Task).where(Task.id == task_id))).scalar_one()
         query, mode = task.query, (task.mode or "general")
+        owner_id = task.created_by
         prev = task.text_review or {}
         user_body = str(prev.get("user_body") or "") if prev.get("source") == "manual" else ""
         feedback = [f for f in (prev.get("feedback") or [])
                     if isinstance(f, dict) and f.get("target") and f.get("note")]
+
+    # 搜图①反哺（2026-09-07 两段式实景搜图）：ref_seed 自动搜集的创作参考图
+    # （selection_status='text_ref'）在起草时注入——有图时三分支提示词末尾统一
+    # 追加参考图信息段；无图零差异
+    from src.pipeline.ref_collect import _text_refs
+    confirmed = await _text_refs(task_id)
+    refs_block = _refs_feedback_section(confirmed) if confirmed else ""
 
     if feedback:
         # 驳回重写：只改人工标记的条目（意见注入），其余原样保留
@@ -156,19 +198,20 @@ async def run_text_check(task_id) -> dict:
                             enumerate(prev.get("pages_draft") or [])),
             image_prompts="\n".join(f"P{i+1}：{p}" for i, p in
                                     enumerate(prev.get("image_prompt_draft") or [])),
-            manual_section=manual_section)
+            manual_section=manual_section) + refs_block
     elif user_body:
         prompt = _TEXT_REWRITE_PROMPT.format(query=query,
                                              mode_desc=_MODE_DESC.get(mode, mode),
-                                             user_body=user_body)
+                                             user_body=user_body) + refs_block
     else:
         # 全新起草：追人设化共享段（2026-08-24 补齐第三条路径——用户在
         # 文字核查关卡看到、可编辑的草稿正是本提示词产出的，此前真人感
-        # 不足的根因之一就是这里没吃 _DRAFT_SHARED）
+        # 不足的根因之一就是这里没吃 _DRAFT_SHARED）；
+        # 参考图信息段追加在人设共享段之后
         from src.gateway.prompt_versions import _DRAFT_SHARED
         prompt = (_TEXT_CHECK_PROMPT.format(query=query,
                                             mode_desc=_MODE_DESC.get(mode, mode))
-                  + "\n" + _DRAFT_SHARED)
+                  + "\n" + _DRAFT_SHARED + refs_block)
     from src.pipeline.nodes import _stream_reporter, _emit_progress
     branch = ("驳回定向修改" if feedback else
               "手工底稿改写" if user_body else "全新起草")
@@ -209,17 +252,14 @@ async def run_text_check(task_id) -> dict:
     body = str(data.get("body_draft") or "")[:3000]
     pages = [str(p)[:200] for p in (data.get("pages_draft") or [])][:6]
     imgs = [str(p)[:300] for p in (data.get("image_prompt_draft") or [])][:6]
-    # 正文自动规则检查：禁词 + 字数（人工核查提示，不阻断）
-    body_issues = []
-    for w in ("绝对", "100%", "第一", "唯一", "永久", "终身", "保证", "疗效"):
-        if w in body:
-            body_issues.append(f"正文含禁用词「{w}」")
-    if "最" in body:
-        body_issues.append("正文含「最」（含一切搭配，请改「很/十分/更/相对」）")
-    import re as _re
-    n_chars = len(_re.sub(r"\s", "", body))
-    if body and not (400 <= n_chars <= 700):
-        body_issues.append(f"正文字数 {n_chars}（要求 400-700 字）")
+    # Kimi 两轮校稿（仅校正文，pages/image_prompts 不动；失败/护栏不阻断）
+    polish_trace = {"round1": "skipped", "round2": "skipped", "model": {},
+                    "cost_cny": 0.0}
+    if body.strip():
+        body, polish_trace = await _polish_body(task_id, body, owner_id, _report)
+    # 正文自动规则检查：禁词 + 字数（人工核查提示，不阻断）。
+    # 校稿后再跑——校后文本才是人工看到的终稿，规则提示以终稿为准
+    body_issues = body_rule_issues(body)
     review = {
         "query": query,
         "query_clean": {"issues": [str(i)[:120] for i in qc.get("issues", [])],
@@ -229,6 +269,7 @@ async def run_text_check(task_id) -> dict:
         "pages_draft": pages,
         "image_prompt_draft": imgs,
         "model": result.get("model_version"),
+        "polish": polish_trace,
         "auto_ok": not qc.get("issues") and not body_issues,
     }
     if user_body:   # 手工导入：标记来源并保留原稿（核查页可对照）
@@ -236,6 +277,12 @@ async def run_text_check(task_id) -> dict:
         review["user_body"] = user_body
     if feedback:    # 驳回重写的意见留痕（已处理，feedback 本身不再写入=自然清除）
         review["last_feedback"] = feedback
+    issue_n = len(review["query_clean"]["issues"]) + len(body_issues)
+    _emit_progress(
+        task_id, "text_check",
+        msg=f"起草完成：正文 {len(body)} 字 · 页文案 {len(pages)} 页 · "
+            f"校稿 R1 {polish_trace['round1']}/R2 {polish_trace['round2']} · "
+            + ("自动通过" if review["auto_ok"] else f"{issue_n} 项待人工核查"))
     async with SessionLocal() as session:
         task = (await session.execute(
             select(Task).where(Task.id == task_id))).scalar_one()
@@ -243,7 +290,11 @@ async def run_text_check(task_id) -> dict:
         task.status = "awaiting_text"
         await session.commit()
     return {"candidates_pages": len(pages), "issues": len(review["query_clean"]["issues"]),
-            "auto_ok": review["auto_ok"]}
+            "auto_ok": review["auto_ok"],
+            # 节点成本（execute_node 从返回 dict 提取入 node_events）：
+            # 起草 + 两轮校稿合计
+            "cost_cny": (result.get("cost_cny") or 0) + polish_trace["cost_cny"],
+            "model_version": result.get("model_version")}
 
 
 def effective_texts(task) -> dict:

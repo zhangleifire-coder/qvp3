@@ -37,6 +37,15 @@ def test_score_keyword_hits():
     assert _score("", "手机") == 0
 
 
+def test_score_use_when_half_weight():
+    """迁移 023：use_when 参与打分但权重减半（×0.5），避免长文本淹没 keywords。"""
+    assert _score("手机测评", "手机", "") == 1
+    assert _score("手机测评", "", "手机") == 0.5
+    assert _score("手机数码测评", "手机", "手机,数码") == 2      # 1 + 2×0.5
+    assert _score("历史文化题材", "", "历史/传统题材优先") == 0.5  # 仅「历史」命中
+    assert _score("无关题材", "", "历史/传统题材优先") == 0
+
+
 @pytest.mark.asyncio
 async def test_select_returns_matched_styles_only():
     """命中题材：抽样全部落在命中集合内；禁用条目绝不出现。"""
@@ -138,6 +147,17 @@ def test_build_style_block_has_unify_clause():
     b = build_style_block("测试风", "奶油米底")
     assert "本篇视觉风格：测试风" in b and "奶油米底" in b
     assert "同一主色调" in b and "布局" in b
+
+
+def test_build_style_block_extras():
+    """迁移 023：use_when/pitfalls 非空时拼「适用/忌讳」段；为空逐字节退化为旧版。"""
+    legacy = build_style_block("测试风", "奶油米底")
+    assert legacy == build_style_block("测试风", "奶油米底", "", "")
+    b = build_style_block("测试风", "奶油米底", "历史题材优先", "用宣纸质感")
+    assert b.startswith(legacy[:legacy.index("本篇全部页面")])
+    assert "适用：历史题材优先。" in b
+    assert "本风格忌讳：用宣纸质感。" in b
+    assert "同一主色调" in b   # 统一条款仍在末尾
 
 
 def test_get_image_prompt_style_block_unifies_six_pages():

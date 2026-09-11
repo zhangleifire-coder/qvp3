@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "description": "生图质量基准集（WS4，2026-09-11）：20 题 = 开源相邻分类蒸馏 8 题 + 本地历史真实交付任务 12 题。用途：每次改风格/提示词后由 scripts/bench_image_quality.py 批量投递到本地 8005，终态后导出缩略图拼版供人工快审；通过率不达基线的风格条目 enabled=false 数据层回滚。真实批一轮约 20 题 × 6-8 张 × ¥0.4 ≈ ¥50-65，开发联调一律 MOCK_IMAGE_GEN=true。",
+  "items": [
+    {"id": "oss-01", "source": "oss_distilled", "category": "图表与信息可视化", "ref_case": "#334 RAG 技术详解图", "query": "洗衣机能效等级怎么看，一级和三级差多少电", "mode": "general", "note": "结构化图解/短标签"},
+    {"id": "oss-02", "source": "oss_distilled", "category": "图表与信息可视化", "ref_case": "#361/#443 爆炸拆解图", "query": "空气炸锅的热风循环原理，拆开讲清楚", "mode": "general", "note": "拆解透视"},
+    {"id": "oss-03", "source": "oss_distilled", "category": "图表与信息可视化", "ref_case": "#375/#456 时间轴", "query": "比特币减半时间线：历次减半和产量变化", "mode": "general", "note": "时间轴演进"},
+    {"id": "oss-04", "source": "oss_distilled", "category": "图表与信息可视化", "ref_case": "#64-#102 关系图谱", "query": "感冒、流感、支原体感染的区别与关系梳理", "mode": "general", "note": "知识图谱"},
+    {"id": "oss-05", "source": "oss_distilled", "category": "海报与排版", "ref_case": "#339 自然科普海报", "query": "向日葵为什么总是朝着太阳转", "mode": "general", "note": "自然科普图鉴"},
+    {"id": "oss-06", "source": "oss_distilled", "category": "文档与出版物", "ref_case": "#360 出版物页面", "query": "家庭应急物资清单：一份能照做的备货手册", "mode": "general", "note": "手册排版"},
+    {"id": "oss-07", "source": "oss_distilled", "category": "历史与古风", "ref_case": "#375/#338 历史题材", "query": "唐朝人一天三顿吃什么", "mode": "general", "note": "历史古风"},
+    {"id": "oss-08", "source": "oss_distilled", "category": "图表与信息可视化", "ref_case": "#341 学习表", "query": "英语语法时态一张表：16 种时态速记", "mode": "general", "note": "速记表格"},
+    {"id": "his-01", "source": "local_db_5433", "query": "德龙EC685和柏翠PE3690入门咖啡机对比", "mode": "compare", "gen_style": "测评实测", "gen_image_style": "杂志风产品对比卡", "note": "5433 库 2026-09-08 review"},
+    {"id": "his-02", "source": "local_db_5433", "query": "家用投影仪选购避坑", "mode": "general", "gen_style": "避坑指南", "gen_image_style": "科技产品渲染卡", "note": "5433 库 2026-09-07 review"},
+    {"id": "his-03", "source": "local_db_qvp3", "query": "小户型厨房收纳改造", "mode": "general", "gen_style": "攻略教程", "gen_image_style": "写实静物家居卡", "note": "qvp3 库 2026-09-10 review"},
+    {"id": "his-04", "source": "local_db_qvp3", "query": "新手第一台咖啡机怎么选", "mode": "general", "gen_style": "攻略教程", "gen_image_style": "写实静物家居卡", "note": "qvp3 库 2026-09-09 review"},
+    {"id": "his-05", "source": "local_db_qvp3", "query": "美式咖啡和黑咖啡的区别", "mode": "compare", "note": "qvp3 库 2026-09-09"},
+    {"id": "his-06", "source": "qvp2_history_session", "query": "净水器滤芯多久换一次", "mode": "general", "note": "qvp2 服务器历史 Agent 会话"},
+    {"id": "his-07", "source": "qvp2_history_session", "query": "戴森 V12 和追觅 V16 吸尘器怎么选", "mode": "compare", "note": "qvp2 服务器历史 Agent 会话"},
+    {"id": "his-08", "source": "qvp2_history_session", "query": "华为和苹果手表怎么选", "mode": "compare", "note": "qvp2 服务器历史 Agent 会话"},
+    {"id": "his-09", "source": "qvp2_history_session", "query": "家用空气炸锅怎么选不踩坑", "mode": "general", "note": "qvp2 服务器历史 Agent 会话"},
+    {"id": "his-10", "source": "qvp2_history_session", "query": "狗狗吃红枣有什么功效", "mode": "general", "note": "qvp2 服务器历史 Agent 会话"},
+    {"id": "his-11", "source": "qvp2_history_session", "query": "格力和美的空调哪个质量好怎么选", "mode": "compare", "note": "qvp2 服务器历史 Agent 会话"},
+    {"id": "his-12", "source": "qvp2_history_session", "query": "手机碎屏险有必要买吗", "mode": "general", "note": "qvp2 服务器历史 Agent 会话"}
+  ]
+}

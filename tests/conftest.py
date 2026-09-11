@@ -21,6 +21,10 @@ os.environ["DATABASE_URL"] = TEST_DB_URL
 os.environ["IMAGE_GEN_DELAY_SECONDS"] = "0"  # 测试不 sleep，加速
 os.environ["MOCK_IMAGE_GEN"] = "false"       # 测试默认关 mock，路由逻辑走真函数
 os.environ["AGENT_PIPELINE_ENABLED"] = "false"  # 测试默认直连路径；Agent 路径有专测
+# VL 主体审核默认关：fetch_image_bytes 被 mock 后 _dedupe_and_validate 会走到
+# check_subject_match，不能让它对 dashscope 发起真实 VL 调用（服务本身的解析
+# 逻辑由 test_visual_check 在启用开关后专测）。
+os.environ["VISUAL_SUBJECT_CHECK_ENABLED"] = "false"
 
 _ADMIN_DSN = f"postgresql://qvp:qvp@{_HOST}:{_PORT}/postgres"
 _TEST_DSN = f"postgresql://qvp:qvp@{_HOST}:{_PORT}/{TEST_DB}"
@@ -91,6 +95,32 @@ FAKE_IMAGES = [{"title": "实景图", "image_url": "https://example.com/real.png
 FAKE_OCR = {"raw_text": "成立于1990年 测试文字", "cost_cny": 0.001, "model": "qwen-vl-ocr"}
 
 
+def _fake_fetch_image_bytes():
+    """mock 取图，语义对齐真实函数在断网环境的表现：
+    - data: URI 按真实逻辑解 base64（utf8 SVG 等非 base64 负载同样容错解码）；
+    - /static/... 读真实落盘文件（ctype 按扩展名映射，同真实函数）；
+    - 远程 http(s) URL 一律抛错——测试不发起真实网络请求，且与 example.com
+      恒 404 的历史行为一致（ref_collect 剔除下载失败候选、_dedupe_and_validate
+      跳过去重/校验但不阻塞，均依赖该表现）。"""
+    import base64 as _b64
+
+    async def _fetch(url):
+        if url.startswith("data:"):
+            ctype = url.split(";")[0].split(":")[1]
+            if ctype == "image/jpg":
+                ctype = "image/jpeg"
+            return _b64.b64decode(url.split(",", 1)[1]), ctype
+        if url.startswith("/static/"):
+            from pathlib import Path
+            ctype = {".png": "image/png", ".jpg": "image/jpeg",
+                     ".jpeg": "image/jpeg", ".webp": "image/webp"}.get(
+                         Path(url).suffix.lower(), "image/png")
+            local = Path(__file__).resolve().parent.parent / url.lstrip("/")
+            return local.read_bytes(), ctype
+        raise RuntimeError(f"mock fetch_image_bytes: 测试不访问远程图片 {url[:60]}")
+    return _fetch
+
+
 @pytest.fixture(autouse=True)
 def mock_external_calls():
     # 测试环境不真实调用生图/联网搜索/搜图/OCR API
@@ -98,7 +128,12 @@ def mock_external_calls():
          patch("src.gateway.web_search.web_search", return_value=FAKE_SEARCH), \
          patch("src.gateway.web_search.deepseek_verify", return_value=FAKE_VERIFY), \
          patch("src.gateway.image_search.search_image", return_value=FAKE_IMAGES), \
-         patch("src.gateway.ocr.ocr_image", new=AsyncMock(return_value=FAKE_OCR)),          patch("src.gateway.nanobot_client.call_agent",
+         patch("src.gateway.ocr.ocr_image", new=AsyncMock(return_value=FAKE_OCR)), \
+         patch("src.gateway.ocr.fetch_image_bytes",
+               new=_fake_fetch_image_bytes()), \
+         patch("src.services.visual_writer.write_page_visuals",
+               new=AsyncMock(return_value=None)), \
+         patch("src.gateway.nanobot_client.call_agent",
                new=AsyncMock(return_value={"text": "", "prompt_tokens": 0,
                                            "completion_tokens": 0})):
         yield

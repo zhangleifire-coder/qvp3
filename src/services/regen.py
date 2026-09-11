@@ -87,6 +87,35 @@ def _fill_template(template: str, mapping: dict) -> str:
     return prompt
 
 
+async def rewrite_page_copy(template: str, page_index: int, draft_body: str,
+                            old_copy: str, feedbacks: list,
+                            sibling_lens: dict | None = None) -> dict:
+    """单页文案重写核心（partial_regen 的 _rewrite_pages 与 qvp_mcp page_regen
+    工具共用同一实现）：page_regen 模板填入正文/原文案/审核意见 → failover 重写。
+
+    sibling_lens：其余各页现字数 {页码: 字数}，有值时追加字数均衡参照约束
+    （2026-08-31：重写页 80-130 字且与各页相差不超过 40 字）。
+    返回 {"body", "model_version", "cost_cny"}。
+    """
+    from src.pipeline.nodes import call_with_failover
+    fb = "\n".join(f"{i}. {r}" for i, r in enumerate(feedbacks, 1))
+    prompt = _fill_template(template, {
+        "page_index": page_index, "body": draft_body,
+        "old_copy": old_copy, "feedback": fb})
+    sib = "、".join(f"第{i}页{n}字" for i, n in sorted((sibling_lens or {}).items())
+                   if i != page_index)
+    if sib:
+        from src.gateway.skill_loader import (PAGE_MIN_CHARS, PAGE_MAX_CHARS,
+                                              PAGE_MAX_DIFF)
+        prompt += ("\n\n该篇其余各页现字数（均衡参照，重写后本页"
+                   f"{PAGE_MIN_CHARS}-{PAGE_MAX_CHARS}字且与它们相差"
+                   f"不超过{PAGE_MAX_DIFF}字）：{sib}")
+    result = await call_with_failover(prompt)
+    new_body = result["text"].strip().strip('"`')
+    return {"body": new_body, "model_version": result["model_version"],
+            "cost_cny": result["cost_cny"]}
+
+
 async def partial_regen(task_id) -> dict:
     """定点重生成：只重做被驳回标记的页文案/配图，其余产物原样保留。
 
@@ -105,8 +134,7 @@ async def partial_regen(task_id) -> dict:
     from src.pipeline.nodes import (
         execute_node, _latest_draft_body, _generate_single_asset,
         _dedupe_and_validate, node_cross_check, node_risk_classify,
-        node_review_queue, call_with_failover)
-    from src.gateway.failover import DEEPSEEK_MODEL, KIMI_MODEL
+        node_review_queue)
     from src.gateway.prompt_versions import get_effective_prompt, get_image_prompt
     from src.services.style_select import ensure_task_style, build_style_block
 
@@ -121,7 +149,9 @@ async def partial_regen(task_id) -> dict:
         return {"regenerated": 0}
     # 沿用任务已锁定的视觉风格（首次未选则此时选定并落库）→ 重生成页与原图同风格
     style_name, style_desc = await ensure_task_style(task_id)
-    style_block = build_style_block(style_name, style_desc)
+    from src.services.style_select import style_extras_for
+    s_use_when, s_pitfalls = await style_extras_for(style_name, owner_id)
+    style_block = build_style_block(style_name, style_desc, s_use_when, s_pitfalls)
     # 沿用首图快照（016）：新格式 {"style_en","pages":[英文视觉描述]}→英文骨架；
     # 旧格式 [中文主体] → 中文骨架主体句；均无 → 中文骨架通用锚定
     page_subjects = None
@@ -170,19 +200,12 @@ async def partial_regen(task_id) -> dict:
         total_cost = 0.0
         models = set()
         for p in pages_to_rewrite:
-            fb = "\n".join(f"{i}. {r}" for i, r in enumerate(page_reasons[p], 1))
-            prompt = _fill_template(template, {
-                "page_index": p, "body": draft_body,
-                "old_copy": old_map.get(p, ""), "feedback": fb})
-            sib = "、".join(f"第{i}页{n}字" for i, n in sorted(len_map.items())
-                           if i != p)
-            if sib:
-                prompt += ("\n\n该篇其余各页现字数（均衡参照，重写后本页"
-                           f"80-130字且与它们相差不超过40字）：{sib}")
-            result = await call_with_failover(prompt, DEEPSEEK_MODEL, KIMI_MODEL)
-            total_cost += result["cost_cny"]
-            models.add(result["model_version"])
-            new_body = result["text"].strip().strip('"`')
+            r = await rewrite_page_copy(template, p, draft_body,
+                                        old_map.get(p, ""), page_reasons[p],
+                                        sibling_lens=len_map)
+            total_cost += r["cost_cny"]
+            models.add(r["model_version"])
+            new_body = r["body"]
             async with SessionLocal() as session:
                 row = (await session.execute(
                     select(PageCopy).where(PageCopy.task_id == task_id,
@@ -222,7 +245,13 @@ async def partial_regen(task_id) -> dict:
             body_map = {r.page_index: r.body or "" for r in page_rows}
         extra_gen = 0
         ocr_cost = 0.0
+        gen_costs: list[float] = []
         done_pages = []
+        # 分通道计费（2026-09-09）：成图按通道价，重生按基准价
+        from src.gateway.cost_tracker import per_call_cost, refresh_rates
+        await refresh_rates()
+        base_rate = per_call_cost("gpt-image-2",
+                                  fallback=settings.image_cost_per_image_cny)
         for p in images_to_regen:
             prompt = get_image_prompt(
                 mode, body_map.get(p, ""), p, template=image_template,
@@ -246,6 +275,9 @@ async def partial_regen(task_id) -> dict:
                     r, prompt, reference_urls, task_id, p, seen_hashes,
                     page_body=body_map.get(p, ""))
                 extra_gen += extra
+                gen_costs.append(
+                    per_call_cost(f"gpt-image-2@{r.get('channel') or ''}",
+                                  fallback=base_rate))
             async with SessionLocal() as session:
                 olds = (await session.execute(
                     select(Asset).where(Asset.task_id == task_id,
@@ -256,7 +288,7 @@ async def partial_regen(task_id) -> dict:
                         delete(OcrResult).where(OcrResult.asset_id == o.id))
                     await session.delete(o)
                 await session.flush()
-                asset = Asset(**r)
+                asset = Asset(**{k: v for k, v in r.items() if k != "channel"})
                 session.add(asset)
                 await session.flush()
                 # 新图 OCR（沿用 node_ocr_read 的容错口径：失败记 confidence 0）
@@ -281,8 +313,7 @@ async def partial_regen(task_id) -> dict:
             done_pages.append(p)
             await asyncio.sleep(settings.image_gen_delay_seconds)
         cost = ocr_cost if settings.mock_image_gen else (
-            (len(done_pages) + extra_gen) * settings.image_cost_per_image_cny
-            + ocr_cost)
+            sum(gen_costs) + extra_gen * base_rate + ocr_cost)
         return {"pages": done_pages, "extra_gen": extra_gen, "cost_cny": cost,
                 "prompt_version": f"asset_regen_r{rounds}"}
 

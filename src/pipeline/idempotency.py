@@ -22,7 +22,8 @@ async def check_or_record_node_event(session, task_id, node_name: str,
         ev = row[0]
         if ev.error_class is None and ev.finished_at is not None:
             return None  # 已成功完成，幂等跳过
-        # 失败或中断（崩溃）的节点不算完成：删掉旧事件记录，重新执行
+        # 失败或中断（执行协程被取消/进程崩溃留下 finished_at 为空的残留）
+        # 的节点不算完成：删掉旧事件记录，重新执行
         await session.delete(ev)
         await session.flush()
     event = NodeEvent(

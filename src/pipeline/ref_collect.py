@@ -1,16 +1,27 @@
-"""ref_collect：参考图搜集 + OCR 初筛 + 人工确认关卡（compare/single，2026-08-27）。
+"""ref_collect：搜图②——参考图搜集（叠加搜图①结果）+ OCR 初筛 + 人工确认关卡
+（compare/single，2026-08-27；2026-09-07 两段式实景搜图改造）。
 
-需求：证据来源图片至少搜集 10 张以上 → OCR 比对关键词自动初筛 → 人工确认
-筛选结果 → 才进入生图。general 模式（纯文生图）不设关卡，不损吞吐。
+两段式设计（吸收 8002 分叉栈）：
+- 搜图① = ref_seed 节点（自动、无人工关，src/pipeline/ref_seed.py）：
+  素材库复用 + 按主体搜图 + OCR 初筛，落 selection_status='text_ref'，
+  反哺 text_check 起草；
+- 搜图② = 本节点：候选池 = 搜图① text_ref 图 + 按生图需求新搜（沿用原逻辑），
+  挂起 awaiting_refs 等人工确认；确认时 keep→confirmed、其余→rejected
+  （text_ref 全部并入候选池，不留状态残留）。
+
+需求：证据来源图片至少搜集 12 张 → OCR 比对关键词自动初筛 → 人工确认
+筛选结果 → 才进入生图。general 模式（纯文生图）默认不设关卡
+（ref_for_general_enabled 开启才走），不损吞吐。
 
 实现：确定性后端节点（不经 Agent）——
-1. compare 从 query 拆主体 A/B（single 用整条 query），各自搜实景图 6 张合并；
-   不足 10 张补搜一次整条 query；
-2. 逐张下载本地化（失败/尺寸过小剔除），OCR 识别图上文字与主体关键词比对，
+1. compare 从 query 拆主体 A/B（single 用整条 query），各自搜实景图合并；
+   不足 12 张补搜一次整条 query；
+2. 逐张下载本地化（失败剔除），OCR 识别图上文字与主体关键词比对，
    命中记 ocr_hit（人工确认时的排序依据）；
 3. 候选全部落库（selection_status=candidate），返回 ref_gate 标记；
    编排器据标记把任务挂起为 awaiting_refs，等人工确认后继续。
 """
+import asyncio
 import hashlib
 import re
 import traceback
@@ -25,6 +36,7 @@ from src.models.tasks import Task
 _TARGET_MIN = 12          # 至少搜集 12 张（2026-08-30 用户口径，原 10）
 _PER_SUBJECT = 12         # 每主体搜 12 张
 _MAX_CANDIDATES = 24      # 候选上限（防页面过长；下载/OCR 剔除后仍保 12+）
+_COLLECT_CONCURRENCY = 4  # 下载+OCR 并发上限（性能优化 P0-4；OCR 上游限流保护）
 
 # compare 拆主体的连接词（两边各为一个产品/主体）
 _SPLIT_RE = re.compile(r"[和与跟]|还是|对比|vs|VS|跟比|和比")
@@ -98,24 +110,21 @@ async def _library_matches(query: str, subjects: list[str]) -> list[dict]:
     return out
 
 
-async def node_ref_collect(input_data: dict) -> dict:
-    task_id = input_data["task_id"]
+async def _collect_candidates(task_id, query: str, mode: str, node: str,
+                              exclude_hashes=frozenset(),
+                              limit: int = _MAX_CANDIDATES) -> tuple[list[dict], int]:
+    """素材库复用 + 按主体搜图 + 下载本地化 + OCR 初筛 → 候选 dict 列表（未落库）。
+
+    ref_seed（搜图①）与 node_ref_collect（搜图②新搜部分）共用同一实现。
+    - exclude_hashes：已有池（如搜图① text_ref）内容 hash，命中跳过防重复；
+    - limit：返回候选上限；node：进度事件归属节点名。
+    """
     from src.stream.bus import bus
-
-    async with SessionLocal() as session:
-        task = (await session.execute(
-            select(Task).where(Task.id == task_id))).scalar_one()
-        mode, query = (task.mode or "general"), task.query
-
-    # 关卡仅对参考图模式生效；已有确认参考图（确认后重跑）直接跳过。
-    # ref_for_general_enabled（默认关）开启后 general 也走实景搜集（产品方向开关）
-    if mode not in ("compare", "single") and not settings.ref_for_general_enabled:
-        return {"skipped": True, "reason": "general 无需参考图确认"}
-    confirmed = await _confirmed_refs(task_id)
-    if confirmed:
-        return {"skipped": True, "reason": f"已有 {len(confirmed)} 张确认参考图"}
+    from src.pipeline.nodes import _emit_progress
 
     subjects = split_subjects(query, mode)
+    _emit_progress(task_id, node,
+                   msg=f"搜集参考图：{' / '.join(subjects)}（目标 ≥{_TARGET_MIN} 张）")
     await bus.publish("agent_tool", {"tool": "image_search", "count": 0},
                       task_id=str(task_id))
 
@@ -124,8 +133,11 @@ async def node_ref_collect(input_data: dict) -> dict:
     lib_hits: list[dict] = []
     if settings.asset_library_reuse:
         try:
-            lib_hits = await _library_matches(query, subjects)
+            lib_hits = [h for h in await _library_matches(query, subjects)
+                        if h["hash"] not in exclude_hashes]
             if lib_hits:
+                _emit_progress(task_id, node,
+                               msg=f"素材库复用命中 {len(lib_hits)} 张（免搜索免下载）")
                 await bus.publish("agent_tool",
                                   {"tool": "asset_library", "count": len(lib_hits),
                                    "searched_images": len(lib_hits)},
@@ -133,7 +145,7 @@ async def node_ref_collect(input_data: dict) -> dict:
         except Exception:  # noqa: BLE001
             traceback.print_exc()   # 库匹配失败不阻塞，走正常搜索
 
-    # 1) 搜集：各主体 6 张；不足 10 张用整条 query 补搜（素材库已覆盖则按缺口缩减）
+    # 1) 搜集：各主体按缺口搜；不足用整条 query 补搜（素材库覆盖则按缺口缩减）
     from src.gateway.image_search import search_image
     collected: list[dict] = []
     seen_urls: set[str] = set()
@@ -156,16 +168,20 @@ async def node_ref_collect(input_data: dict) -> dict:
         if deficit > 0:
             per = max(2, _PER_SUBJECT * deficit // max(1, _TARGET_MIN))
             for s in subjects:
+                _emit_progress(task_id, node,
+                               msg=f"搜图中：「{s}」（缺口 {deficit} 张）")
                 await _search(s, per)
             if len(collected) < deficit:
+                _emit_progress(task_id, node,
+                               msg=f"按整条 query 补搜：「{query[:30]}」")
                 await _search(query, _PER_SUBJECT)
     except Exception:  # noqa: BLE001
-        # 搜索通道整体故障：素材库命中仍可用；全空则放行降级（纯文生图）
+        # 搜索通道整体故障：素材库命中仍可用；全空则返回空，由调用方降级
         traceback.print_exc()
-        if not lib_hits:
-            return {"ref_gate": False, "candidates": 0,
-                    "reason": "搜图通道故障，跳过确认直接生产"}
-    collected = collected[:max(0, _MAX_CANDIDATES - len(lib_hits))]
+    collected = collected[:max(0, limit - len(lib_hits))]
+    _emit_progress(task_id, node,
+                   msg=f"搜图完成：新搜 {len(collected)} 张 + 素材库 {len(lib_hits)} 张，"
+                       "开始下载本地化 + OCR 初筛")
 
     # 2) 素材库命中直接成候选（已本地化，免下载免 OCR）+ 新搜项下载本地化 + OCR 初筛
     from src.gateway.ocr import fetch_image_bytes, ocr_image
@@ -181,45 +197,123 @@ async def node_ref_collect(input_data: dict) -> dict:
             "title": c["title"][:120], "engine": c["engine"],
             "hash": c["hash"], "ocr_hit": c["ocr_hit"]})
     page_seq = len(candidates)
-    for c in collected:
+    sem = asyncio.Semaphore(_COLLECT_CONCURRENCY)
+
+    async def _download(c: dict):
+        async with sem:
+            try:
+                data, ctype = await fetch_image_bytes(c["image_url"])
+                return c, data, ctype
+            except Exception as e:  # noqa: BLE001
+                print(f"[{node}] 候选 {c['image_url'][:60]} 处理失败: "
+                      f"{type(e).__name__}: {e}", flush=True)
+                _emit_progress(task_id, node,
+                               msg=f"候选下载/处理失败已剔除：{c['image_url'][:50]}")
+                return None   # 下载失败直接剔除
+
+    # 并发下载（gather 结果保输入序）：剔除/hash 去重/page_seq 编号仍按输入
+    # 顺序串行决定，语义与改造前逐条循环完全一致
+    downloads = await asyncio.gather(*[_download(c) for c in collected])
+    pending: list[dict] = []
+    for item in downloads:
+        if item is None:
+            continue
+        c, data, ctype = item
         try:
-            data, ctype = await fetch_image_bytes(c["image_url"])
             digest = hashlib.md5(data).hexdigest()
-            if digest in lib_hashes:
-                continue   # 与素材库命中同图（不同来源 URL）：保留库版本即可
+            if digest in lib_hashes or digest in exclude_hashes:
+                continue   # 与素材库/已有池同图（不同来源 URL）：保留已有版本即可
             page_seq += 1
             local_url = _persist_image(task_id, page_seq, "ref", data, ctype)
-            ocr_hit = ""
-            if not settings.mock_image_gen:
-                try:
-                    r = await ocr_image(local_url)
-                    text = r.get("raw_text", "") or ""
-                    hit_words = [w for s in subjects for w in re.split(
-                        r"[，,。；;\s]+", s) if len(w) >= 2 and w in text]
-                    ocr_hit = ",".join(dict.fromkeys(hit_words))[:120]
-                except Exception:  # noqa: BLE001
-                    pass
-            if ocr_hit:
-                hits += 1
-            candidates.append({
-                "page_index": page_seq, "local_url": local_url, "origin": c["image_url"],
-                "title": c["title"][:120], "engine": c["engine"],
-                "hash": digest, "ocr_hit": ocr_hit})
-            await bus.publish("agent_tool",
-                              {"tool": "image_search", "count": page_seq,
-                               "searched_images": page_seq}, task_id=str(task_id))
         except Exception as e:  # noqa: BLE001
-            print(f"[ref_collect] 候选 {c['image_url'][:60]} 处理失败: "
+            print(f"[{node}] 候选 {c['image_url'][:60]} 处理失败: "
                   f"{type(e).__name__}: {e}", flush=True)
-            continue   # 下载失败直接剔除
+            _emit_progress(task_id, node,
+                           msg=f"候选下载/处理失败已剔除：{c['image_url'][:50]}")
+            continue   # 落盘失败直接剔除
+        pending.append({"page_index": page_seq, "local_url": local_url,
+                        "origin": c["image_url"], "title": c["title"][:120],
+                        "engine": c["engine"], "hash": digest})
 
-    # 3) 候选落库（OCR 命中在前，人工按建议勾选）
+    async def _ocr(p: dict) -> str:
+        if settings.mock_image_gen:
+            return ""
+        async with sem:
+            try:
+                r = await ocr_image(p["local_url"])
+                text = r.get("raw_text", "") or ""
+                hit_words = [w for s in subjects for w in re.split(
+                    r"[，,。；;\s]+", s) if len(w) >= 2 and w in text]
+                return ",".join(dict.fromkeys(hit_words))[:120]
+            except Exception:  # noqa: BLE001
+                return ""
+
+    # 并发 OCR（复用同一信号量限流）；命中计数/事件/落池仍按候选顺序进行
+    ocr_hits = await asyncio.gather(*[_ocr(p) for p in pending])
+    for p, ocr_hit in zip(pending, ocr_hits):
+        p["ocr_hit"] = ocr_hit
+        if ocr_hit:
+            hits += 1
+            _emit_progress(task_id, node,
+                           msg=f"候选 {p['page_index']} OCR 命中：{ocr_hit[:40]}")
+        candidates.append(p)
+        await bus.publish("agent_tool",
+                          {"tool": "image_search", "count": p["page_index"],
+                           "searched_images": p["page_index"]}, task_id=str(task_id))
+    return candidates, hits
+
+
+async def node_ref_collect(input_data: dict) -> dict:
+    task_id = input_data["task_id"]
+    from src.stream.bus import bus
+    from src.pipeline.nodes import _emit_progress
+
+    async with SessionLocal() as session:
+        task = (await session.execute(
+            select(Task).where(Task.id == task_id))).scalar_one()
+        mode, query = (task.mode or "general"), task.query
+
+    # 关卡仅对参考图模式生效；已有确认参考图（确认后重跑）直接跳过。
+    # ref_for_general_enabled（默认关）开启后 general 也走实景搜集（产品方向开关）
+    if mode not in ("compare", "single") and not settings.ref_for_general_enabled:
+        _emit_progress(task_id, "ref_collect", msg="general 无需参考图确认，跳过")
+        return {"skipped": True, "reason": "general 无需参考图确认"}
+    confirmed = await _confirmed_refs(task_id)
+    if confirmed:
+        _emit_progress(task_id, "ref_collect",
+                       msg=f"已有 {len(confirmed)} 张确认参考图，跳过")
+        return {"skipped": True, "reason": f"已有 {len(confirmed)} 张确认参考图"}
+
+    # 搜图②候选池 = 搜图① text_ref 图（已本地化免下载）+ 按生图需求新搜
+    seed_rows = await _text_refs(task_id)
+    seed_hashes = {a.hash for a in seed_rows if a.hash}
+    candidates: list[dict] = []
+    hits = 0
+    for a in seed_rows:
+        if a.ocr_hit:
+            hits += 1
+        candidates.append({
+            "page_index": a.page_index, "local_url": a.image_url,
+            "origin": a.origin_url, "title": (a.subject or "")[:120],
+            "engine": a.model_version or "text_ref",
+            "hash": a.hash, "ocr_hit": a.ocr_hit or ""})
+    if seed_rows:
+        _emit_progress(task_id, "ref_collect",
+                       msg=f"叠加搜图①创作参考图 {len(seed_rows)} 张进入候选池")
+    new_candidates, new_hits = await _collect_candidates(
+        task_id, query, mode, "ref_collect",
+        exclude_hashes=seed_hashes,
+        limit=max(0, _MAX_CANDIDATES - len(candidates)))
+    candidates += new_candidates
+    hits += new_hits
+
+    # 3) 候选落库（OCR 命中在前，人工按建议勾选）；
+    #    清掉上一轮候选与搜图① text_ref——全部并入本轮候选池，不留 text_ref 残留
     candidates.sort(key=lambda c: (not c["ocr_hit"],))
     async with SessionLocal() as session:
-        # 清掉上一轮候选（重跑刷新），保留 confirmed/rejected 的人工结论
         await session.execute(delete(Asset).where(
             Asset.task_id == task_id, Asset.source_type == "official",
-            Asset.selection_status == "candidate"))
+            Asset.selection_status.in_(["candidate", "text_ref"])))
         for rank, c in enumerate(candidates, start=1):
             session.add(Asset(
                 task_id=task_id, page_index=rank, subject=query,
@@ -236,8 +330,13 @@ async def node_ref_collect(input_data: dict) -> dict:
                        "ocr_hits": hits}, task_id=str(task_id))
     if not candidates:
         # 一张都没搜到：不挂起，放行给 Agent 自行容错（纯文生图降级）
+        _emit_progress(task_id, "ref_collect",
+                       msg="未搜到实景图，跳过确认直接生产（纯文生图降级）")
         return {"ref_gate": False, "candidates": 0,
                 "reason": "未搜到实景图，跳过确认直接生产"}
+    _emit_progress(task_id, "ref_collect",
+                   msg=f"候选 {len(candidates)} 张已落库（OCR 命中 {hits} 张），"
+                       "挂起等待人工确认参考图")
     return {"ref_gate": True, "candidates": len(candidates), "ocr_hits": hits}
 
 
@@ -247,4 +346,14 @@ async def _confirmed_refs(task_id) -> list[Asset]:
             select(Asset).where(Asset.task_id == task_id,
                                 Asset.source_type == "official",
                                 Asset.selection_status == "confirmed")
+            .order_by(Asset.page_index))).scalars().all())
+
+
+async def _text_refs(task_id) -> list[Asset]:
+    """搜图①（ref_seed）产出的创作参考图（selection_status='text_ref'）。"""
+    async with SessionLocal() as session:
+        return list((await session.execute(
+            select(Asset).where(Asset.task_id == task_id,
+                                Asset.source_type == "official",
+                                Asset.selection_status == "text_ref")
             .order_by(Asset.page_index))).scalars().all())

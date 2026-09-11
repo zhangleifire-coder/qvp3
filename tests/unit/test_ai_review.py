@@ -20,13 +20,10 @@ class TestVlReview:
             def json(self):
                 return payload
         class _C:
-            def __init__(self, **kw): pass
-            async def __aenter__(self): return self
-            async def __aexit__(self, *a): return False
             async def post(self, *a, **kw): return _R()
         with patch("src.pipeline.ai_review.fetch_image_bytes",
                    new=AsyncMock(return_value=fake_img)), \
-             patch("src.pipeline.ai_review.httpx.AsyncClient", _C):
+             patch("src.pipeline.ai_review.get_client", return_value=_C()):
             r = await _vl_review("/x.png", "测试文案", 1, True)
         assert r["pass"] is False and "文字过多" in r["issues"]
         assert r["suggest"] == "精简图上文字"

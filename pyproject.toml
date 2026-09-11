@@ -29,7 +29,8 @@ build-backend = "hatchling.build"
 packages = ["src"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
+testpaths = ["tests", "dsh_serve/tests"]   # dsh_serve 组件单测纳入主回归（2026-09-07）
 asyncio_mode = "auto"
 asyncio_default_test_loop_scope = "session"
 asyncio_default_fixture_loop_scope = "session"

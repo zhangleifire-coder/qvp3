@@ -7,8 +7,10 @@
   一条生产任务：query=抽中的问题（列表可读），source_query=原始情境，
   风格/垂类随任务落库并在 agent_production 提示词中注入。
 """
+import json
 import random
 import re
+from pathlib import Path
 
 # 问题池分隔符：中英文逗号/分号/顿号/换行
 _SPLIT_RE = re.compile(r"[，,；;、\n]+")
@@ -68,21 +70,38 @@ def style_hint(style: str | None) -> str:
 
 # 图片整体视觉风格库：Agent 按内容气质自适应选择（多适配随机选），
 # 描述词会替换生图模板中的固定风格句。
-# 2026-08-24 依 836 张人工满意样例（8.21/8.13 文件夹 ChatGPT Image）提炼调整：
-# 新增首选「自然写实暖调」（样例主体风格），「实拍产品渲染」承接产品/对比题材，
-# 其余条目统一往低饱和、自然光、写实感方向收敛
-IMAGE_STYLE_LIBRARY = [
-    ("自然写实暖调", "奶油米/浅米黄低饱和暖底、写实摄影主体、柔和自然光、浅景深、深棕字压米底、衬线宋体或黑体大标题、暖棕细分隔线、圆角卡片边框、要点前小圆图标、关键信息暖橘强调、留白约五成，像人工精修的杂志级卡片"),
-    ("实拍产品渲染", "高精度产品渲染或棚拍质感、柔和影棚光、地面轻微倒影、奶油米浅色背景、深字压浅底配暖橘色强调、参数用细线刻度条标注、尺寸类信息细线标注，真实可信"),
-    ("治愈暖彩", "柔和暖色调、圆润造型、充足留白、治愈呼吸感、高清"),
-    ("真实摄影", "真实实拍质感、自然光影、浅景深、生活化场景、高清细节"),
-    ("扁平极简", "扁平矢量插画、大色块几何构图、低饱和配色、极简大量留白"),
-    ("3D渲染", "C4D 三维质感、柔和材质光泽、轻拟物造型、低饱和渐变背景"),
-    ("手绘线稿", "手绘钢笔线稿加水彩淡彩、纸张肌理、自然笔触感"),
-    ("杂志编辑", "时尚杂志编辑排版、大标题、高级灰底色、克制配色、细金线点缀"),
-    ("信息图表", "图标化信息呈现、图表化数据可视化、清晰导视结构"),
-    ("复古印刷", "米色纸底、复古双色调印刷、噪点肌理、旧海报质感"),
+# WS3 单一事实来源（2026-09-11）：公共风格权威源是 data/styles.json
+# （scripts/sync_styles.py 同步进 DB 公共库），此处启动时读同一文件做
+# 代码兜底；读不到/为空才用内联最小兜底 1 条。公共库改动一律改 json，
+# 不要在这里增删条目。
+_STYLES_JSON = Path(__file__).resolve().parents[2] / "data" / "styles.json"
+
+# 内联最小兜底（仅 styles.json 缺失/损坏时生效，保证服务可启动）
+_FALLBACK_STYLE_LIBRARY = [
+    ("自然写实暖调", "奶油米/浅米黄低饱和暖底、写实摄影主体、柔和自然光、浅景深、深棕字压米底、衬线宋体或黑体大标题、留白约五成，像人工精修的杂志级卡片"),
 ]
+
+
+def load_style_entries(path: Path | None = None) -> list[dict]:
+    """读 data/styles.json 返回启用条目（含 keywords/use_when/pitfalls 全字段）；
+    读不到或为空返回 []（调用方回退 _FALLBACK_STYLE_LIBRARY）。"""
+    try:
+        data = json.loads((path or _STYLES_JSON).read_text(encoding="utf-8"))
+        return [s for s in data.get("styles", [])
+                if s.get("enabled", True) and str(s.get("style_name", "")).strip()]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _load_image_style_library() -> list[tuple[str, str]]:
+    entries = load_style_entries()
+    if entries:
+        return [(s["style_name"].strip(), str(s.get("description", "")).strip())
+                for s in entries]
+    return list(_FALLBACK_STYLE_LIBRARY)
+
+
+IMAGE_STYLE_LIBRARY = _load_image_style_library()
 
 CONTENT_STYLE_LIBRARY = ["解读·经验分享", "测评实测", "攻略教程", "避坑指南", "观点杂谈"]
 
@@ -93,17 +112,12 @@ def image_style_library_text() -> str:
 
 
 def analyze_prompt(query: str, count: int = 20) -> str:
-    """智能分析：从原始 query 生成泛化补充问题池的 LLM 提示词。"""
-    return f"""你是内容策划助手。针对下面的用户原始提问，生成 {count} 个可独立成文的「泛化补充问题」——围绕该提问情境、适合做成图文内容的相邻角度问题，后续每个问题都会与原始提问组合生成一篇内容。
+    """智能分析：从原始 query 生成泛化补充问题池的 LLM 提示词。
 
-要求：
-- 每个问题 8-20 字，口语化、有真实搜索感（像用户会在搜索框里敲的问题）
-- 角度多元：价格费用 / 怎么选 / 避坑 / 对比 / 保养维修 / 经验心得 / 适用人群等
-- 不与原始提问完全重复；问题之间不重复
-- 只输出编号列表（1. 2. 3. …），每行一个，不要任何其它内容
-
-【原始提问】
-{query.strip()}"""
+    模板单点在 skills/prompt-analyze/SKILL.md（2026-09-03 阶段2重构，原样搬运）。
+    """
+    from src.gateway.skill_loader import skill_body
+    return skill_body("prompt-analyze").format(count=count, query=query.strip())
 
 
 def parse_analyzed_questions(text: str) -> list[str]:

@@ -3,16 +3,25 @@ import base64
 import hashlib
 import httpx
 from src.config import settings
+from src.gateway.http_client import get_client
 
 IMAGE_MODEL = settings.image_model
 IMAGE_SIZE = settings.image_size
+
+# 共享 client 的默认超时（各请求再用 timeout= 覆盖成原差异化口径，P1-7）
+_DEFAULT_TIMEOUT = httpx.Timeout(connect=15.0, read=600.0, write=60.0, pool=10.0)
+
+
+def _client() -> httpx.AsyncClient:
+    """生图共享 AsyncClient：连接池跨调用复用，省去每次 TCP/TLS 握手。"""
+    return get_client("image_gen", timeout=_DEFAULT_TIMEOUT)
 
 # 双通道负载均衡：轮询游标（每次调用取下一个可用通道）
 _channel_cursor = 0
 
 
 def _channels() -> list[str]:
-    """当前可用的生图通道列表（按配置，moacode 无 key 自动剔除）。"""
+    """当前可用的生图通道列表（按配置，无 key 的通道自动剔除）。"""
     cfg = [c.strip() for c in settings.image_gen_channels.split(",") if c.strip()]
     avail = []
     for c in cfg:
@@ -22,6 +31,8 @@ def _channels() -> list[str]:
             avail.append("moacode")
         elif c == "fusion" and settings.fusionai_api_key:
             avail.append("fusion")
+        elif c == "openox" and settings.openox_api_key:
+            avail.append("openox")
     return avail or ["linkai"]  # 兜底防全不可用
 
 
@@ -59,7 +70,7 @@ def _mock_result(prompt: str) -> dict:
         f"<text x='50%' y='50%' font-size='40' fill='white' text-anchor='middle'"
         f" font-family='sans-serif'>MOCK {h[:4]}</text></svg>"
     )
-    return {"image_url": svg, "hash": h, "model_version": "mock"}
+    return {"image_url": svg, "hash": h, "model_version": "mock", "channel": "mock"}
 
 
 async def generate_image(prompt: str, size: str = None,
@@ -67,8 +78,10 @@ async def generate_image(prompt: str, size: str = None,
                          max_retries: int = 3) -> dict:
     """调用 gpt-image-2 生成一张图；reference_image_urls 非空则图生图。
 
-    双通道轮询负载均衡（_next_channel）：LinkAI / Moacode 交替使用，
-    单通道失败自动降级另一通道；mock_image_gen 开启时返回占位图。
+    多通道轮询负载均衡（_next_channel）：fusion / linkai / moacode / openox
+    按配置交替使用，单通道失败自动降级其他通道；mock_image_gen 开启时返回占位图。
+    返回 dict 含 channel 字段（实际出图通道），调用方按通道费率
+    （model_rates 的 gpt-image-2@<channel> 行）计成本。
     """
     if settings.mock_image_gen:
         return _mock_result(prompt)
@@ -77,6 +90,12 @@ async def generate_image(prompt: str, size: str = None,
     for attempt in range(max_retries):
         try:
             if reference_image_urls:
+                # openox 备份通道只确认支持文生图（2026-09-08 接入时 edits 支持
+                # 情况不明）：图生图轮到 openox 时按"当前通道失败换通道"语义直接
+                # 转给支持 edits 的通道（fusion/linkai/moacode），openox 不参与图生图
+                if channel == "openox":
+                    edit_channels = [c for c in _channels() if c != "openox"]
+                    channel = edit_channels[0] if edit_channels else "linkai"
                 try:
                     # 图生图按通道路由：fusion=主(edits multipart b64) /
                     # moacode=垫图(input_image) / linkai=images/edits
@@ -114,11 +133,14 @@ async def generate_image(prompt: str, size: str = None,
 
 async def _generate_by_channel(prompt: str, size: str, channel: str) -> dict:
     """按通道路由生图：fusion=主通道(Images API b64) / moacode=Responses API
-    SSE / linkai=Images API url。"""
+    SSE / openox=备份(Images API url，仅文生图) / linkai=Images API url。"""
     if channel == "fusion":
         return await _generate_fusion(prompt, size)
     if channel == "moacode":
         return await _generate_moacode(prompt, size)
+    if channel == "openox":
+        return await _generate(prompt, size, api_key=settings.openox_api_key,
+                               base_url=settings.openox_base_url, channel="openox")
     return await _generate(prompt, size)
 
 
@@ -132,20 +154,21 @@ async def _generate_fusion(prompt: str, size: str) -> dict:
     url = f"{settings.fusionai_base_url.rstrip('/')}/images/generations"
     payload = {"model": IMAGE_MODEL, "prompt": prompt, "size": size, "n": 1,
                "quality": settings.image_quality}
-    async with httpx.AsyncClient(timeout=httpx.Timeout(connect=15.0, read=600.0,
-                                                       write=30.0, pool=10.0)) as client:
-        resp = await client.post(url, json=payload, headers=_fusion_headers())
-        if resp.status_code >= 400:
-            raise RuntimeError(f"fusion gen failed ({resp.status_code}): {resp.text[:300]}"
-                               f" [X-Request-Id: {resp.headers.get('X-Request-Id', '-')}]")
-        data = resp.json()
+    resp = await _client().post(
+        url, json=payload, headers=_fusion_headers(),
+        timeout=httpx.Timeout(connect=15.0, read=600.0, write=30.0, pool=10.0))
+    if resp.status_code >= 400:
+        raise RuntimeError(f"fusion gen failed ({resp.status_code}): {resp.text[:300]}"
+                           f" [X-Request-Id: {resp.headers.get('X-Request-Id', '-')}]")
+    data = resp.json()
     item = (data.get("data") or [{}])[0]
     b64 = item.get("b64_json")
     if not b64:
         raise RuntimeError(f"fusion 响应缺 b64_json: {str(data)[:200]}")
     return {"image_url": f"data:image/png;base64,{b64}",
             "hash": hashlib.md5(b64.encode()).hexdigest(),
-            "model_version": f"{IMAGE_MODEL}@fusion"}
+            "model_version": f"{IMAGE_MODEL}@fusion",
+            "channel": "fusion"}
 
 
 async def _edit_fusion(prompt: str, reference_image_urls: list[str], size: str) -> dict:
@@ -159,20 +182,21 @@ async def _edit_fusion(prompt: str, reference_image_urls: list[str], size: str) 
         files.append(("image[]", (f"ref_{i}.{ext}", content, ctype)))
     data = {"model": IMAGE_MODEL, "prompt": prompt, "size": size, "n": "1",
             "quality": settings.image_quality}
-    async with httpx.AsyncClient(timeout=httpx.Timeout(connect=15.0, read=600.0,
-                                                       write=60.0, pool=10.0)) as client:
-        resp = await client.post(url, data=data, files=files, headers=_fusion_headers())
-        if resp.status_code >= 400:
-            raise RuntimeError(f"fusion edit failed ({resp.status_code}): {resp.text[:300]}"
-                               f" [X-Request-Id: {resp.headers.get('X-Request-Id', '-')}]")
-        j = resp.json()
+    resp = await _client().post(
+        url, data=data, files=files, headers=_fusion_headers(),
+        timeout=httpx.Timeout(connect=15.0, read=600.0, write=60.0, pool=10.0))
+    if resp.status_code >= 400:
+        raise RuntimeError(f"fusion edit failed ({resp.status_code}): {resp.text[:300]}"
+                           f" [X-Request-Id: {resp.headers.get('X-Request-Id', '-')}]")
+    j = resp.json()
     item = (j.get("data") or [{}])[0]
     b64 = item.get("b64_json")
     if not b64:
         raise RuntimeError(f"fusion 编辑响应缺 b64_json: {str(j)[:200]}")
     return {"image_url": f"data:image/png;base64,{b64}",
             "hash": hashlib.md5(b64.encode()).hexdigest(),
-            "model_version": f"{IMAGE_MODEL}@fusion"}
+            "model_version": f"{IMAGE_MODEL}@fusion",
+            "channel": "fusion"}
 
 
 async def _generate_moacode(prompt: str, size: str,
@@ -202,29 +226,30 @@ async def _generate_moacode(prompt: str, size: str,
     import json as _json
     b64_final = None
     b64_partial = None
-    async with httpx.AsyncClient(timeout=httpx.Timeout(connect=15.0, read=240.0,
-                                                       write=30.0, pool=10.0)) as client:
-        async with client.stream("POST", url, json=body, headers=headers) as resp:
-            if resp.status_code >= 400:
-                detail = (await resp.aread()).decode("utf-8", "replace")[:400]
-                raise RuntimeError(f"moacode gen failed ({resp.status_code}): {detail}")
-            async for line in resp.aiter_lines():
-                if not line.startswith("data:"):
-                    continue
-                payload = line[5:].strip()
-                if not payload or payload == "[DONE]":
-                    continue
-                try:
-                    ev = _json.loads(payload)
-                except Exception:  # noqa: BLE001
-                    continue
-                etype = ev.get("type", "")
-                if (etype == "response.output_item.done"
-                        and (ev.get("item") or {}).get("type") == "image_generation_call"):
-                    b64_final = ev["item"].get("result") or b64_final
-                    break
-                if etype == "response.image_generation_call.partial_image":
-                    b64_partial = ev.get("partial_image_b64") or b64_partial
+    async with _client().stream(
+            "POST", url, json=body, headers=headers,
+            timeout=httpx.Timeout(connect=15.0, read=240.0,
+                                  write=30.0, pool=10.0)) as resp:
+        if resp.status_code >= 400:
+            detail = (await resp.aread()).decode("utf-8", "replace")[:400]
+            raise RuntimeError(f"moacode gen failed ({resp.status_code}): {detail}")
+        async for line in resp.aiter_lines():
+            if not line.startswith("data:"):
+                continue
+            payload = line[5:].strip()
+            if not payload or payload == "[DONE]":
+                continue
+            try:
+                ev = _json.loads(payload)
+            except Exception:  # noqa: BLE001
+                continue
+            etype = ev.get("type", "")
+            if (etype == "response.output_item.done"
+                    and (ev.get("item") or {}).get("type") == "image_generation_call"):
+                b64_final = ev["item"].get("result") or b64_final
+                break
+            if etype == "response.image_generation_call.partial_image":
+                b64_partial = ev.get("partial_image_b64") or b64_partial
     b64 = b64_final or b64_partial
     if not b64:
         raise RuntimeError("moacode 流式结束但未取到图（final 与 partial 均无）")
@@ -233,7 +258,8 @@ async def _generate_moacode(prompt: str, size: str,
     tag = "@moacode" if b64_final else "@moacode:partial"
     return {"image_url": data_uri,
             "hash": hashlib.md5(b64.encode()).hexdigest(),
-            "model_version": f"{IMAGE_MODEL}{tag}"}
+            "model_version": f"{IMAGE_MODEL}{tag}",
+            "channel": "moacode"}
 
 
 async def _edit_moacode(prompt: str, reference_image_urls: list[str],
@@ -248,20 +274,28 @@ async def _edit_moacode(prompt: str, reference_image_urls: list[str],
     return await _generate_moacode(prompt, size, reference_data_uris=data_uris)
 
 
-async def _generate(prompt: str, size: str) -> dict:
-    """文生图：POST /v1/images/generations"""
-    url = f"{settings.openai_image_base_url}/images/generations"
+async def _generate(prompt: str, size: str, api_key: str = None,
+                    base_url: str = None, channel: str = "linkai") -> dict:
+    """文生图：POST /v1/images/generations。
+
+    linkai 与 openox 备份通道共用此路径（同为 OpenAI 兼容 Images API），
+    仅 key/base_url 不同；缺省取 linkai 配置。
+    """
+    api_key = api_key or settings.openai_image_api_key
+    base_url = base_url or settings.openai_image_base_url
+    url = f"{base_url}/images/generations"
     payload = {"model": IMAGE_MODEL, "prompt": prompt, "size": size, "n": 1,
                "response_format": "url", "quality": settings.image_quality}
-    async with httpx.AsyncClient(timeout=240) as client:
-        resp = await client.post(url, json=payload, headers=_headers())
-        if resp.status_code >= 400:
-            raise RuntimeError(f"image gen failed ({resp.status_code}): {resp.text[:400]}")
-        data = resp.json()
+    resp = await _client().post(url, json=payload,
+                                headers={"Authorization": f"Bearer {api_key}"},
+                                timeout=240)
+    if resp.status_code >= 400:
+        raise RuntimeError(f"image gen failed ({resp.status_code}): {resp.text[:400]}")
+    data = resp.json()
     u = data["data"][0].get("url")
     if not u:
         raise RuntimeError(f"image response missing url field: {str(data)[:200]}")
-    return _result(u)
+    return _result(u, channel)
 
 
 async def _edit_with_references(prompt: str, reference_image_urls: list[str],
@@ -277,17 +311,17 @@ async def _edit_with_references(prompt: str, reference_image_urls: list[str],
     # gpt-image-2 编辑时自动高保真，传 input_fidelity 会返回 400，故不传
     data = {"model": IMAGE_MODEL, "prompt": prompt, "size": size,
             "n": "1", "response_format": "url", "quality": settings.image_quality}
-    async with httpx.AsyncClient(timeout=240) as client:
-        resp = await client.post(url, data=data, files=files, headers=_headers())
-        if resp.status_code >= 400:
-            raise RuntimeError(f"image edit failed ({resp.status_code}): {resp.text[:400]}")
-        j = resp.json()
+    resp = await _client().post(url, data=data, files=files, headers=_headers(),
+                                timeout=240)
+    if resp.status_code >= 400:
+        raise RuntimeError(f"image edit failed ({resp.status_code}): {resp.text[:400]}")
+    j = resp.json()
     u = j["data"][0].get("url")
     if not u:
         raise RuntimeError(f"image response missing url field: {str(j)[:200]}")
-    return _result(u)
+    return _result(u, "linkai")
 
 
-def _result(image_url: str) -> dict:
+def _result(image_url: str, channel: str = "linkai") -> dict:
     return {"image_url": image_url, "hash": hashlib.md5(image_url.encode()).hexdigest(),
-            "model_version": IMAGE_MODEL}
+            "model_version": f"{IMAGE_MODEL}@{channel}", "channel": channel}

@@ -1,0 +1,11 @@
+PAGE ROLE (cover): hero visual occupies ~2/3 of the card (texture per unified style), large bold headline at top scaled up (one line may span ~80% of the page width), one-line subtitle only, generous whitespace.
+---
+PAGE ROLE (key points): text zone above, image below; the Chinese text breaks into 2-3 short bullet lines, each led by one accent-color circular numbered badge (white 1/2/3 on the circle), thin dividers between points; optionally a slim saturated dark banner bar under the headline carrying one short white sub-sentence from this page's Chinese text; horizontal line or soft curve separating text and image zones.
+---
+PAGE ROLE (close-up): subject close-up fills the frame (lighting per unified style); the photo may sit in a rounded frame or torn-paper edge with one small accent-color round sticker on its corner (2-4 Chinese characters verdict word in white); text confined to a bottom quarter band in the style's primary color.
+---
+PAGE ROLE (checklist): rounded-card columns, 2-4 info blocks, one sub-headline each, clear gaps between cards, card tints within the style's palette; keywords may use highlighter blocks (light accent tint with dark text).
+---
+PAGE ROLE (scene): full-bleed scene image (texture per unified style), text placed in a top whitespace zone, image and text joined by a curve or diagonal.
+---
+PAGE ROLE (wrap-up): centered large conclusion text, at most two smaller lines below; optionally a two-column quick-check contrast (green check for the do's, brick-red cross for the don'ts) or a slim saturated dark banner at the bottom carrying one white conclusion sentence taken from this page's text; clean visual ending.

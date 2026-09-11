@@ -1,0 +1,40 @@
+# qvp3 应用镜像：后端 + dsh_serve(内嵌 dsh 子进程) + qvp_mcp 同容器（127.0.0.1 内部互联）
+# Node 运行时从 Debian 版 node 镜像复制——必须与 python:3.12-slim 同为 glibc
+# （node:*-alpine 是 musl libc，拷到 Debian 上无法运行，exit 127）
+# 服务器本地化：docker save node:24-slim | ssh th@... docker load（Docker Hub 不通）
+FROM node:24-slim AS node
+
+FROM python:3.12-slim
+
+ENV PYTHONUTF8=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONUNBUFFERED=1
+
+# Node 运行时（二进制 + 全局模块目录）
+COPY --from=node /usr/local/bin /usr/local/bin
+COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules
+
+# dsh：版本钉死（开发者预览版有破坏性变更，升级需重跑 spike 验证清单）
+# 值 = spike/serve 薄层实测版本，见 docs/dsh-spike-验证记录.md 与 dsh_serve/README.md
+ARG DSH_VERSION=0.1.2-rc.1
+RUN npm install -g @deepseek-ai/dsh@${DSH_VERSION} && npm cache clean --force
+
+WORKDIR /app
+
+# 国内服务器走清华 PyPI 源（与旧栈一致，可 --build-arg 覆盖）
+ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+
+# 先装依赖层（代码变动不触发重装）
+COPY requirements.txt .
+RUN pip install -i ${PIP_INDEX_URL} -r requirements.txt
+
+# dsh_serve 自身依赖（FastAPI/httpx 等已在主 requirements 中则幂等跳过）
+COPY dsh_serve/requirements.txt dsh_serve/requirements.txt
+RUN pip install -i ${PIP_INDEX_URL} -r dsh_serve/requirements.txt
+
+# 代码 + 部署脚本（.env 由 compose env_file 运行时注入，不打进镜像）
+COPY . .
+RUN chmod +x deploy/entrypoint.dsh.sh && mkdir -p static/generated exports /data/dsh
+
+EXPOSE 8005
+ENTRYPOINT ["deploy/entrypoint.dsh.sh"]

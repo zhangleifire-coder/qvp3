@@ -23,11 +23,14 @@ NODE_FN = {
 # ── Nanobot 全链创作 Agent 路径（2026-08-22 改造）─────────────────────
 # 创作段六节点（entity_bind/evidence_build/draft_gen/page_split/asset_gen/
 # ocr_read）收敛为一个 agent_production 大节点；确定性节点全部保留。
-# ref_collect（2026-08-27）：compare/single 的参考图人工确认关卡——
-# 搜图≥10张 → OCR 初筛 → 挂起 awaiting_refs 等人工确认后才继续生图。
+# 两段式实景搜图（2026-09-07，吸收 8002 分叉栈）：
+# ref_seed（搜图①，自动无人工关：搜图反哺 text_check 起草）→ text_check
+# （人工关 awaiting_text）→ ref_collect（搜图②：text_ref 叠加新搜，
+# 人工关 awaiting_refs）；确认后幂等续跑机制不变。
 NODES_AGENT = [
-    "task_import", "text_check", "ref_collect", "agent_production", "rule_check",
-    "cross_check", "risk_classify", "review_queue", "batch_signoff", "publish_snapshot",
+    "task_import", "ref_seed", "text_check", "ref_collect", "agent_production",
+    "rule_check", "cross_check", "risk_classify", "review_queue",
+    "batch_signoff", "publish_snapshot",
 ]
 
 
@@ -55,12 +58,66 @@ async def _node_ref_collect(input_data: dict) -> dict:
     return await node_ref_collect(input_data)
 
 
+async def _node_ref_seed(input_data: dict) -> dict:
+    from src.pipeline.ref_seed import node_ref_seed
+    return await node_ref_seed(input_data)
+
+
 async def _node_agent_production(input_data: dict) -> dict:
     from src.pipeline.agent_production import node_agent_production
     return await node_agent_production(input_data)
 
 
+# ── staged 分阶段 Agent 路径（2026-09-09，AGENT_PIPELINE_VARIANT=staged）────
+# agent_production 大节点拆为 4 个独立 Agent 节点（各自独立会话/契约/幂等/
+# 成本帧），阶段间只经 DB 传数据；确定性节点与 monolith 完全一致。
+NODES_AGENT_STAGED = [
+    "task_import", "ref_seed", "text_check", "ref_collect",
+    "agent_evidence", "agent_draft", "agent_pages", "agent_assets",
+    "rule_check", "cross_check", "risk_classify", "review_queue",
+    "batch_signoff", "publish_snapshot",
+]
+
+
+async def _node_agent_evidence(input_data: dict) -> dict:
+    from src.pipeline.agent_stages import node_agent_evidence
+    return await node_agent_evidence(input_data)
+
+
+async def _node_agent_draft(input_data: dict) -> dict:
+    from src.pipeline.agent_stages import node_agent_draft
+    return await node_agent_draft(input_data)
+
+
+async def _node_agent_pages(input_data: dict) -> dict:
+    from src.pipeline.agent_stages import node_agent_pages
+    return await node_agent_pages(input_data)
+
+
+async def _node_agent_assets(input_data: dict) -> dict:
+    from src.pipeline.agent_stages import node_agent_assets
+    return await node_agent_assets(input_data)
+
+
+NODE_FN_AGENT_STAGED = {
+    "ref_seed": _node_ref_seed,
+    "text_check": _node_text_check,
+    "ref_collect": _node_ref_collect,
+    "agent_evidence": _node_agent_evidence,
+    "agent_draft": _node_agent_draft,
+    "agent_pages": _node_agent_pages,
+    "agent_assets": _node_agent_assets,
+    "rule_check": node_rule_check,
+    "cross_check": node_cross_check,
+    "risk_classify": node_risk_classify,
+    "review_queue": node_review_queue,
+    "batch_signoff": node_batch_signoff,
+    "publish_snapshot": node_publish_snapshot,
+}
+
+
 NODE_FN_AGENT = {
+    "ref_seed": _node_ref_seed,
     "text_check": _node_text_check,
     "ref_collect": _node_ref_collect,
     "agent_production": _node_agent_production,
@@ -120,9 +177,14 @@ async def run_pipeline(task_id, node_inputs: dict | None = None) -> list:
         rounds, reasons = await get_rejection_feedback(session, task_id)
     if rounds:
         inputs["regen"] = {"round": rounds, "feedback": reasons}
-    # 双路径：AGENT_PIPELINE_ENABLED 决定走 Nanobot 创作大节点还是原 13 节点直连
+    # 双路径：AGENT_PIPELINE_ENABLED 决定走 Nanobot 创作大节点还是原 13 节点直连；
+    # Agent 路径内再由 AGENT_PIPELINE_VARIANT 分发：staged=4 个分阶段 Agent 节点，
+    # monolith（默认）=agent_production 大节点（秒级回退）
     if settings.agent_pipeline_enabled:
-        nodes, fns = NODES_AGENT, NODE_FN_AGENT
+        if settings.agent_pipeline_variant == "staged":
+            nodes, fns = NODES_AGENT_STAGED, NODE_FN_AGENT_STAGED
+        else:
+            nodes, fns = NODES_AGENT, NODE_FN_AGENT
     else:
         nodes, fns = NODES, NODE_FN
     for node_name in nodes:

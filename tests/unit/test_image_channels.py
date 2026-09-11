@@ -48,3 +48,26 @@ class TestFusionChannel:
         with patch.object(settings, "image_gen_channels", "fusion,linkai"), \
              patch.object(settings, "fusionai_api_key", ""):
             assert _channels() == ["linkai"]
+
+
+class TestOpenoxChannel:
+    def test_openox_in_rotation_when_keyed(self):
+        """openox 配 key 时进入轮询池（备份通道，排在配置列表末尾）。"""
+        with patch.object(settings, "image_gen_channels", "fusion,linkai,moacode,openox"), \
+             patch.object(settings, "fusionai_api_key", "sk-fusion-x"), \
+             patch.object(settings, "moacode_api_key", "cr_x"), \
+             patch.object(settings, "openox_api_key", "sk-openox-x"):
+            avail = _channels()
+            assert avail[-1] == "openox"
+            assert set(avail) == {"fusion", "linkai", "moacode", "openox"}
+
+    def test_openox_filtered_without_key(self):
+        with patch.object(settings, "image_gen_channels", "linkai,openox"), \
+             patch.object(settings, "openox_api_key", ""):
+            assert _channels() == ["linkai"]
+
+    def test_openox_round_robin(self):
+        with patch.object(settings, "image_gen_channels", "linkai,openox"), \
+             patch.object(settings, "openox_api_key", "sk-openox-x"):
+            picked = [_next_channel() for _ in range(4)]
+            assert set(picked) == {"linkai", "openox"}

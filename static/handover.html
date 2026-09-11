@@ -33,14 +33,19 @@
 </head>
 <body>
 <div class="banner"><b>图文生产平台 · 技术交接文档</b>
-  <span>源文件 技术交接文档-20260903.md ｜ commit eac3470 ｜ 生成于 2026-09-03 13:22（scripts/build_handover.py，随发版自动更新）</span>
+  <span>源文件 技术交接文档-20260907.md ｜ commit dev ｜ 生成于 2026-09-10 18:56（scripts/build_handover.py，随发版自动更新）</span>
 </div>
 <main>
 <h1 id="_1">图文生产平台 · 技术交接文档</h1>
 <blockquote>
-<p>交接日期：2026-09-03 ｜ 代码版本：<code>1eb6c0b</code>
+<p>交接日期：2026-09-07 ｜ 代码版本：基线 <code>ba0ce24</code> + dsh 创作网关重构
+（当前工作副本无 git 仓库，版本以本文与服务器 <code>.deployed_commit</code> 为准）
+上一版存档：<code>docs/技术交接文档-20260903.md</code>（保留不删，Nanobot 时代基线）
 读者：接手新改进开发的同事。读完本文应能：本地跑起全套环境、理解双路径流水线、
 安全地改提示词/节点/前端、按流程发版到测试与生产。</p>
+<p>本版主线：<strong>创作网关 Nanobot(:8900) → dsh_serve(:8901)</strong>（DeepSeek Harness 薄层）、
+提示词库 skill 化（单一事实来源收敛到 <code>skills/</code>）、qvp3(:8005) 灰度新栈上线。
+迁移细节先读 §5.6「dsh 迁移要点」。</p>
 <p>⚠️ <strong>先读第 11 节「服务器红线」——有两台服务器绝对不能动。</strong></p>
 <p>🌐 在线版（随每次发版自动更新）：<code>http://117.34.118.115:8003/handover</code>
 （测试栈 <code>http://117.34.118.115:8001/handover</code> 同路径）</p>
@@ -59,21 +64,28 @@
    ▼
 FastAPI 后端（uvicorn，单进程 asyncio）         Docker Compose（每套栈独立）
    ├─ scheduler：进程内 asyncio 队列 + 自适应并发限流        ┌─────────────────┐
-   ├─ 双路径流水线 orchestrator                              │ qvp2-app  :8003 │
+   ├─ 双路径流水线 orchestrator                              │ qvp2-app  :8003 │ 生产（Nanobot 栈）
    │    ├─ Agent 路径（生产默认，AGENT_PIPELINE_ENABLED=true） │ qvp2-postgres   │
-   │    │     └→ Nanobot 网关 :8900（OpenAI 兼容 API）        │ qvp2-openserp   │
-   │    │           └→ 创作大节点 LLM（deepseek 主/kimi 备）   └─────────────────┘
-   │    │                 └→ MCP 工具（stdio 子进程 qvp_mcp）      Nanobot 在应用容器内
-   │    └─ 直连 13 节点路径（兜底开关，秒切回）                     拉起，仅回环可达
+   │    │     └→ 创作网关（OpenAI 兼容 API，二选一）          │ qvp2-openserp   │
+   │    │           ├─ qvp2 栈：Nanobot :8900（容器内拉起）    └─────────────────┘
+   │    │           └─ qvp3 栈：dsh_serve :8901               ┌─────────────────┐
+   │    │                Python FastAPI 薄层，内嵌 dsh 子进程  │ qvp3-app  :8005 │ dsh 灰度新栈
+   │    │               （DeepSeek Harness 0.1.2-rc.1 钉版，   │ qvp3-postgres   │ 2026-09-07 上线
+   │    │                 协议与 Nanobot 1:1，后端改           │ qvp3-openserp   │ 公网可达
+   │    │                 NANOBOT_BASE_URL 指向即可切换）      └─────────────────┘
+   │    │                 └→ 创作大节点 LLM（三级 failover：flash 主→kimi-k3 备1→Kimi Code k3 备2，薄层自做）
+   │    │                       └→ MCP 工具（stdio 子进程 qvp_mcp）
+   │    └─ 直连 13 节点路径（兜底开关，秒切回）
    ├─ 视觉审核 visual_check（dashscope qwen-vl-max）
    ├─ rule_check / cross_check / risk_classify（纯代码，无 LLM）
    └─ PostgreSQL 16（SQLAlchemy async + asyncpg）＋ Redis（限流/心跳）
 </code></pre>
 <p>一次 Agent 路径生产的数据流：
 导入 → 文字核查关卡（人工放行）→ 实景搜图关卡（人工筛选，compare/single 才有）→
-<code>agent_production</code> 一次调用 Nanobot 创作 Agent（内部用 MCP 工具：豆包搜索取证 →
-生图 gpt-image-2 → 逐页 OCR 自检）→ 后端收契约 JSON 做确定性收尾（图片本地化/去重/
-尺寸校验/落库 → 规则机 → 交叉核验 → 风险分级 → 人工审图 → 会签 → 快照）。</p>
+<code>agent_production</code> 一次调用创作 Agent（Nanobot 或 dsh_serve，协议一致；内部用
+MCP 工具：豆包搜索取证 → 生图 gpt-image-2 → 逐页 OCR 自检）→ 后端收契约 JSON
+做确定性收尾（图片本地化/去重/尺寸校验/落库 → 规则机 → 交叉核验 → 风险分级 →
+人工审图 → 会签 → 快照）。</p>
 <h2 id="3">3. 技术栈清单</h2>
 <table>
 <thead>
@@ -92,7 +104,12 @@ FastAPI 后端（uvicorn，单进程 asyncio）         Docker Compose（每套�
 <tr>
 <td>ORM/DB</td>
 <td>SQLAlchemy 2 async + asyncpg + PostgreSQL 16</td>
-<td>迁移是编号 SQL（<code>migrations/001-019</code>），entrypoint 的 <code>init_db.py</code> 幂等应用</td>
+<td>迁移是编号 SQL（<code>migrations/001-021</code>），entrypoint 的 <code>init_db.py</code> 幂等应用</td>
+</tr>
+<tr>
+<td>费率核算</td>
+<td><code>model_rates</code> 表 + <code>src/gateway/cost_tracker.py</code>（020/021，2026-09-09）</td>
+<td>费率 DB 权威、改库/管理页保存即生效（进程内缓存 60s+代码兜底）；DeepSeek 按缓存命中/未命中分段计价，北京时间工作日 9-12/14-18 点高峰、空闲半价；生图分通道按次计费（<code>gpt-image-2@&lt;channel&gt;</code> 行，fusion=0.2 元/张账单实证，无通道行回退基准行→<code>IMAGE_COST_PER_IMAGE_CNY</code> 兜底）；费用四类拆分 text_llm/image_gen/search/ocr（节点名优先、模型名兜底）；管理页 <code>GET/PUT /api/admin/rates</code>、<code>GET /api/admin/balance</code>（DeepSeek 余额 API 实拉 + FusionAI/Kimi 基准录入扣减估算 + <code>PUT /api/admin/balance_baseline</code>）</td>
 </tr>
 <tr>
 <td>缓存/限流</td>
@@ -101,13 +118,23 @@ FastAPI 后端（uvicorn，单进程 asyncio）         Docker Compose（每套�
 </tr>
 <tr>
 <td>LLM 文本</td>
-<td>LiteLLM 适配，DeepSeek 主 / Kimi 备</td>
+<td>LiteLLM 适配，DeepSeek flash 主 / Kimi 开放平台 kimi-k3 备1 / Kimi Code k3 备2（KIMI_CODE_API_KEY 空则禁用）</td>
 <td><code>src/gateway/failover.py::call_with_failover</code>，流式回调进度</td>
 </tr>
 <tr>
 <td>创作网关</td>
-<td>nanobot-ai（<code>nanobot serve</code>，OpenAI 兼容 :8900）</td>
-<td>preset <code>qvp_main</code>（deepseek-v4-pro）；fallbackModels=kimi</td>
+<td><strong>dsh_serve（FastAPI 薄层 :8901）+ dsh（DeepSeek Harness 0.1.2-rc.1 钉版）</strong></td>
+<td>OpenAI 兼容协议与 Nanobot 1:1；session 隔离/SSE/failover 主备/并发信号量/MCP 挂接/会话冷恢复 fork 全在薄层（dsh_serve/README.md）；Nanobot(:8900) 保留作回退</td>
+</tr>
+<tr>
+<td>提示词资产</td>
+<td><strong><code>skills/</code> 目录（10 个 skill 包）+ <code>src/gateway/skill_loader.py</code></strong></td>
+<td>全部生成类提示词的单一事实来源；<code>page-split/contract.txt</code> 为字数契约单点（详见 5.3）</td>
+</tr>
+<tr>
+<td>Node 运行时</td>
+<td>node:24-slim 复制进应用镜像（dsh CLI 需要）</td>
+<td>glibc 必须与 python:3.12-slim（Debian）匹配，<strong>勿用 alpine（musl libc，跑不起来）</strong>；SDK 形态则自带运行时无需系统 Node</td>
 </tr>
 <tr>
 <td>Agent 工具</td>
@@ -142,7 +169,7 @@ FastAPI 后端（uvicorn，单进程 asyncio）         Docker Compose（每套�
 <tr>
 <td>部署</td>
 <td>git archive → scp → docker compose up -d --build</td>
-<td>服务器 Docker Hub 不通，镜像全部本地已有</td>
+<td>服务器 Docker Hub 不通，镜像全部本地已有；qvp3 栈走镜像本地化（docker save→scp→docker load，见 §9）</td>
 </tr>
 </tbody>
 </table>
@@ -152,17 +179,21 @@ FastAPI 后端（uvicorn，单进程 asyncio）         Docker Compose（每套�
 │  ├─ api/            FastAPI 路由（tasks/review/admin/stream/auth/dashboard…）
 │  ├─ pipeline/       流水线核心
 │  │   ├─ orchestrator.py   NODES（直连13节点）/ NODES_AGENT（10节点）+ run_pipeline
-│  │   ├─ nodes.py          execute_node（幂等/事件/SSE）+ 各直连节点实现
+│  │   ├─ nodes.py          execute_node（三段式短事务：幂等/SSE/取消删事件，见 §14）
 │  │   ├─ agent_production.py  创作大节点：组装提示词→call_agent→契约校验→落库
 │  │   ├─ text_check.py     文字核查节点（起草正文/图上文案草稿，独立提示词）
 │  │   ├─ idempotency.py    节点事件幂等（同输入跳过，失败可重跑）
 │  │   └─ scheduler 在 src/stream/scheduler.py（asyncio 队列/限流/恢复）
 │  ├─ gateway/        外部调用网关
 │  │   ├─ failover.py       call_with_failover（LLM 主备切换，流式 on_delta）
-│  │   ├─ nanobot_client.py call_agent（SSE 聚合，session_id=任务级隔离）
+│  │   ├─ nanobot_client.py call_agent（SSE 聚合，session_id=任务级隔离；
+│  │   │                     协议 1:1，NANOBOT_BASE_URL 可指 Nanobot 或 dsh_serve）
+│  │   ├─ skill_loader.py   ★skills/ 取词器（SKILL.md frontmatter/片段/列表片段/
+│  │   │                     字数契约常量；首读落缓存，测试可 reload()）
 │  │   ├─ image_gen.py      gpt-image-2 三通道轮询（生成+编辑/图生图）
 │  │   ├─ image_search.py / web_search.py / ocr.py
-│  │   ├─ prompt_versions.py ★提示词库（全部生成类提示词在这，含版本演进注释）
+│  │   ├─ prompt_versions.py 提示词库门面（常量名/三级覆盖语义不变，内部改从
+│  │   │                     skill_loader 读；演进注释仍在）
 │  │   ├─ tool_ledger.py    MCP 工具成本台账
 │  │   └─ cost_tracker.py / litellm_adapter.py
 │  ├─ services/       业务服务（style_select 风格两级库 / regen 定点重生成 /
@@ -170,16 +201,32 @@ FastAPI 后端（uvicorn，单进程 asyncio）         Docker Compose（每套�
 │  ├─ stream/         bus.py（进程内 SSE 总线）/ scheduler.py / limiter.py
 │  ├─ models/         SQLAlchemy 模型（tasks/drafts/assets/entities/review/events…）
 │  └─ config.py       全部配置项（pydantic-settings，env_file=.env）
-├─ qvp_mcp/           MCP 工具 server（4 工具+配额+成本 HTTP 回调，stdio 传输）
+├─ dsh_serve/         ★dsh 创作网关薄层（OpenAI 兼容端点 / session 隔离 / SSE 字段映射 /
+│                     failover 主备 / 并发信号量 / MCP 挂接 / 会话冷恢复 transcript fork；
+│                     README.md 有配置全表；analyze_session.py 会话日志分析、
+│                     verify_contract.py 契约冒烟；tests/ 34 项单测）
+├─ skills/            ★提示词资产单一事实来源（2026-09-03 阶段2重构）：
+│                     10 个 skill 包——draft-write / page-split / image-prompt /
+│                     text-draft / page-regen / page-subject / visual-writer /
+│                     ai-review / prompt-analyze / bench-spec；
+│                     page-split/contract.txt = 图上文案字数契约单点
+├─ qvp_mcp/           MCP 工具 server（15 个工具：4 素材 + 11 能力，见 5.7；
+│                     配额+成本 HTTP 回调，stdio 传输）
 ├─ static/            前端（index.html + api.js + components/ + views/，无构建）
 │                     + handover.html（交接文档在线版，由脚本生成勿手改）
 ├─ migrations/        001-019 编号 SQL 迁移（全部幂等，init_db.py 启动时应用）
 ├─ tests/             unit/ + integration/（集成测试用真实 PG，mock LLM/Agent）
-├─ scripts/           开发辅助脚本（smoke_* 冒烟 / verify_* 校验 / build_handover.py）
-├─ docs/              历史设计文档与训练记录（改造说明-Nanobot全链Agent.md 必读）
+├─ scripts/           开发辅助脚本（smoke_* 冒烟 / verify_* 校验 / build_handover.py /
+│                     start-all-dsh.sh dsh 版一键启停 /
+│                     verify_skill_equivalence.py 提示词重构等价性验证）
+├─ deploy/            部署资产：Dockerfile.dsh（qvp3 镜像，node:24-slim 复制 Node）/
+│                     entrypoint.dsh.sh（qvp3 容器入口：init_db→dsh_serve 守护→后端）/
+│                     compose/qvp3.docker-compose.yml（8005 dsh 栈）/ 各环境配置
+├─ docs/              历史设计文档与训练记录（改造说明-Nanobot全链Agent.md、
+│                     dsh-spike-验证记录.md 必读）
 ├─ nanobot/           nanobot 配置（config.json：provider/preset/fallback/MCP 声明）
-│                     + start-nanobot.sh（从 .env 导出密钥后启动 :8900）
-├─ docker-compose.yml 独立栈（postgres 不对宿主机开端口，仅 app:8003 对外）
+│                     + start-nanobot.sh（从 .env 导出密钥后启动 :8900；回退用）
+├─ docker-compose.yml qvp2 独立栈（postgres 不对宿主机开端口，仅 app:8003 对外）
 ├─ .env.example       环境变量模板（真实 .env 不入库）
 └─ requirements.txt   uv 导出的锁定依赖（69 个顶层包）
 </code></pre>
@@ -191,9 +238,21 @@ FastAPI 后端（uvicorn，单进程 asyncio）         Docker Compose（每套�
   cross_check → risk_classify → review_queue → batch_signoff → publish_snapshot
 - <code>NODES_AGENT</code>（Agent 路径，<strong>生产默认</strong>）：创作段 6 节点（entity_bind/evidence_build/
   draft_gen/page_split/asset_gen/ocr_read）收敛为 1 个 <code>agent_production</code>，并新增
-  text_check / ref_collect 两个人工关卡：task_import → text_check → ref_collect →
-  agent_production → rule_check → cross_check → risk_classify → review_queue →
-  batch_signoff → publish_snapshot
+  ref_seed / text_check / ref_collect 三个关卡节点：task_import → ref_seed →
+  text_check → ref_collect → agent_production → rule_check → cross_check →
+  risk_classify → review_queue → batch_signoff → publish_snapshot
+  （<strong>2026-09-07 两段式实景搜图</strong>，吸收 8002 分叉栈设计：
+  ①ref_seed（<code>src/pipeline/ref_seed.py</code>，自动、无人工关）素材库复用+按主体搜图
+  +OCR 初筛（复用 <code>ref_collect._collect_candidates</code>），落 <code>selection_status='text_ref'</code>
+  反哺 text_check 起草（<code>text_check._refs_feedback_section</code> 注入段内容/位置不变，
+  无图零差异）；②text_check 人工关（awaiting_text）；③ref_collect 搜图②：
+  候选池=text_ref 叠加新搜（内容 hash 去重，text_ref 全部并入 candidate 不留
+  残留），人工确认关 awaiting_refs，keep→confirmed、其余→rejected；
+  ④agent_production 读 confirmed 不变（refs_section 含「必须使用+图生图+
+  文案与参考图画面一致」）。确认后幂等续跑机制不变；general 模式仍由
+  <code>REF_FOR_GENERAL_ENABLED</code>（默认 false）门控，false 时 ref_seed/ref_collect
+  照旧跳过、整条链路零差异。前端节点条由 /api/meta/nodes 读
+  <code>progress.node_order()</code>，自动跟随。）
 - 开关 <code>AGENT_PIPELINE_ENABLED</code>（.env），false 秒切回直连路径兜底。
 - 两路径<strong>同源提示词</strong>：都从 <code>get_effective_prompt(kind, mode, owner_id)</code> 取词
   （解析顺序：用户自定义 → admin 系统覆盖 → 代码默认）。
@@ -229,20 +288,34 @@ FastAPI 后端（uvicorn，单进程 asyncio）         Docker Compose（每套�
 人工驳回带定点标记（page/image+理由）→ <code>rejected</code> → retry 触发 <code>partial_regen</code>
 （只重生成标记项；意见注入提示词，<code>src/services/regen.py</code>）。</p>
 <h3 id="53">5.3 提示词库体系（改提示词必读）</h3>
-<p>全部在 <code>src/gateway/prompt_versions.py</code>，纯 Python 字符串常量 + 演进注释。
-关键点：
-- 正文写作的「人设与真人感+信息密度」共享段 <code>_DRAFT_SHARED</code> 必须<strong>三条路径都注入</strong>：
-  ①直连 draft_gen（nodes.py）②Agent 路径（agent_production.py 取词后 append）
-  ③text_check 起草（用户在核查关卡看到的草稿）。
-  注入条件：<code>template == default_prompt(...)</code> 时才追加——用户自定义模板代表显式意图，
-  不覆盖（防负优化）。
-- 图上文案字数契约（2026-09 起）：每页 <strong>80-130 字</strong>、六页差≤40、每页 1-2 个具体
-  信息点。该契约同样存在于：PAGES_PROMPT、Agent 契约 <code>_AGENT_INSTRUCTIONS</code>、
-  text_check 两条起草提示词、生图中/英底座、nodes.py <code>_balance_issue</code> 硬校验
-  （不达标自动带意见重试一次）。<strong>改字数口径必须 7 处同步</strong>，并更新
-  <code>tests/unit/test_page_balance.py</code> 的守卫断言。
-- 测试里有「守卫断言」锁定关键提示词片段（如 test_absorb_8002 锁「胶囊」
-  「CAPSULE」、test_page_balance 锁字数）——改提示词先跑相关测试。</p>
+<p><strong>2026-09-03 阶段2重构后：全部生成类提示词的单一事实来源是 <code>skills/</code> 目录</strong>
+（10 个 skill 包），由 <code>src/gateway/skill_loader.py</code> 统一取词；
+<code>prompt_versions.py</code> 常量名与取值不变（内部改从 skill_loader 读），
+三级覆盖语义（用户自定义 → admin 系统覆盖 → 代码默认）原样保留。关键点：</p>
+<ul>
+<li>skill 包结构：<code>skills/&lt;name&gt;/SKILL.md</code>（frontmatter：name/description/notes +
+  正文模板）+ 片段文件 <code>&lt;frag&gt;.txt</code>（可带一层子目录，如 <code>prompts/general.txt</code>）；
+  列表型片段（如 6 条排版轮换）单文件内以单独一行 <code>---</code> 分隔，
+  用 <code>fragment_list()</code> 读取。</li>
+<li>正文写作的「人设与真人感+信息密度」共享段（<code>skills/draft-write/shared_persona.txt</code>）
+  必须<strong>三条路径都注入</strong>：①直连 draft_gen（nodes.py）②Agent 路径
+  （agent_production.py 取词后 append）③text_check 起草（用户在核查关卡看到的草稿）。
+  注入条件不变：<code>template == default_prompt(...)</code> 时才追加——用户自定义模板代表
+  显式意图，不覆盖（防负优化）。</li>
+<li>图上文案字数契约（2026-09 起）：每页 <strong>80-130 字</strong>、六页差≤40、每页 1-2 个具体
+  信息点。<strong>已收敛为单点 <code>skills/page-split/contract.txt</code></strong>（PAGE_MIN_CHARS 等
+  5 个键，skill_loader 顶部解析成常量）——page-split/prompt-analyze 提示词、
+  <code>nodes._balance_issue</code> 硬校验（不达标自动带意见重试一次）、
+  <code>agent_production._AGENT_INSTRUCTIONS</code> 合规红线段全部从该单点渲染，连同
+  <code>regen.py</code> 定点重写的均衡参照段共 8 处消费方同吃一源
+  （血泪史：此前要 7 处手工同步，漏一处就出阴阳口径）。<strong>改字数口径只改
+  contract.txt</strong>，并跑 <code>tests/unit/test_page_balance.py</code> 守卫断言。</li>
+<li>提示词类重构的兜底验证：<code>scripts/verify_skill_equivalence.py</code>——重构前
+  <code>--baseline</code>（快照全部取词/渲染结果），重构后 <code>--verify</code>（逐键对比零差异
+  退出码 0，另对撞 contract.txt 解析出的契约常量）。顺序不可颠倒。</li>
+<li>测试里有「守卫断言」锁定关键提示词片段（如 test_absorb_8002 锁「胶囊」
+  「CAPSULE」、test_page_balance 锁字数）——改提示词先跑相关测试。</li>
+</ul>
 <h3 id="54">5.4 生图与视觉闭环</h3>
 <ul>
 <li>生图走 MCP <code>image_gen</code> → <code>src/gateway/image_gen.py</code>：<code>IMAGE_GEN_CHANNELS</code>
@@ -260,6 +333,147 @@ FastAPI 后端（uvicorn，单进程 asyncio）         Docker Compose（每套�
 <li>成本：<code>tool_ledger</code> + <code>cost_tracker</code>，节点事件记 <code>cost_estimate_cny</code>，
   <code>/api/admin/costs</code> 汇总。Agent 工具成本经 HTTP 回调合并进节点。</li>
 </ul>
+<h3 id="56-dsh-nanobot-dsh_serve2026-09">5.6 dsh 迁移要点（Nanobot → dsh_serve，2026-09 重构）</h3>
+<p>完整验证记录见 <code>docs/dsh-spike-验证记录.md</code>（Go/No-Go 七项 + 三轮真实链路补测），
+组件细节与配置全表见 <code>dsh_serve/README.md</code>。接手必记的几条：</p>
+<ol>
+<li><strong>薄层形态</strong>：dsh（DeepSeek Harness）没有原生 OpenAI 兼容端点（<code>dsh web</code> 是
+   浏览器 GUI 宿主，headless 不开端口），dsh_serve 是 Python FastAPI 薄层，经官方
+   SDK 常驻驱动 <code>dsh --profile sdk</code> 子进程。<code>POST /v1/chat/completions</code> +
+   <code>session_id</code> + SSE（delta.content / delta.reasoning_content / 末尾 usage chunk）
+   与 Nanobot 1:1——后端 <code>nanobot_client</code> 只改 <code>NANOBOT_BASE_URL</code> 指向 :8901 即切换。</li>
+<li><strong>max_tokens 含 reasoning_tokens（本轮最大的坑）</strong>：deepseek 推理模型的输出
+   预算把推理 token 算在内——旧值 8192 在 reasoningEffort=high + 长 prompt 下被
+   推理一轮吃光：正文 0 字符、0 次工具调用，<code>turn/end reason=max-tokens</code>
+   （2026-09-05 真实任务事故，会话日志铁证）。现 <code>DSH_MAX_TOKENS=32768</code>；
+   max-tokens 截断是显式失败形态（TruncatedOutputError）触发主备降级。
+   再遇 max-tokens 降级：先调低 <code>DSH_REASONING_EFFORT</code> 或继续上调上限。</li>
+<li><strong>跨进程会话恢复靠 transcript 镜像 + 别名 fork</strong>：dsh sdk profile 不支持跨进程
+   冷恢复（重启后同 session_id 会被持久化层以 "id collision" 拒绝）。薄层每轮
+   成功后在 <code>$DSH_HOME/dsh-serve/transcripts/</code> 记录 user/assistant 正文，撞碰撞时
+   自动 fork 新别名 <code>&lt;sid&gt;--r&lt;N&gt;</code>、把历史作前言拼进 prompt 重发（碰撞在 turn
+   开始即失败，不耗 token，调用方无感知）。<strong>历史只保留最近 20000 字符</strong>——
+   纠错重问（近几轮）完全够用，跨长任务多节点编排记忆不保证完整。</li>
+<li><strong>MCP 冷启动 52-88s</strong>：qvp_mcp import 慢（litellm 远程价表拉取 + OneDrive 云盘
+   IO），逼近/超过 MCP SDK 60s 握手上限，首挂靠自动重连 1-2 分钟内补上。缓解：
+   <code>MCP_EXTRA_ENV</code> 里加 <code>LITELLM_LOCAL_MODEL_COST_MAP=true</code>，并把
+   <code>DSH_INITIALIZE_TIMEOUT_SECONDS</code> 提到 120（默认已是）。</li>
+<li><strong>内置 web_search 已禁用</strong>：dsh base 自带 web_search/web_fetch，不显式点名时
+   模型会用错工具（补测实证）。serve patch 默认禁用（<code>tool-web</code> 行 disabled），
+   检索/生图/OCR 只存在 <code>mcp__qvp__*</code> 形态；生产 prompt 里也要明确点名工具名。</li>
+<li><strong>钉版纪律</strong>：dsh 处于 developer preview，官方明示 "THERE WILL BE
+   COMPATIBILITY-BREAKING CHANGES"——版本钉死 <strong>0.1.2-rc.1</strong>
+   （deploy/Dockerfile.dsh 的 <code>ARG DSH_VERSION</code>），升级前必须重跑 spike 验证清单
+   并回归 dsh_serve 单测。</li>
+<li><strong>failover 薄层自做（2026-09-10 起三级）</strong>：dsh 原生只有同路由重试
+   （max 5 次），不跨模型切换。三级线路：<strong>主 DeepSeek 官方 deepseek-v4-flash
+   （价约 pro 1/3）→ 备1 Kimi 开放平台 kimi-k3（openai-completions，
+   api.moonshot.cn，按量付费）→ 备2 Kimi Code 会员 k3（anthropic-messages，
+   api.kimi.com/coding；<code>KIMI_CODE_API_KEY</code> 空则该级自动禁用）</strong>。主路由失败
+   （连接错误/子进程崩溃/超时/max-tokens 截断/空响应/拒答词命中）时同 session
+   逐级整轮重发。流式纪律：reasoning 实时透传，content/usage 缓冲到当轮质检
+   通过才 flush——客户端永不见半截正文。代价：降级轮首 token 延迟 = 前级整轮
+   耗时（结构性成本，暂接受）。后端直连路径 <code>src/gateway/failover.py</code> 同为三级
+   （<code>kimi_code_api_key</code> 默认空=禁用第三级）。</li>
+<li><strong>profiles/node_modules 半成品处置</strong>：主备两个 dsh 子进程并发首启竞争
+   <code>$DSH_HOME/profiles/node_modules.lock</code>（组件内已加 <code>_boot_lock</code> 串行化）；
+   首启超时被强杀后 <code>profiles/node_modules</code> 留半成品，下次启动报
+   "not a dsh-managed module proxy"——<strong>删掉该目录（或整个 dsh-home）即恢复</strong>。</li>
+<li><strong>容错语义对齐 Nanobot</strong>：MCP 挂不上不阻断启动（<code>failOnStartupError:false</code>，
+   模型侧感知降级）；<code>/health</code> 的 <code>mcp.command_exists</code> 可事前发现 MCP_COMMAND
+   路径配错。qvp_mcp 的配额/成本回调是 fail-open——后端不在时工具照常返回。</li>
+</ol>
+<h3 id="57-2026-09-07">5.7 能力工具目录（功能项独立化，2026-09-07）</h3>
+<p>设计一句话：<strong>每个功能小项 = 一个可独立调用的 MCP 工具（带配额+成本记账）+
+<code>skills/</code> 对应文档</strong>；流水线行为不变，MCP 层是 <code>src/</code> 同实现的薄包装。</p>
+<table>
+<thead>
+<tr>
+<th>工具名</th>
+<th>功能</th>
+<th>包装来源</th>
+<th>配额</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>draft_write</code></td>
+<td>正文起草</td>
+<td><code>nodes.run_draft_gen</code></td>
+<td>5 次</td>
+</tr>
+<tr>
+<td><code>page_split</code></td>
+<td>分页+字数均衡校验</td>
+<td><code>nodes.run_page_split_llm</code> + <code>page_balance_issue</code></td>
+<td>5 次</td>
+</tr>
+<tr>
+<td><code>page_regen</code></td>
+<td>定点重写页文案</td>
+<td><code>services/regen.rewrite_page_copy</code></td>
+<td>5 次</td>
+</tr>
+<tr>
+<td><code>visual_write</code></td>
+<td>实景构图描述</td>
+<td><code>services/visual_writer</code></td>
+<td>5 次（成本暂记 0）</td>
+</tr>
+<tr>
+<td><code>text_draft</code></td>
+<td>起草正文/图上文案草稿（核查关用）</td>
+<td><code>pipeline/text_check</code></td>
+<td>5 次（纯计算不写库）</td>
+</tr>
+<tr>
+<td><code>prompt_analyze</code></td>
+<td>组合导入提示词分析</td>
+<td><code>services/combo</code></td>
+<td>5 次</td>
+</tr>
+<tr>
+<td><code>page_subject</code></td>
+<td>页主体提取</td>
+<td><code>services/page_subject</code></td>
+<td>5 次</td>
+</tr>
+<tr>
+<td><code>rule_check</code></td>
+<td>规则机校验</td>
+<td><code>quality/rules</code></td>
+<td>10 次</td>
+</tr>
+<tr>
+<td><code>cross_check</code></td>
+<td>交叉核验</td>
+<td><code>quality/cross_check</code></td>
+<td>10 次</td>
+</tr>
+<tr>
+<td><code>risk_classify</code></td>
+<td>风险分级</td>
+<td><code>risk/classifier</code></td>
+<td>10 次（纯函数显式输入）</td>
+</tr>
+<tr>
+<td><code>visual_check</code></td>
+<td>视觉审核</td>
+<td><code>services/visual_check</code></td>
+<td>10 次</td>
+</tr>
+</tbody>
+</table>
+<p>素材类 4 个原有工具（web_search / image_search / image_gen / ocr）不变。</p>
+<p>统一规约：
+- 返回结构统一为 <code>{"ok", "data", "error"}</code>。
+- 配额分两类，配置项 <code>mcp_max_llm_tools_per_task</code>（LLM 类，默认 5）/
+  <code>mcp_max_check_tools_per_task</code>（校验类，默认 10），按 task_id 硬限。
+- skill 文档对应关系：每个工具在 <code>skills/&lt;name&gt;/SKILL.md</code>（或同目录
+  <code>MCP.md</code> 的「独立调用」章节）有对应文档。</p>
+<p>实测结论：dsh 侧三个微任务（page_split / rule_check / draft_write）全部一次
+选对工具，配额+成本回调真实落账（证据在 <code>docs/dsh-vs-nanobot-对比分析.md</code>
+第五节）。</p>
 <h2 id="6-env">6. 外部服务与密钥（.env）</h2>
 <table>
 <thead>
@@ -275,7 +489,7 @@ FastAPI 后端（uvicorn，单进程 asyncio）         Docker Compose（每套�
 </tr>
 <tr>
 <td><code>DEEPSEEK_API_KEY</code> / <code>KIMI_API_KEY</code></td>
-<td>文本 LLM 主/备</td>
+<td>文本 LLM 主/备（dsh_serve 主备路由也用这两个）</td>
 </tr>
 <tr>
 <td><code>OPENAI_IMAGE_*</code> / <code>MOACODE_*</code> / <code>FUSIONAI_*</code></td>
@@ -295,7 +509,7 @@ FastAPI 后端（uvicorn，单进程 asyncio）         Docker Compose（每套�
 </tr>
 <tr>
 <td><code>NANOBOT_BASE_URL</code></td>
-<td>创作网关地址（本地 http://127.0.0.1:8900/v1）</td>
+<td>创作网关地址（Nanobot 栈 <code>http://127.0.0.1:8900/v1</code>；dsh 栈 <code>http://127.0.0.1:8901/v1</code>，协议 1:1）</td>
 </tr>
 <tr>
 <td><code>MOCK_IMAGE_GEN</code></td>
@@ -303,6 +517,8 @@ FastAPI 后端（uvicorn，单进程 asyncio）         Docker Compose（每套�
 </tr>
 </tbody>
 </table>
+<p>dsh_serve 自身配置（<code>DSH_*</code> / <code>MCP_*</code> / <code>FALLBACK_ENABLED</code>，全环境变量）见
+<code>dsh_serve/README.md</code> 配置全表；服务器侧在 compose environment 里注入。</p>
 <h2 id="7">7. 本地开发环境搭建</h2>
 <p>Windows（Git Bash）实测步骤：</p>
 <pre><code class="language-bash">cd code
@@ -314,17 +530,21 @@ DATABASE_URL=&quot;postgresql+asyncpg://qvp:qvp@localhost:5433/qvp&quot; \
 # 3) 起后端（注意必须用 .venv 的 python，系统 python 没装依赖）
 DATABASE_URL=&quot;postgresql+asyncpg://qvp:qvp@localhost:5433/qvp&quot; PYTHONUTF8=1 \
   .venv/Scripts/python -m uvicorn src.api.main:app --port 8003
-# 4) 起 Nanobot（会从 .env 导出密钥，MCP 由它以 stdio 子进程拉起）
+# 4) 起创作网关，二选一：
+#    a) Nanobot（会从 .env 导出密钥，MCP 由它以 stdio 子进程拉起）
 bash nanobot/start-nanobot.sh
+#    b) dsh 版一键启停（PG → dsh_serve:8901 → 后端:8003，后端
+#       NANOBOT_BASE_URL 自动指向 dsh_serve；含 stop/status 子命令）
+bash scripts/start-all-dsh.sh
 # 5) 跑测试
 DATABASE_URL=&quot;postgresql+asyncpg://qvp:qvp@localhost:5433/qvp&quot; PYTHONUTF8=1 \
   .venv/Scripts/python -m pytest tests/ -q
 </code></pre>
 <p>日常联调建议 <code>MOCK_IMAGE_GEN=true</code>（生图免费秒回）。真实出图约 1-2 分钟/张，
 一条任务全链 10-25 分钟。</p>
-<p><strong>改动后必须重启进程</strong>：后端（uvicorn）读代码在启动时；MCP 子进程继承 Nanobot
-的环境与配置快照——改 <code>.env</code> 后后端和 Nanobot <strong>都要重启</strong>，否则 MCP 还用旧值
-（实际踩过：MOCK 开关改了没生效，因为只重启了后端）。</p>
+<p><strong>改动后必须重启进程</strong>：后端（uvicorn）读代码在启动时；MCP 子进程继承创作网关
+（Nanobot 或 dsh_serve）的环境与配置快照——改 <code>.env</code> 后后端和创作网关<strong>都要重启</strong>，
+否则 MCP 还用旧值（实际踩过：MOCK 开关改了没生效，因为只重启了后端）。</p>
 <h2 id="8">8. 测试体系</h2>
 <ul>
 <li><code>tests/unit/</code>：提示词守卫（字数/胶囊/CAPSULE/人设段等）、均衡校验、纯函数。</li>
@@ -333,10 +553,15 @@ DATABASE_URL=&quot;postgresql+asyncpg://qvp:qvp@localhost:5433/qvp&quot; PYTHONU
     返回契约 JSON（test_agent_pipeline.py，照抄即可加用例）；</li>
 <li>直连路径：patch <code>call_with_failover</code> 返回固定文本/JSON；</li>
 <li>生图：SVG data-uri mock，验证落库/去重/hash。</li>
+<li>dsh_serve 组件单测在 <code>dsh_serve/tests/</code>（34 项，含 max-tokens 截断降级、
+  半截正文不出流、patch 生成等）。<strong>已纳入主回归</strong>（2026-09-07：pyproject
+  <code>testpaths=["tests","dsh_serve/tests"]</code>，裸跑 <code>pytest -q</code> 即 291 项全量）；
+  注意 venv 重建需装 <code>deepseek-harness-sdk==0.1.2rc1</code>（已在 requirements.txt）。</li>
 <li>跑法见上节命令；单个文件约 1-5 分钟。<strong>改提示词/节点后至少跑</strong>
   <code>test_page_balance + test_absorb_8002 + test_agent_pipeline + 相关集成</code>。</li>
 </ul>
-<h2 id="9-8003-8001">9. 发版流程（8003 → 8001）</h2>
+<h2 id="9-8003-8001qvp3">9. 发版流程（8003 → 8001，qvp3 走镜像本地化）</h2>
+<p>qvp2/qvptest（Nanobot 栈）：</p>
 <pre><code class="language-bash">cd code &amp;&amp; git archive --format=tar.gz -o /tmp/deploy.tar.gz HEAD
 scp -i &lt;deploy密钥&gt; /tmp/deploy.tar.gz th@117.34.118.115:/home/th/qvp2/deploy.tar.gz
 ssh th@117.34.118.115 &quot;cd /home/th/qvp2 &amp;&amp; tar xzf deploy.tar.gz &amp;&amp; \
@@ -345,11 +570,32 @@ ssh th@117.34.118.115 &quot;cd /home/th/qvp2 &amp;&amp; tar xzf deploy.tar.gz &a
 ssh th@117.34.118.115 &quot;bash /home/th/qvp-test/sync_from_qvp2.sh&quot;
 # 健康检查：curl :8003/api/tasks?limit=1 与 :8001 同
 </code></pre>
+<p>qvp3（dsh 栈，8005）——<strong>镜像本地化流程</strong>（服务器 Docker Hub 不通，基座镜像
+也拉不了，不能指望服务器 build 时 FROM 成功）：</p>
+<blockquote>
+<p>⚠️ <strong>qvp3 是完全独立栈：不参与 <code>sync_from_qvp2.sh</code>，不与 8003/8001 同步任何
+代码/数据/配置</strong>（用户决策 2026-09-07）。它有自己的代码目录、数据卷、记忆会话，
+发版只走本节下方的独立流程。</p>
+</blockquote>
+<pre><code class="language-bash"># 本地构建 + 导出（构建机要能拉 node:24-slim / python:3.12-slim）
+cd code &amp;&amp; docker build -f deploy/Dockerfile.dsh -t qvp3-app .
+docker save qvp3-app -o /tmp/qvp3-app.tar
+scp -i &lt;deploy密钥&gt; /tmp/qvp3-app.tar th@117.34.118.115:/home/th/qvp3/
+# 代码包同步（compose/.env/dsh_serve 等）后，服务器载入 + 起栈：
+ssh th@117.34.118.115 &quot;cd /home/th/qvp3 &amp;&amp; docker load -i qvp3-app.tar &amp;&amp; \
+  docker compose -f deploy/compose/qvp3.docker-compose.yml --project-directory . up -d&quot;
+# ⚠️ compose 文件在 deploy/compose/ 子目录，必须 --project-directory .
+#    （build context 与 ./.env 挂载等相对路径都按仓库根解析）
+# 健康检查：curl :8005/api/tasks?limit=1 与 :8005/handover
+</code></pre>
 <ul>
+<li>基座镜像同理本地化：<code>docker save node:24-slim</code> / <code>docker save postgres:16</code> →
+  scp → 服务器 <code>docker load</code>（Dockerfile.dsh 头部注释有写）。</li>
 <li>迁移随启动幂等应用，无需手工执行。</li>
 <li>技术交接文档在线版随包自动更新：改 <code>docs/技术交接文档-*.md</code> 后运行
   <code>.venv/Scripts/python scripts/build_handover.py</code> 重新生成 <code>static/handover.html</code>
-  并一并提交，线上 <code>/handover</code> 即为最新版。</li>
+  并一并提交，线上 <code>/handover</code> 即为最新版（脚本自动取文件名最新的一篇，
+  新日期文档无需改脚本）。</li>
 <li><code>.deployed_commit</code> 是标记文件（tar 不含 .git，同步脚本读它显示版本），<strong>要手动 echo</strong>。</li>
 <li>服务器 Docker Hub 不通：镜像（postgres:16 等）全部用服务器本地已有镜像，勿改 tag。</li>
 </ul>
@@ -365,16 +611,22 @@ ssh th@117.34.118.115 &quot;bash /home/th/qvp-test/sync_from_qvp2.sh&quot;
 </thead>
 <tbody>
 <tr>
+<td>8005</td>
+<td>qvp3</td>
+<td>/home/th/qvp3</td>
+<td><strong>dsh 创作网关新栈（本项目唯一负责）</strong>，2026-09-07 上线，公网可达</td>
+</tr>
+<tr>
 <td>8003</td>
 <td>qvp2</td>
 <td>/home/th/qvp2</td>
-<td><strong>用户生产</strong>（我们负责）</td>
+<td>⛔ 生产栈，<strong>2026-09-08 起已移交同事</strong>，本项目不动</td>
 </tr>
 <tr>
 <td>8001</td>
 <td>qvptest</td>
 <td>/home/th/qvp-test</td>
-<td><strong>测试</strong>（我们负责，从 8003 同步）</td>
+<td>⛔ 测试栈，<strong>2026-09-08 起已移交同事</strong>，本项目不动</td>
 </tr>
 <tr>
 <td>8002</td>
@@ -392,10 +644,17 @@ ssh th@117.34.118.115 &quot;bash /home/th/qvp-test/sync_from_qvp2.sh&quot;
 </table>
 <h2 id="11">11. 服务器红线（最高优先级）</h2>
 <ol>
-<li><strong>8002、8000 两台栈绝对不能动</strong>（不 restart、不 build、不 down、不 rm、不进容器）。
-   历史上误操作过 8002 引发事故；8000 是另一工程师的生产。</li>
-<li>所有改动：本地验证（测试+真实冒烟）→ 用户确认 → 才推 8003 → 同步 8001。</li>
-<li>服务器命令只作用于 <code>/home/th/qvp2</code> 与 <code>/home/th/qvp-test</code> 两个目录。</li>
+<li><strong>8003、8001、8002、8000 四台栈全部不动</strong>（不 restart、不 build、不 down、
+   不 rm、不进容器、不改文件）：8002/8000 是历史红线；<strong>8003/8001 已于
+   2026-09-08 移交同事</strong>（本地 8003 原生栈同理，只读参考用）。</li>
+<li><strong>本项目开发只允许同步两个目标：本地 8005 与服务器 8005（qvp3）</strong>。
+   发版门禁（2026-09-08 用户决策）：dsh 改动一律先更新本地 8005
+   （<code>docker compose -f deploy/compose/qvp3.docker-compose.yml --project-directory . up -d</code>
+   或 docker cp 热更新 static/）→ 本地验证 → 用户确认 → 才走 §9 镜像本地化
+   流程更新服务器 8005。</li>
+<li>服务器命令只作用于 <code>/home/th/qvp3</code> 一个目录。</li>
+<li>历史存档（勿执行）：2026-09-08 前曾有 qvp2/qvp-test 的发版与同步流程
+   （§9 上方 qvp2/qvptest 段落），移交后仅作历史参考。</li>
 </ol>
 <h2 id="12">12. 数据模型速览（关键表）</h2>
 <ul>
@@ -408,7 +667,10 @@ ssh th@117.34.118.115 &quot;bash /home/th/qvp-test/sync_from_qvp2.sh&quot;
   <code>claims</code>/<code>evidences</code>（取证）、<code>node_events</code>（幂等+记账+error_class）、
   <code>review_sessions</code>/<code>review_actions</code>/<code>approvals</code>/<code>reject_marks</code>（审核与定点驳回）、
   <code>style_keywords</code>（两级风格库，owner_id NULL=公共）、<code>prompt_library</code>（提示词库覆盖）、
-  <code>activity_logs</code>、<code>issue</code>、<code>publish_snapshots</code>。</li>
+  <code>activity_logs</code>、<code>issue</code>、<code>publish_snapshots</code>、
+  <code>model_rates</code>（020/021 动态费率表：高峰/空闲/缓存命中单价+分通道按次价，管理页可改即生效）、
+  <code>balance_baselines</code>（021 余额基准点：无公开余额 API 的厂商 fusion/kimi 由管理员
+  抄录控制台余额，台账类别消耗扣减估算当前余额）。</li>
 <li>⚠️ 列名易错点（实测踩过）：风格描述在 <code>style_keywords.description</code>；
   资产类型是 <code>source_type</code> 不是 asset_type；页文案列是 <code>body</code> 不是 page_text；
   activity_logs 的列是 <code>action</code>/<code>detail</code>，tasks 没有 current_node 列（current_node 是
@@ -429,35 +691,88 @@ ssh th@117.34.118.115 &quot;bash /home/th/qvp-test/sync_from_qvp2.sh&quot;
 <li><strong>Windows 本地</strong>：必须用 <code>.venv/Scripts/python.exe</code>（系统 python 没装依赖）；
    Git Bash 调 curl 上传文件用相对路径（<code>/tmp</code> 路径转换会失败）；中文 query 参数要
    URL 编码。仓库部分文件 CRLF，git 会警告，无碍。</li>
-<li><strong>MCP 环境缓存</strong>：<code>qvp_mcp</code> 是 Nanobot 的 stdio 子进程，读 <code>.env</code> 发生在
-   Nanobot 启动拉起子进程那一刻——改配置后「重启后端」不够，要重启 Nanobot。</li>
+<li><strong>MCP 环境缓存</strong>：<code>qvp_mcp</code> 是创作网关的 stdio 子进程，读 <code>.env</code> 发生在网关
+   启动拉起子进程那一刻——改配置后「重启后端」不够，要重启创作网关
+   （Nanobot/dsh_serve 同理）。</li>
 <li><strong>提示词多路径</strong>：任何写作类要求都要检查 5.3 列出的全部注入点，否则只改一处
-   不生效（生产走 Agent 路径）。</li>
+   不生效（生产走 Agent 路径）。字数契约已单点化（contract.txt），其余提示词
+   改动先想「还有哪条路径也吃这段词」。</li>
 <li><strong>排障顺序</strong>：<code>docker logs qvp2-app</code>（或本地 uvicorn 输出）→ SSE
    <code>/api/stream/state</code>（含 error/debug/trace，比库里 error_class 详细）→
-   Nanobot 会话日志 <code>~/.nanobot/workspace/sessions/*.jsonl</code>（Agent 原始对话与
-   工具返回，余额不足这类真因都在这）。</li>
+   创作网关会话日志：Nanobot 在 <code>~/.nanobot/workspace/sessions/*.jsonl</code>；
+   dsh 在 <code>$DSH_HOME/sessions/**/session.jsonl.zstd</code>（zstd 压缩，用
+   <code>dsh_serve/analyze_session.py</code> 解析——余额不足、max-tokens 截断这类真因都在这）。</li>
 <li><strong>图上文案字数</strong>：模型偶尔越界 ±5 字，硬校验会自动重试一次，仍越界保留较轻一版
    交人工审图兜底——不要为此加死循环。</li>
 <li><strong>生图成本</strong>：一条任务 6-8 张上限（配额硬限），余额/限流错误会以任务失败收场，
    报错现在会带 Agent 备注（1eb6c0b）。</li>
+<li><strong>docker run 裸命令调 qvp3 镜像会触发 ENTRYPOINT</strong>（entrypoint.dsh.sh 会起
+   init_db→dsh_serve→后端一整套）——只想进容器调试必须
+   <code>docker run --entrypoint sh ...</code>，否则端口/进程一团乱。</li>
+<li><strong>MCP_COMMAND 必须全路径</strong>：dsh_serve 按文件路径判定存在性
+   （<code>/health</code> 的 <code>mcp.command_exists</code>），写 <code>python</code> 这种靠 PATH 解析的名字会
+   判不存在、MCP 静默不挂；容器内用 <code>/usr/local/bin/python</code>，本地用
+   <code>.venv/Scripts/python.exe</code> 全路径。</li>
+<li><strong>node alpine 与 Debian glibc 不匹配</strong>：<code>node:*-alpine</code> 是 musl libc，二进制
+   COPY 进 python:3.12-slim（Debian）跑不起来（exit 127）——应用镜像必须用
+   <code>node:24-slim</code> 做复制源（deploy/Dockerfile.dsh 头部注释有写）。</li>
+<li><strong>execute_node 已改三段式短事务</strong>（2026-09）：旧版一个事务跑完整个节点，
+    长外部 I/O 期间连接被中间层掐断、收尾 commit 抛 InterfaceError 拖垮节点；
+    现为「短事务落 started → 节点裸跑 → 新短事务回写 finished/failed」。
+    取消语义随之改变：CancelledError 显式捕获后<strong>删除本次 started 事件</strong>
+    （等价旧版"取消即回滚无残留"，重试会重新执行）；进程崩溃会残留 started
+    事件（幂等层把未完成事件视为可重跑，删旧重建）——任务详情短暂显示
+    running 属预期，不要误判为卡死。</li>
+<li><strong>能力工具内嵌 LLM 调用叠加 Agent 外层推理</strong>，单工具耗时可达 400+s——
+    调用方超时需 ≥600s（生产链路 3000s 已够）；curl 超时丢响应不丢结果，
+    同 session 追问可取回。</li>
 </ol>
 <h2 id="15-backlog">15. 近期改动史与待办 backlog</h2>
 <p>近期（2026-08~09）主线，详见 git log 与 docs/：
 - 33bcffc 生图丰富度训练（横幅金句条/序号章/贴纸/高亮；新中式史料卡/政务办事指南卡风格）
 - 9fefa33 正文真人感增强（_DRAFT_SHARED 三路径注入 + 信息密度段）
 - 6a833e3 图上文案提密度（80-130 字七处同步）
-- 1eb6c0b Agent 契约失败报错带备注</p>
+- 1eb6c0b Agent 契约失败报错带备注
+- ba0ce24+ <strong>dsh 创作网关重构</strong>（2026-09-07 本版基线）：
+  Nanobot→dsh_serve 薄层（dsh 0.1.2-rc.1 钉版）、提示词 skill 化
+  （skills/ 10 包 + contract.txt 字数契约单点）、execute_node 三段式短事务、
+  qvp3(:8005) 灰度新栈上线；验证全记录 <code>docs/dsh-spike-验证记录.md</code>
+- <strong>生图升级 WS3+WS1+100% 标准</strong>（2026-09-11，工作副本无 git 以本文档为准）：
+  公共风格库单一事实来源 <code>data/styles.json</code> + <code>scripts/sync_styles.py</code>
+  （init_db 末尾幂等同步，公共库改动一律改 json）；迁移 023 给 style_keywords
+  加 use_when/pitfalls/source 三列（风格选型打分吃 use_when 权重减半，
+  build_style_block 拼「适用/忌讳」段，Agent 判定段 2b 带完整信号）；
+  错别字/异体字 100% 审核标准：图上文字质检由「相似度 ≥0.82」提升为
+  「归一化（繁简/异体字映射 + 全半角统一 + 去空白，<code>src/quality/text_norm.py</code>）
+  后逐字 100% 相等」，不一致触发重生成、仍不符交人工，不降级放行
+- <strong>生图升级 WS2+WS4</strong>（2026-09-11）：WS2 模板蒸馏（借鉴
+  .vendor/awesome-gpt-image-2）——data/styles.json 既有 27 条补齐
+  use_when/pitfalls（蒸馏物 B），新增 6 条 oss_distilled 公共风格
+  （爆炸拆解透视卡/时间轴演进卡/知识图谱关系卡/自然科普图鉴卡/
+  报告手册排版卡/流程图解科普卡，蒸馏物 A），公共库达 33 条；
+  蒸馏物 C（layouts 骨架句追加）按「verify 零差异」门禁放弃
+  （追加必然改变渲染，构造上互斥，且底座已有等价约束）；
+  WS4 基准集 <code>data/bench/bench_set.json</code>（20 题 = 开源蒸馏 8 + 历史真实 12）+
+  <code>scripts/bench_image_quality.py</code>（投递→轮询终态→缩略图拼版快审，
+  真实批需用户确认，联调走 MOCK）</p>
 <p>Backlog（未做）：
 - 两级风格库偏好闭环深化（个人库使用数据回流推荐）
 - partial_regen Agent 化（当前定点重生成仍走直连提示词）
-- <code>IMAGE_GEN_CHANNELS</code> 加备胎（当前 .env 仅 fusion，主通道挂了会全失败）
-- 前端无构建方案在视图变多后可考虑迁 Vite（可选）</p>
+- ~~<code>IMAGE_GEN_CHANNELS</code> 加备胎~~（2026-09-10 已完成：fusion,linkai,moacode 轮询）
+- WS4 基准批真实跑轮待用户确认（机制已就绪，约 ¥50-65/轮）；WS2 蒸馏物 C
+  （开源骨架句进 layouts）待用户明确放行后另立改动（本轮按门禁放弃）
+- 前端无构建方案在视图变多后可考虑迁 Vite（可选）
+- qvp3 灰度观察：长会话 compaction 行为与 Nanobot 不同，长任务输出稳定性待观察；
+  32768 对更长任务仍可能被推理吃光（见 5.6 第 2 条残留风险）
+- qvp2（Nanobot 栈）→ qvp3（dsh 栈）的生产切换评估（灰度稳定后）</p>
 <h2 id="16">16. 找谁/找什么</h2>
 <ul>
 <li>历史设计文档：<code>docs/改造说明-Nanobot全链Agent.md</code>（架构决策）、
   <code>docs/开发思路与工作架构.md</code>、<code>docs/风格库训练方法总结.md</code>（风格训练方法论）</li>
-<li>提示词演进：<code>src/gateway/prompt_versions.py</code> 内注释按日期可当 changelog 读</li>
+<li>dsh 迁移：<code>docs/dsh-spike-验证记录.md</code>（Go/No-Go + 三轮补测铁证）、
+  <code>dsh_serve/README.md</code>（配置全表/失败判定清单/遗留）</li>
+<li>提示词演进：<code>src/gateway/prompt_versions.py</code> 与各 <code>skills/&lt;name&gt;/SKILL.md</code>
+  的 notes 按日期可当 changelog 读</li>
 <li>平台使用手册（运营视角）：web 端「样例」页与各视图内嵌说明</li>
 </ul>
 </main>

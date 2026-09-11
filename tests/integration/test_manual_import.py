@@ -14,6 +14,14 @@ from src.models.tasks import Task
 _BODY = ("共享单车是城市短途出行的好选择。" + "先找车再扫码开锁，骑行结束在规范停放点还车，注意避让人流。" * 10)  # >500 字
 
 
+def _echo_polish(prompt: str):
+    """校稿轮（prompt 含「校稿编辑」，2026-09-07 两轮 Kimi 校稿）：
+    回显「稿件：」之后的待校正文（内容不变、长度不变，护栏不触发），
+    让 fake 的起草 JSON 按原语义落到 body_draft。"""
+    return {"text": prompt.split("稿件：\n", 1)[-1],
+            "model_version": "kimi/k3", "cost_cny": 0.0, "degraded": False}
+
+
 @pytest.mark.asyncio
 async def test_manual_import_creates_task_with_user_body():
     """端点：创建 draft 任务 + text_review 预存 user_body/source + 入队。"""
@@ -86,6 +94,8 @@ async def test_text_check_rewrite_mode_keeps_user_body():
 
     captured = {}
     async def fake_failover(prompt, **kw):
+        if "校稿编辑" in prompt:
+            return _echo_polish(prompt)
         captured["prompt"] = prompt
         return {"text": json.dumps({
             "query_clean": {"issues": [], "suggested": ""},
@@ -121,12 +131,19 @@ async def test_text_reject_marks_drive_targeted_rewrite():
         "pages_draft": ["P1旧", "P2", "P3", "P4", "P5", "P6"],
         "image_prompt_draft": ["d1", "d2", "d3", "d4", "d5", "d6"]},
         ensure_ascii=False), "model_version": "m"}
-    with patch("src.pipeline.text_check.call_with_failover", return_value=first):
+
+    async def fake_first(prompt, **kw):
+        if "校稿编辑" in prompt:
+            return _echo_polish(prompt)
+        return first
+    with patch("src.pipeline.text_check.call_with_failover", side_effect=fake_first):
         await run_text_check(tid)
 
     # 驳回：标记第1页文案 + 正文
     captured = {}
     async def fake_failover(prompt, **kw):
+        if "校稿编辑" in prompt:
+            return _echo_polish(prompt)
         captured["prompt"] = prompt
         return {"text": json.dumps({
             "query_clean": {"issues": [], "suggested": ""},

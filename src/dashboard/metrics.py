@@ -42,18 +42,17 @@ async def human_touch_rate_last_24h():
 
 
 async def p95_node_duration():
+    # 近 24h 窗口 + DB 端 percentile_cont：替代全表拉 durations 到 Python 排序
+    # （随 node_events 增长从 O(全表) 降到 O(窗口)，走 node_events_started_idx）
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
     async with SessionLocal() as session:
         result = await session.execute(
-            select(func.extract("epoch", NodeEvent.finished_at - NodeEvent.started_at))
-            .where(NodeEvent.started_at.is_not(None),
+            select(func.percentile_cont(0.95).within_group(
+                func.extract("epoch", NodeEvent.finished_at - NodeEvent.started_at)))
+            .where(NodeEvent.started_at >= cutoff,
                    NodeEvent.finished_at.is_not(None),
                    NodeEvent.anomaly_flag.is_(False)))
-        durations = [r[0] for r in result if r[0] is not None]
-        if not durations:
-            return 0
-        durations.sort()
-        idx = int(len(durations) * 0.95)
-        return durations[min(idx, len(durations) - 1)]
+        return result.scalar() or 0
 
 
 async def cost_per_task_24h():

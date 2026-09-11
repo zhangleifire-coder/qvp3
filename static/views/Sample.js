@@ -14,6 +14,7 @@ const SampleView = {
     },
   },
   methods: {
+    thumbOf,    // api.js：网格缩略图
     pageCopyOf(i) {
       const pcs = (this.item && this.item.page_copies) || [];
       const p = pcs.find(x => x.page_index === i);
@@ -77,7 +78,7 @@ const SampleView = {
         <h2>交付配图（{{ genAssets.length }}）</h2>
         <div class="img-grid">
           <figure v-for="a in genAssets" :key="a.page_index">
-            <img :src="a.display_url || a.image_url" loading="lazy" alt="" @click="openZoom(a, false)">
+            <img :src="thumbOf(a)" loading="lazy" alt="" @click="openZoom(a, false)">
             <figcaption class="muted">P{{ a.page_index }} · AI 生成</figcaption>
           </figure>
         </div>
@@ -86,7 +87,7 @@ const SampleView = {
         <h2>实景参考图（{{ refAssets.length }}）<span class="muted" style="font-weight:normal;font-size:13px">仅作生图参考，不随内容交付</span></h2>
         <div class="img-grid">
           <figure v-for="a in refAssets" :key="a.page_index">
-            <img :src="a.display_url || a.image_url" loading="lazy" alt="" @click="openZoom(a, true)">
+            <img :src="thumbOf(a)" loading="lazy" alt="" @click="openZoom(a, true)">
             <figcaption class="muted">参考 {{ a.page_index }} · 实景抓取</figcaption>
           </figure>
         </div>

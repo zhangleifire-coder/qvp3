@@ -2,7 +2,7 @@
 const SettingsView = {
   data() {
     return {
-      styleItems: [], styleForm: { style_name: '', keywords: '', description: '', enabled: true, public: false },
+      styleItems: [], styleForm: { style_name: '', keywords: '', description: '', use_when: '', pitfalls: '', enabled: true, public: false },
       styleImportMsg: '', importPublic: false,
       styleStats: null, styleDefault: null,
       sysItems: [], sysMsg: '',
@@ -60,7 +60,7 @@ const SettingsView = {
     async saveStyle() {
       try {
         await api.post('/api/styles?actor=' + encodeURIComponent((getUser() || {}).name || ''), this.styleForm);
-        this.styleForm = { style_name: '', keywords: '', description: '', enabled: true, public: false };
+        this.styleForm = { style_name: '', keywords: '', description: '', use_when: '', pitfalls: '', enabled: true, public: false };
         this.loadStyles();
       } catch (e) { alert('保存失败：' + e.message); }
     },
@@ -89,7 +89,8 @@ const SettingsView = {
       // 错误落入个人库（同名分叉成两条）
       this.styleForm = {
         style_name: r.style_name, keywords: r.keywords,
-        description: r.description, enabled: r.enabled,
+        description: r.description, use_when: r.use_when || '',
+        pitfalls: r.pitfalls || '', enabled: r.enabled,
         public: r.scope === 'public',
       };
     },
@@ -259,15 +260,25 @@ const SettingsView = {
         <button class="tab" :class="{on: tab==='logs'}" @click="tab='logs'; loadLogs()">工作日志</button>
         <button class="tab" :class="{on: tab==='styles'}" @click="tab='styles'; loadStyles()">风格关键词库</button>
         <button v-if="isAdmin" class="tab" :class="{on: tab==='system'}" @click="tab='system'; loadSys()">系统参数</button>
+        <button v-if="isAdmin" class="tab" :class="{on: tab==='super'}">🛡️ 超级管理</button>
 <button class="tab" :class="{on: tab==='password'}" @click="tab='password'">修改密码</button>
       </div>
+    </div>
+
+    <div class="card" v-if="isAdmin && tab==='super'">
+      <h2>🛡️ 超级管理 · 模型供给控制台</h2>
+      <p class="muted" style="font-size:13px">
+        各模型 API Key 的查看/修改、文本主模型更换、备用模型链启停、生图主通道与创作网关切换。
+        独立于账号密码的第二道门禁（首次进入设置超级密码），明文查看有审计。
+      </p>
+      <button class="btn" @click="$router.push('/superadmin')">进入超级管理控制台 →</button>
     </div>
 
     <div class="card" v-if="tab==='styles'">
       <h2>风格关键词库 <span class="muted" style="font-weight:normal;font-size:13px">生成时按关键词自动匹配视觉风格（我的库优先，空则公共库，再空用系统内置）；钉选默认后直通不再随机</span></h2>
       <div style="display:flex;gap:10px;align-items:center;margin:10px 0;flex-wrap:wrap">
         <input ref="styleCsv" type="file" accept=".csv" style="display:none" @change="importStyles">
-        <button class="btn btn-outline btn-sm" @click="$refs.styleCsv.click()">📥 导入训练数据 CSV（style_name,keywords,description）</button>
+        <button class="btn btn-outline btn-sm" @click="$refs.styleCsv.click()">📥 导入训练数据 CSV（style_name,keywords,description[,use_when,pitfalls]）</button>
         <label v-if="isAdmin" class="muted" style="font-size:13px;display:flex;align-items:center;gap:4px">
           <input type="checkbox" v-model="importPublic"> 导入到公共库
         </label>
@@ -282,23 +293,29 @@ const SettingsView = {
           <input type="checkbox" v-model="styleForm.public"> 公共
         </label>
         <button class="btn btn-primary btn-sm">{{ styleForm.id ? '更新' : '添加' }}</button>
-        <button v-if="styleForm.id" type="button" class="btn btn-outline btn-sm" @click="styleForm={style_name:'',keywords:'',description:'',enabled:true,public:false}">取消</button>
+        <button v-if="styleForm.id" type="button" class="btn btn-outline btn-sm" @click="styleForm={style_name:'',keywords:'',description:'',use_when:'',pitfalls:'',enabled:true,public:false}">取消</button>
       </form>
+      <form @submit.prevent="saveStyle" style="display:flex;gap:10px;margin-top:6px;flex-wrap:wrap">
+        <textarea v-model="styleForm.use_when" placeholder="适用条件（use_when，≤40 字，喂风格选型打分；如：历史/传统/史料题材优先）" style="flex:1;min-width:260px;min-height:38px"></textarea>
+        <textarea v-model="styleForm.pitfalls" placeholder="风格忌讳（pitfalls，≤3 条、单条 ≤30 字、正向优先，用；分隔；注入生图提示词）" style="flex:1;min-width:260px;min-height:38px"></textarea>
+      </form>
+      <p v-if="styleForm.public" class="muted" style="font-size:12px;margin:4px 0 0">提示：公共风格库的内容改动以仓库 data/styles.json 为准（重启同步会覆盖名称/关键词/描述/适用/忌讳）；此处保存公共条目适合临时停用等场景。</p>
       <table class="table" style="margin-top:10px">
-        <thead><tr><th>风格名</th><th>归属</th><th>关键词</th><th>描述词</th><th>启用</th><th style="text-align:right">操作</th></tr></thead>
+        <thead><tr><th>风格名</th><th>归属</th><th>来源</th><th>关键词</th><th>描述词</th><th>启用</th><th style="text-align:right">操作</th></tr></thead>
         <tbody>
           <tr v-for="r in styleItems" :key="r.id">
             <td><b>{{ r.style_name }}</b></td>
             <td><span class="tag" :class="r.scope==='mine' ? 'tag-blue' : 'tag-gray'">{{ r.scope==='mine' ? '我的' : '公共' }}</span></td>
+            <td><span class="tag tag-gray" style="font-size:12px">{{ r.source || 'manual' }}</span></td>
             <td class="muted" style="font-size:13px">{{ r.keywords || '—' }}</td>
-            <td class="muted" style="font-size:13px">{{ r.description || '—' }}</td>
+            <td class="muted" style="font-size:13px">{{ r.description || '—' }}<div v-if="r.use_when" style="font-size:12px">适用：{{ r.use_when }}</div><div v-if="r.pitfalls" style="font-size:12px">忌讳：{{ r.pitfalls }}</div></td>
             <td><span class="tag" :class="r.enabled ? 'tag-green' : 'tag-gray'">{{ r.enabled ? '启用' : '停用' }}</span></td>
             <td style="text-align:right">
               <button v-if="r.scope==='mine' || isAdmin" class="btn btn-outline btn-sm" @click="editStyle(r)">编辑</button>
               <button v-if="r.scope==='mine' || isAdmin" class="btn btn-sm btn-danger-ghost" @click="removeStyle(r)">删除</button>
             </td>
           </tr>
-          <tr v-if="!styleItems.length"><td colspan="6" class="muted" style="text-align:center;padding:18px">暂无风格条目——添加或导入训练数据后，生成时将自动匹配</td></tr>
+          <tr v-if="!styleItems.length"><td colspan="7" class="muted" style="text-align:center;padding:18px">暂无风格条目——添加或导入训练数据后，生成时将自动匹配</td></tr>
         </tbody>
       </table>
 

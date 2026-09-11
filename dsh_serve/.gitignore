@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+.pytest_cache/
+dsh-home/
+dsh-home-*/
+dsh-home.testdata-*/
+*.log

@@ -3,6 +3,7 @@ import json
 import hashlib
 import io
 import uuid
+import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Response
@@ -251,7 +252,6 @@ async def list_tasks(status: str | None = None, mode: str | None = None,
                      risk_level: str | None = None, q: str | None = None,
                      limit: int = 20, offset: int = 0):
     """任务列表：状态/模式/风险筛选 + 关键词搜索 + 分页，每项带当前节点与风险等级。"""
-    from src.models.events import NodeEvent
     from src.models.review import RiskClassification
     limit = max(1, min(limit, 200))
     offset = max(0, offset)
@@ -272,20 +272,30 @@ async def list_tasks(status: str | None = None, mode: str | None = None,
             select(Task).where(*filters)
             .order_by(Task.created_at.desc()).limit(limit).offset(offset))).scalars().all()
         items = []
+        # 2 条聚合 SQL 替代 per-task 循环（N+1：Tasks 页 5s 轮询 × limit=100
+        # 是全系统最热 DB 负载）——每任务最新节点 + 风险分类批量取回后内存 join
+        task_ids = [t.id for t in tasks]
+        current_nodes: dict[str, str] = {}
+        risks: dict[str, RiskClassification] = {}
+        if task_ids:
+            current_nodes = {str(r[0]): r[1] for r in (await session.execute(
+                text("SELECT DISTINCT ON (task_id) task_id, node_name FROM node_events"
+                     " WHERE task_id = ANY(:ids)"
+                     " ORDER BY task_id, enqueued_at DESC"),
+                {"ids": task_ids})).all()}
+            for rc in (await session.execute(
+                    select(RiskClassification).where(
+                        RiskClassification.task_id.in_(task_ids)))).scalars().all():
+                risks.setdefault(str(rc.task_id), rc)  # setdefault 与原 .first() 同义
         for t in tasks:
-            current = (await session.execute(
-                select(NodeEvent.node_name).where(NodeEvent.task_id == t.id)
-                .order_by(NodeEvent.enqueued_at.desc()).limit(1))).scalar_one_or_none()
-            risk = (await session.execute(
-                select(RiskClassification).where(
-                    RiskClassification.task_id == t.id))).scalars().first()
+            risk = risks.get(str(t.id))
             items.append({
                 "id": str(t.id),
                 "query": t.query,
                 "mode": t.mode,
                 "status": t.status,
                 "risk_level": risk.level if risk else None,
-                "current_node": current,
+                "current_node": current_nodes.get(str(t.id)),
                 "created_at": t.created_at.isoformat() if t.created_at else None,
             })
         return {"total": total, "items": items}
@@ -298,7 +308,7 @@ async def task_detail(task_id: str):
     from src.models.entities import Claim, Evidence
     from src.models.assets import Asset
     from src.models.events import NodeEvent
-    from src.models.review import RiskClassification, ReviewSession, ReviewAction
+    from src.models.review import RiskClassification, ReviewSession
     from src.api.review import REVIEW_ROLES
     from datetime import datetime, timezone
     try:
@@ -331,11 +341,15 @@ async def task_detail(task_id: str):
         claims = (await session.execute(
             select(Claim).where(Claim.task_id == tid)
             .order_by(Claim.position))).scalars().all()
-        evidences = []
-        for c in claims:
-            evs = (await session.execute(
-                select(Evidence).where(Evidence.claim_id == c.id))).scalars().all()
-            evidences.extend(evs)
+        # evidence 一次 IN 批量查 + 按 claim_id 分桶（替代 per-claim N+1），
+        # 按 claims 顺序回填保持返回顺序不变
+        ev_by_claim: dict = {}
+        if claims:
+            for ev in (await session.execute(
+                    select(Evidence).where(
+                        Evidence.claim_id.in_([c.id for c in claims])))).scalars().all():
+                ev_by_claim.setdefault(ev.claim_id, []).append(ev)
+        evidences = [ev for c in claims for ev in ev_by_claim.get(c.id, [])]
         risk = (await session.execute(
             select(RiskClassification).where(
                 RiskClassification.task_id == tid))).scalars().first()
@@ -346,9 +360,33 @@ async def task_detail(task_id: str):
         for rs in sessions:
             by_role.setdefault(rs.role, []).append(rs)
         review_status = []
+        # 先定各角色最新 session，再 2 条聚合 SQL 批量取最新 action + 审核员姓名
+        # （替代 per-role 2 条循环查询；users IN 批量示范见 review.py queue）
+        latest_by_role: dict[str, ReviewSession | None] = {}
         for role in REVIEW_ROLES:
             role_sessions = by_role.get(role, [])
-            rs = max(role_sessions, key=lambda s: s.finished_at or s.started_at or s.locked_at or datetime.min.replace(tzinfo=timezone.utc), default=None)
+            latest_by_role[role] = max(
+                role_sessions,
+                key=lambda s: s.finished_at or s.started_at or s.locked_at
+                or datetime.min.replace(tzinfo=timezone.utc),
+                default=None)
+        session_ids = [rs.id for rs in latest_by_role.values() if rs is not None]
+        reviewer_ids = [rs.reviewer_id for rs in latest_by_role.values()
+                        if rs is not None and rs.reviewer_id is not None]
+        latest_actions: dict[str, str] = {}
+        if session_ids:
+            latest_actions = {str(r[0]): r[1] for r in (await session.execute(
+                text("SELECT DISTINCT ON (review_session_id) review_session_id, action_type"
+                     " FROM review_actions WHERE review_session_id = ANY(:ids)"
+                     " ORDER BY review_session_id, server_ts DESC"),
+                {"ids": session_ids})).all()}
+        reviewer_names: dict[str, str] = {}
+        if reviewer_ids:
+            reviewer_names = {str(r[0]): r[1] for r in (await session.execute(
+                text("SELECT id, name FROM users WHERE id = ANY(:ids)"),
+                {"ids": reviewer_ids})).all()}
+        for role in REVIEW_ROLES:
+            rs = latest_by_role[role]
             entry = {"role": role, "status": "no_session", "action": None, "reviewer": None}
             if rs is not None:
                 if rs.finished_at is not None:
@@ -359,15 +397,9 @@ async def task_detail(task_id: str):
                     entry["status"] = "active"
                 else:
                     entry["status"] = "pending"
-                act = (await session.execute(
-                    select(ReviewAction).where(ReviewAction.review_session_id == rs.id)
-                    .order_by(ReviewAction.server_ts.desc()).limit(1))).scalars().first()
-                if act:
-                    entry["action"] = act.action_type
+                entry["action"] = latest_actions.get(str(rs.id))
                 if rs.reviewer_id is not None:
-                    entry["reviewer"] = (await session.execute(
-                        text("SELECT name FROM users WHERE id = :id"),
-                        {"id": rs.reviewer_id})).scalar_one_or_none()
+                    entry["reviewer"] = reviewer_names.get(str(rs.reviewer_id))
             review_status.append(entry)
         from src.models.review import RejectMark
         marks = (await session.execute(
@@ -1021,8 +1053,10 @@ async def edit_image(asset_id: str, payload: ImageEditIn):
         # 快照新格式 {"style_en","pages":[英文视觉]}→英文骨架；旧 [中文主体]→中文骨架
         if not old.prompt_used:
             from src.services.style_select import (ensure_task_style,
-                                                   build_style_block)
+                                                   build_style_block,
+                                                   style_extras_for)
             s_name, s_desc = await ensure_task_style(old.task_id)
+            s_uw, s_pf = await style_extras_for(s_name, task.created_by)
             snap = task.page_subjects
             v_snap = snap if isinstance(snap, dict) else None
             s_snap = snap if isinstance(snap, list) else []
@@ -1031,7 +1065,8 @@ async def edit_image(asset_id: str, payload: ImageEditIn):
                 task.mode or "general",
                 page.body if page else task.query,
                 pi,
-                style_block=None if v_snap else build_style_block(s_name, s_desc),
+                style_block=None if v_snap else build_style_block(
+                    s_name, s_desc, s_uw, s_pf),
                 page_subject=(s_snap[pi - 1] if 1 <= pi <= len(s_snap) else None),
                 visual=(v_snap["pages"][pi - 1]
                         if v_snap and 1 <= pi <= len(v_snap["pages"]) else None),
@@ -1331,8 +1366,9 @@ async def cancel_task(task_id: str, actor: str = "anonymous"):
     """手工中断任务：排队中→直接出队；生产中→取消执行协程（幂等可重试）。
 
     注意：中断只停止本侧流水线与流式读取；Nanobot 侧 Agent 若已开始生成，
-    其当轮推理会继续到自然结束（MCP 配额仍在兜底）。已产生的产物与
-    node_events 保留，重试时已完成节点跳过。
+    其当轮推理会继续到自然结束（MCP 配额仍在兜底）。已产生的产物与已完成
+    节点的 node_events 保留（被中断节点的 started 事件由 execute_node 显式
+    清理），重试时已完成节点跳过、被中断节点重新执行。
     """
     try:
         tid = uuid.UUID(task_id)
@@ -1439,10 +1475,14 @@ async def random_sample():
             select(PageCopy).where(PageCopy.task_id == tid)
             .order_by(PageCopy.page_index))).scalars().all()
         claims = (await session.execute(select(Claim).where(Claim.task_id == tid))).scalars().all()
-        evidences = []
-        for c in claims:
-            evs = (await session.execute(select(Evidence).where(Evidence.claim_id == c.id))).scalars().all()
-            evidences.extend(evs)
+        # evidence 一次 IN 批量查 + 按 claim_id 分桶（替代 per-claim N+1），顺序不变
+        ev_by_claim: dict = {}
+        if claims:
+            for ev in (await session.execute(
+                    select(Evidence).where(
+                        Evidence.claim_id.in_([c.id for c in claims])))).scalars().all():
+                ev_by_claim.setdefault(ev.claim_id, []).append(ev)
+        evidences = [ev for c in claims for ev in ev_by_claim.get(c.id, [])]
         risk = (await session.execute(
             select(RiskClassification).where(RiskClassification.task_id == tid))).scalars().first()
         return {
@@ -1460,6 +1500,56 @@ async def random_sample():
             "evidences": [{"source_url": e.source_url, "excerpt": e.excerpt} for e in evidences],
             "risk": {"level": risk.level, "reasons": risk.reasons} if risk else None,
         }
+
+
+# 生成图目录（与 qvp_mcp/server.py 的 GENERATED_DIR 同路径约定）
+GENERATED_DIR = Path(__file__).resolve().parent.parent.parent / "static" / "generated"
+
+
+@router.get("/api/assets/{asset_id}/thumb")
+async def asset_thumb(asset_id: str):
+    """缩略图（2026-09-10 性能优化）：网格/列表页加载 384 宽 webp（~50KB），
+    不再拖 2MB 原图；首次生成后落盘缓存（内容寻址，immutable）。"""
+    from src.models.assets import Asset
+    try:
+        aid = uuid.UUID(asset_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid asset_id")
+    thumb_path = GENERATED_DIR / "thumbs" / f"{aid}.webp"
+    if not thumb_path.exists():
+        from src.gateway.ocr import fetch_image_bytes
+        async with SessionLocal() as session:
+            asset = (await session.execute(
+                select(Asset).where(Asset.id == aid))).scalars().first()
+        if not asset or not asset.image_url:
+            raise HTTPException(status_code=404, detail="asset not found")
+        try:
+            data, _ctype = await fetch_image_bytes(asset.image_url)
+            thumb = await asyncio.to_thread(_make_thumb, data)
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=502, detail=f"thumb failed: {e}")
+        thumb_path.parent.mkdir(parents=True, exist_ok=True)
+        thumb_path.write_bytes(thumb)
+    from fastapi.responses import FileResponse
+    return FileResponse(str(thumb_path), media_type="image/webp",
+                        headers={"Cache-Control": "private, max-age=31536000, immutable"})
+
+
+def _make_thumb(data: bytes, width: int = 384) -> bytes:
+    """等比缩到 width 宽 webp（PIL 重活，调用方须 to_thread）。
+    MOCK 占位图是 SVG（PIL 不认）→ 生成纯色占位缩略图，不炸端点。"""
+    import io as _io
+    from PIL import Image
+    try:
+        img = Image.open(_io.BytesIO(data))
+    except Exception:  # noqa: BLE001
+        img = Image.new("RGB", (width, int(width * 4 / 3)), "#e8e4de")
+    if img.width > width:
+        img = img.resize((width, int(img.height * width / img.width)),
+                         Image.LANCZOS)
+    out = _io.BytesIO()
+    img.convert("RGB").save(out, format="WEBP", quality=80)
+    return out.getvalue()
 
 
 @router.get("/api/assets/{asset_id}/image")

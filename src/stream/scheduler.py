@@ -125,8 +125,9 @@ class TaskScheduler:
         """手工中断任务：取消执行中的协程 / 出队排队中的任务。
 
         返回 "running"（已发取消信号）/ "queued"（已出队）/ "not_found"（不在调度器内，
-        调用方直接改库即可）。CancelledError 不会经过 execute_node 的 except Exception，
-        节点事件自动回滚，中断后可幂等重试（已完成节点跳过）。
+        调用方直接改库即可）。CancelledError 不会经过 execute_node 的 except Exception；
+        execute_node 显式捕获后删除本次 started 事件（尽力而为，见 nodes.py 注释），
+        中断后可幂等重试（已完成节点跳过，被中断节点重新执行）。
         """
         tid = str(task_id)
         proc = self._running.get(tid)
@@ -193,7 +194,8 @@ class TaskScheduler:
                 if not proc.cancelled():
                     raise  # 是 worker 自身被取消（停机），不是手工中断
                 # 手工中断：不计入限流器失败统计；CancelledError 不经过
-                # execute_node 的 except Exception，节点事件自动回滚，
+                # execute_node 的 except Exception，由 execute_node 显式删除
+                # 本次 started 事件（等价旧版"事件随事务回滚"），
                 # 重试时幂等续跑（已完成节点跳过）
                 self._meta[tid]["status"] = "cancelled"
                 await bus.publish("task_cancelled",

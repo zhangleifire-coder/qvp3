@@ -1,4 +1,3 @@
-import httpx
 from src.config import settings
 
 
@@ -20,10 +19,12 @@ async def search_image(query: str, count: int = 6) -> list:
 
 async def _search_openserp(query: str, count: int) -> list:
     url = f"{settings.openserp_base_url}/bing/image"
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.get(url, params={"text": query, "limit": count})
-        resp.raise_for_status()
-        data = resp.json()
+    from src.gateway.http_client import get_client
+    # 共享 client（与 web_search 同 timeout 一组，P1-7）
+    resp = await get_client("search", timeout=30).get(
+        url, params={"text": query, "limit": count})
+    resp.raise_for_status()
+    data = resp.json()
     results = []
     for item in data.get("results", []):
         img = item.get("image", {})

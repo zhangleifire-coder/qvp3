@@ -10,6 +10,7 @@ const TextCheckView = {
       rejecting: false,    // 按标记驳回重写中防抖
       busyNote: '',        // 后台改写/起草中的提示（自动刷新结果）
       draftTimer: null,    // 后台处理完成检测轮询
+      bodyPreview: true,   // 正文默认文档格式预览（md.js 渲染），点「编辑」才出纯文本框
     };
   },
   computed: {
@@ -26,6 +27,7 @@ const TextCheckView = {
     bodyChars() { return (this.form && this.form.body || '').replace(/\s/g, '').length; },
   },
   methods: {
+    renderMd,           // md.js：正文预览按文档格式渲染
     targetLabel(t) {
       if (t === 'query') return 'Query';
       if (t === 'body') return '正文';
@@ -241,10 +243,12 @@ const TextCheckView = {
         </div>
 
         <h3 class="tc-h3">② 正文（{{ bodyChars }} 字，最终生效——生图不再重写）
+          <button class="btn btn-sm btn-outline" @click="bodyPreview = !bodyPreview">{{ bodyPreview ? '✏️ 编辑' : '📖 预览' }}</button>
           <button class="btn btn-sm" :class="marks['body'] ? 'btn-danger' : 'btn-outline'"
                   @click="toggleMark('body')">📌{{ marks['body'] ? '已标记' : '标记' }}</button></h3>
         <div :class="{ 'tc-marked': marks['body'] }">
-          <textarea v-model="form.body" rows="12" class="tc-field" @input="fitField"></textarea>
+          <div v-if="bodyPreview" class="article-body md tc-field" style="min-height:280px" v-html="renderMd(form.body)"></div>
+          <textarea v-else v-model="form.body" rows="12" class="tc-field" @input="fitField"></textarea>
           <textarea v-if="marks['body']" v-model="marks['body'].note" rows="2"
                     class="tc-note-field" placeholder="修改意见：正文哪里要改（必填）"></textarea>
         </div>

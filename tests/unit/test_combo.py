@@ -90,7 +90,7 @@ class TestComboSection:
 class TestStyleAdaptiveCompose:
     def test_style_library_injected(self):
         msg = _compose_message("t1", "q", "general", "D", "P", "I", [])
-        assert "图片视觉风格库" in msg and "真实摄影" in msg
+        assert "图片视觉风格库" in msg and "新中式史料卡" in msg
         assert "随机选一种" in msg and "content_style" in msg and "image_style" in msg
 
     def test_fixed_style_rule(self):
@@ -101,7 +101,12 @@ class TestStyleAdaptiveCompose:
     def test_image_style_library_text(self):
         from src.services.combo import image_style_library_text, IMAGE_STYLE_LIBRARY
         t = image_style_library_text()
-        # 2026-08-24 样例提炼后 10 条，首选「自然写实暖调」（836 张人工样例主体风格）
-        assert len(IMAGE_STYLE_LIBRARY) == 10
-        assert IMAGE_STYLE_LIBRARY[0][0] == "自然写实暖调"
+        # WS3 单一事实来源（2026-09-11）：兜底库即 data/styles.json 的启用公共条目
+        import json
+        from pathlib import Path
+        styles = json.loads((Path(__file__).resolve().parents[2]
+                             / "data" / "styles.json").read_text(encoding="utf-8"))["styles"]
+        expected = [(s["style_name"], s["description"]) for s in styles
+                    if s.get("enabled", True)]
+        assert IMAGE_STYLE_LIBRARY == expected
         assert all(f"- {n}：" in t for n, _ in IMAGE_STYLE_LIBRARY)

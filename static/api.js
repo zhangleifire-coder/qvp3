@@ -8,6 +8,16 @@ window.logout = function () { localStorage.removeItem('qvp_user'); location.hash
 window.roleName = function (r) { return { A: '文案事实', B: '图片版权', C: '合规交付', admin: '管理员' }[r] || r; };
 window.fmtTime = function (iso) { if (!iso) return '-'; try { return new Date(iso).toLocaleString('zh-CN', { hour12: false }); } catch (e) { return iso; } };
 
+// 缩略图（2026-09-10 性能优化）：网格/列表页用 384 宽 webp（~50KB）替代 2MB 原图；
+// 原图只在灯箱点开大图时加载。本地资产走 /api/assets/<id>/thumb（后端缓存落盘），
+// 外部 URL（参考图原链）无法缩略时原样返回。
+window.thumbOf = function (a) {
+  const d = (a && a.display_url) || '';
+  const m = d.match(/^\/api\/assets\/([\w-]+)\/image$/);
+  if (m) return `/api/assets/${m[1]}/thumb`;
+  return (a && (a.display_url || a.image_url)) || '';
+};
+
 // 任务状态 / 模式 / 风险 的展示口径（全局唯一，避免各视图各写一份）
 window.STATUS = {
   draft:      { label: '排队中', cls: 'tag-gray' },
