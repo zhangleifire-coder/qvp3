@@ -33,7 +33,7 @@
 </head>
 <body>
 <div class="banner"><b>图文生产平台 · 技术交接文档</b>
-  <span>源文件 技术交接文档-20260907.md ｜ commit 4e3153d ｜ 生成于 2026-09-14 12:15（scripts/build_handover.py，随发版自动更新）</span>
+  <span>源文件 技术交接文档-20260907.md ｜ commit 1d48135 ｜ 生成于 2026-09-14 19:49（scripts/build_handover.py，随发版自动更新）</span>
 </div>
 <main>
 <h1 id="_1">图文生产平台 · 技术交接文档</h1>
@@ -588,10 +588,14 @@ ssh -i &lt;deploy密钥&gt; th@117.34.118.115 &quot;
   git --git-dir=/home/th/qvp3-repo.git archive v&lt;N&gt;-&lt;yyyymmdd&gt; | tar -x -C /home/th/qvp3&quot;
 # 镜像仍走本地化（Docker Hub 不通）：本地 build → docker save → scp → 服务器 load
 # 代码未变仅配置/数据变更时可跳过镜像，直接 compose up -d
+# ⚠️ load 后必须补 docker tag（v12-20260914 实测踩坑）：save 的 tar 只带版本 tag，
+#    compose 引用 qvp3-app:latest，不打 tag 时 up -d 不触发重建（旧容器照跑）
 ssh -i &lt;deploy密钥&gt; th@117.34.118.115 &quot;cd /home/th/qvp3 &amp;&amp; \
+  docker tag qvp3-app:v&lt;N&gt;-&lt;yyyymmdd&gt; qvp3-app:latest &amp;&amp; \
   echo v&lt;N&gt;-&lt;yyyymmdd&gt; &gt; .deployed_commit &amp;&amp; \
   docker compose -f deploy/compose/qvp3.docker-compose.yml --project-directory . up -d&quot;
 # 健康检查：curl :8005/api/tasks?limit=1 与 :8005/handover
+# （qvp3-app 的 Status 应从「Up N 天」变为「Up About a minute」+ 库内数据校验）
 </code></pre>
 <ul>
 <li>基座镜像同理本地化：<code>docker save node:24-slim</code> / <code>docker save postgres:16</code> →
@@ -775,8 +779,10 @@ ssh -i &lt;deploy密钥&gt; th@117.34.118.115 &quot;cd /home/th/qvp3 &amp;&amp; 
 - ~~<code>IMAGE_GEN_CHANNELS</code> 加备胎~~（2026-09-10 已完成：fusion,linkai,moacode 轮询）
 - ~~WS2 蒸馏物 C~~（<strong>用户决策 2026-09-14：不放行</strong>，维持按门禁放弃——
   与底座语义重叠且守卫零差异门禁构造上无法满足；素材库 .vendor 保留可捡）
-- WS4 真实批：用户已批减半执行（10 题 ≈ ¥25-33，2026-09-14 起；
-  MOCK 联调一轮已跑通机制）
+- WS4 真实批：~~用户已批减半执行~~（2026-09-14 已完成：MOCK 20/20 +
+  真实 10/10 全到 review；<strong>成本 ¥46 超预算 1.5-1.8 倍</strong>——100% OCR 质检致
+  单任务 12-46 张重生成 + 8 张配额在 Agent 路径失效，详见
+  <code>docs/qvp3-灰度数据对比-20260914.md</code> §7，待修）
 - 前端无构建方案在视图变多后可考虑迁 Vite（可选）
 - qvp3 灰度观察：长会话 compaction 行为与 Nanobot 不同，长任务输出稳定性待观察；
   32768 对更长任务仍可能被推理吃光（见 5.6 第 2 条残留风险）
