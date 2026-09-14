@@ -109,7 +109,11 @@ class Settings(BaseSettings):
     mcp_callback_base_url: str = "http://127.0.0.1:8003"
     internal_callback_token: str = "qvp-internal-dev"
     # MCP 工具配额（按 task_id 计，防 Agent 失控烧钱的硬限制）
-    mcp_max_images_per_task: int = 8     # 6 张交付 + 2 张去重重生余量（¥0.4/张，2026-08-31 调价）
+    mcp_max_images_per_task: int = 8     # MCP image 工具单次额度（9-14 起真正的硬顶是 image_total）
+    # 任务级出图总预算（2026-09-14 P1 止血，WS4 实测 46 张/任务 ¥9.2 的教训）：
+    # MCP 首轮 + garble/主体/AI 审核重生全部路径共用的累计硬顶，到顶停生成进人工。
+    # 累计语义——节点重跑/中断续跑不重置（reset 只清非累计 kind）。
+    image_budget_per_task: int = 14      # 6 张交付 + 8 张重生余量
     mcp_max_web_searches_per_task: int = 3
     mcp_max_image_searches_per_task: int = 3
     mcp_max_ocr_per_task: int = 8

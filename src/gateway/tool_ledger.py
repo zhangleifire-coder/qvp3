@@ -23,6 +23,14 @@ CHECK_TOOL_KINDS = ("rule_check", "cross_check", "risk_classify", "visual_check"
 _LIMITS.update({k: settings.mcp_max_llm_tools_per_task for k in LLM_TOOL_KINDS})
 _LIMITS.update({k: settings.mcp_max_check_tools_per_task for k in CHECK_TOOL_KINDS})
 
+# 任务级出图总预算（2026-09-14 P1 止血）：所有出图路径（MCP image 首轮 +
+# garble 重生 + 主体审核重画 + AI 审核重生）共用的累计硬顶。累计语义——
+# 节点重跑/中断续跑不重置，堵「reset 全额返还预算」的烧钱漏洞
+# （WS4 实测单任务 46 张 ≈ ¥9.2，预算假设 6-8 张）。
+_LIMITS["image_total"] = settings.image_budget_per_task
+# 累计类 kind：reset() 时保留计数（其余 kind 维持「新一轮生产全额返还」语义）
+CUMULATIVE_KINDS = frozenset({"image_total"})
+
 
 class TaskQuotas:
     def __init__(self):
@@ -30,9 +38,20 @@ class TaskQuotas:
         self._lock = asyncio.Lock()
 
     async def reset(self, task_id: str) -> None:
-        """新一轮生产开始：清空该任务的配额计数（节点入口调用）。"""
+        """新一轮生产开始：清空该任务的配额计数（节点入口调用）。
+
+        累计类 kind（image_total）保留——出图预算是任务全生命周期硬顶，
+        重跑不返还（2026-09-14 P1）。
+        """
         async with self._lock:
-            self._used.pop(str(task_id), None)
+            used = self._used.get(str(task_id))
+            if used is None:
+                return
+            keep = {k: v for k, v in used.items() if k in CUMULATIVE_KINDS}
+            if keep:
+                self._used[str(task_id)] = keep
+            else:
+                self._used.pop(str(task_id), None)
 
     async def acquire(self, task_id: str, kind: str, n: int = 1) -> dict:
         """申请 n 个配额。返回 {allowed, used, limit}（不抛错，由调用方决策）。"""
@@ -47,6 +66,17 @@ class TaskQuotas:
 
 
 task_quotas = TaskQuotas()
+
+
+async def consume_image_budget(task_id) -> bool:
+    """任务级出图总预算扣减（image_total，累计不重置）。
+
+    所有自动出图路径（MCP 首轮/garble 重生/主体重画/AI 审核重生）在每次
+    generate_image 前调用；返回 False = 预算到顶，调用方必须停止重生并
+    把该页打标记进人工审核（2026-09-14 P1 止血）。
+    """
+    r = await task_quotas.acquire(str(task_id), "image_total", 1)
+    return bool(r.get("allowed"))
 
 
 class ToolUsageLedger:

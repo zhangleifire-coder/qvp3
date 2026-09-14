@@ -13,6 +13,7 @@ import traceback
 from src.config import settings
 from src.gateway.http_client import get_client
 from src.gateway.ocr import fetch_image_bytes
+from src.gateway.tool_ledger import consume_image_budget
 
 _MAX_ROUNDS = 2
 
@@ -109,6 +110,18 @@ async def _gen_one_with_review(task_id, page_index: int, page_text: str,
     review: dict = {"pass": True, "issues": [], "suggest": "", "rounds": 0, "flagged": []}
     best: tuple | None = None
     for rnd in range(1, _MAX_ROUNDS + 1):
+        # 任务级出图总预算硬顶（2026-09-14 P1）：到顶即停止自动重生，
+        # 保留最优一轮结果并把原因写进 flagged，交人工审核兜底。
+        if not await consume_image_budget(task_id):
+            if best is not None:
+                review = dict(best[2])
+                review["pass"] = False
+                review["flagged"] = list(review.get("flagged") or []) + [
+                    "任务出图预算用尽，停止自动重生"]
+                return best[0], best[1], review
+            return "", "", {"pass": False, "issues": [], "suggest": "",
+                            "rounds": 0,
+                            "flagged": ["任务出图预算用尽，未完成生成"]}
         local_url, model, data, ctype = await _gen(last_prompt)
         # ① 文字正确性（OCR 对撞）
         text_ok = True

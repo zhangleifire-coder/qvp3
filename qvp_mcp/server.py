@@ -114,7 +114,7 @@ async def generate_images(task_id: str, pages: list[str], mode: str = "general",
     pages = [str(p or "").strip() for p in (pages or [])]
     if not pages:
         raise ValueError("pages 不能为空：请传入 6 页分页文案")
-    await check_and_consume(task_id, "image", n=len(pages))
+    await check_and_consume(task_id, "image_total", n=len(pages))
 
     reference_urls = [u for u in (reference_urls or []) if u]
     total_pages = len(pages)
@@ -169,7 +169,7 @@ async def generate_images(task_id: str, pages: list[str], mode: str = "general",
     for i, body in page_list:
         r = results[i]
         if r["hash"] in seen_hashes and not settings.mock_image_gen:
-            await check_and_consume(task_id, "image")
+            await check_and_consume(task_id, "image_total")
             extra_gen += 1
             r2 = await generate_image(
                 r["prompt"] + "（请换一种与之前不同的构图和视角）",

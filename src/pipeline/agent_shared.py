@@ -19,6 +19,7 @@ from src.config import settings
 from src.gateway.skill_loader import (PAGE_MIN_CHARS, PAGE_MAX_CHARS,
                                       PAGE_MAX_DIFF, INFO_POINTS_MIN,
                                       INFO_POINTS_MAX)
+from src.gateway.tool_ledger import consume_image_budget
 from src.models.assets import Asset, OcrResult
 from src.models.drafts import Draft, PageCopy
 from src.models.entities import Claim, Evidence
@@ -331,7 +332,9 @@ async def _fallback_ocr(rows: list[tuple]) -> tuple[list, float]:
 # 去空白，见 src/quality/text_norm.py）后逐字 100% 相等才过」——不一致触发
 # 重生成，重生成仍不符打标记交人工，不得降级放行。
 _GARBLE_THRESHOLD = 1.0  # 归一化后逐字全等（100% 标准）；低于 1.0 即拦
-_GARBLE_MAX_REGEN = 2      # 每页最多换构图重生 2 次
+_GARBLE_MAX_REGEN = 1      # 每页最多换构图重生 1 次（9-14 P1：与交接文档
+                           # 「自动重试一次」口径对齐；重生有效性靠提示词修正
+                           # （逐字复现）保障，不再靠次数）
 
 
 def _text_similarity(a: str, b: str) -> float:
@@ -379,14 +382,21 @@ async def _garble_check_and_regen(task_id, pages: list[str], localized: list[dic
             sim = 1.0        # OCR 本身失败不误杀（cross_check 兜底）
         if sim >= _GARBLE_THRESHOLD:
             continue
-        # 换构图重生（最多 _GARBLE_MAX_REGEN 次）：提示词换布局 + 强调少字
+        # 换构图重生（最多 _GARBLE_MAX_REGEN 次）：9-14 P1 修正——重生图必须与
+        # 整页文案逐字全等（100% 标准），所以提示词要求逐字复现原文案重排版，
+        # 绝不能再让模型「只保留核心一句」（≤20 字对 80-130 字整页文案永远
+        # 不可能 100% 相等，9-11~9-14 期间每次重生必败纯烧钱，WS4 实测单任务
+        # 46 张）。每次重生前扣任务级出图总预算，到顶即停、打标记进人工。
         ok = False
         for attempt in range(1, _GARBLE_MAX_REGEN + 1):
             try:
+                if not await consume_image_budget(task_id):
+                    break
                 regen_prompt = (
                     image_tpl.replace("{page_body}", page_text)
-                    + f"（重新排版：文字只保留最核心的一句，不超过20字，"
-                      f"换一个与之前不同的构图与配色，避免文字出错）")
+                    + "（重新排版：图中文字必须逐字复现上述文案，一字不得增删改、"
+                      "不得精简替换；换一个与之前不同的构图与配色，"
+                      "确保每个字清晰可辨、标准黑体不变形）")
                 r2 = await generate_image(regen_prompt)
                 data, ctype = await _fetch_bytes(r2["image_url"])
                 local_url = _persist_image(task_id, idx, "p", data, ctype)
@@ -435,8 +445,13 @@ async def _subject_check_and_regen(task_id, pages: list[str], localized: list[di
             verdict = None
         if verdict is None or verdict["ok"]:
             continue
-        # 主体不符：带强调重画一次
+        # 主体不符：带强调重画一次（先扣任务级出图总预算，到顶即停不打断整链）
         try:
+            if not await consume_image_budget(task_id):
+                img["subject_mismatch"] = True
+                img.setdefault("_subj_flag_reason",
+                               "视觉主体审核未通过，且任务出图预算已用尽，待人工复核")
+                continue
             regen_prompt = (
                 image_tpl.replace("{page_body}", page_text)
                 + f"（画面主体必须与文案严格一致：{page_text[:60]}；"
@@ -510,7 +525,7 @@ async def _image_quality_chain(task_id, pages: list[str], localized: list[dict],
             new_url, model, review = await _gen_one_with_review(
                 task_id, idx, pages[idx - 1], base_prompt, ref_urls, ref_mode,
                 mode=mode)
-            if new_url != img["image_url"]:
+            if new_url and new_url != img["image_url"]:
                 img["image_url"] = new_url
                 try:
                     data, _ = await _fb2(new_url)
