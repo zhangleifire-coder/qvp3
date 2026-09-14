@@ -33,7 +33,7 @@
 </head>
 <body>
 <div class="banner"><b>图文生产平台 · 技术交接文档</b>
-  <span>源文件 技术交接文档-20260907.md ｜ commit 11238db ｜ 生成于 2026-09-11 13:28（scripts/build_handover.py，随发版自动更新）</span>
+  <span>源文件 技术交接文档-20260907.md ｜ commit 4e3153d ｜ 生成于 2026-09-14 12:15（scripts/build_handover.py，随发版自动更新）</span>
 </div>
 <main>
 <h1 id="_1">图文生产平台 · 技术交接文档</h1>
@@ -761,13 +761,22 @@ ssh -i &lt;deploy密钥&gt; th@117.34.118.115 &quot;cd /home/th/qvp3 &amp;&amp; 
   （追加必然改变渲染，构造上互斥，且底座已有等价约束）；
   WS4 基准集 <code>data/bench/bench_set.json</code>（20 题 = 开源蒸馏 8 + 历史真实 12）+
   <code>scripts/bench_image_quality.py</code>（投递→轮询终态→缩略图拼版快审，
-  真实批需用户确认，联调走 MOCK）</p>
+  真实批需用户确认，联调走 MOCK）
+- <strong>灰度数据对比 + reasoningEffort 专项</strong>（2026-09-14，详见
+  <code>docs/qvp3-灰度数据对比-20260914.md</code>）：Nanobot 时代限流/余额故障
+  （87/52 处）在 dsh 灰度期归零；<code>DSH_REASONING_EFFORT=medium</code> 实测被全部
+  三级模型拒绝（不支持），调低推理档位路径不存在；推理挤占风险随主模型
+  换 deepseek-v4-flash 基本消除（pro 时代极值 99% vs flash 可忽略），
+  <strong>若回切 pro 须把 max_tokens 提至 49152+ 并重验</strong>；WS2 蒸馏物 C 用户决策
+  不放行；WS4 真实批用户已批减半执行（10 题）</p>
 <p>Backlog（未做）：
 - 两级风格库偏好闭环深化（个人库使用数据回流推荐）
 - partial_regen Agent 化（当前定点重生成仍走直连提示词）
 - ~~<code>IMAGE_GEN_CHANNELS</code> 加备胎~~（2026-09-10 已完成：fusion,linkai,moacode 轮询）
-- WS4 基准批真实跑轮待用户确认（机制已就绪，约 ¥50-65/轮）；WS2 蒸馏物 C
-  （开源骨架句进 layouts）待用户明确放行后另立改动（本轮按门禁放弃）
+- ~~WS2 蒸馏物 C~~（<strong>用户决策 2026-09-14：不放行</strong>，维持按门禁放弃——
+  与底座语义重叠且守卫零差异门禁构造上无法满足；素材库 .vendor 保留可捡）
+- WS4 真实批：用户已批减半执行（10 题 ≈ ¥25-33，2026-09-14 起；
+  MOCK 联调一轮已跑通机制）
 - 前端无构建方案在视图变多后可考虑迁 Vite（可选）
 - qvp3 灰度观察：长会话 compaction 行为与 Nanobot 不同，长任务输出稳定性待观察；
   32768 对更长任务仍可能被推理吃光（见 5.6 第 2 条残留风险）

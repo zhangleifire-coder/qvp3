@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "description": "生图质量基准集（WS4，2026-09-11）：20 题 = 开源相邻分类蒸馏 8 题 + 本地历史真实交付任务 12 题。用途：每次改风格/提示词后由 scripts/bench_image_quality.py 批量投递到本地 8005，终态后导出缩略图拼版供人工快审；通过率不达基线的风格条目 enabled=false 数据层回滚。真实批一轮约 20 题 × 6-8 张 × ¥0.4 ≈ ¥50-65，开发联调一律 MOCK_IMAGE_GEN=true。",
+  "items": [
+    {
+      "id": "oss-01",
+      "source": "oss_distilled",
+      "category": "图表与信息可视化",
+      "ref_case": "#334 RAG 技术详解图",
+      "query": "洗衣机能效等级怎么看，一级和三级差多少电",
+      "mode": "general",
+      "note": "结构化图解/短标签"
+    },
+    {
+      "id": "oss-03",
+      "source": "oss_distilled",
+      "category": "图表与信息可视化",
+      "ref_case": "#375/#456 时间轴",
+      "query": "比特币减半时间线：历次减半和产量变化",
+      "mode": "general",
+      "note": "时间轴演进"
+    },
+    {
+      "id": "oss-05",
+      "source": "oss_distilled",
+      "category": "海报与排版",
+      "ref_case": "#339 自然科普海报",
+      "query": "向日葵为什么总是朝着太阳转",
+      "mode": "general",
+      "note": "自然科普图鉴"
+    },
+    {
+      "id": "oss-06",
+      "source": "oss_distilled",
+      "category": "文档与出版物",
+      "ref_case": "#360 出版物页面",
+      "query": "家庭应急物资清单：一份能照做的备货手册",
+      "mode": "general",
+      "note": "手册排版"
+    },
+    {
+      "id": "his-01",
+      "source": "local_db_5433",
+      "query": "德龙EC685和柏翠PE3690入门咖啡机对比",
+      "mode": "compare",
+      "gen_style": "测评实测",
+      "gen_image_style": "杂志风产品对比卡",
+      "note": "5433 库 2026-09-08 review"
+    },
+    {
+      "id": "his-02",
+      "source": "local_db_5433",
+      "query": "家用投影仪选购避坑",
+      "mode": "general",
+      "gen_style": "避坑指南",
+      "gen_image_style": "科技产品渲染卡",
+      "note": "5433 库 2026-09-07 review"
+    },
+    {
+      "id": "his-07",
+      "source": "qvp2_history_session",
+      "query": "戴森 V12 和追觅 V16 吸尘器怎么选",
+      "mode": "compare",
+      "note": "qvp2 服务器历史 Agent 会话"
+    },
+    {
+      "id": "his-09",
+      "source": "qvp2_history_session",
+      "query": "家用空气炸锅怎么选不踩坑",
+      "mode": "general",
+      "note": "qvp2 服务器历史 Agent 会话"
+    },
+    {
+      "id": "his-11",
+      "source": "qvp2_history_session",
+      "query": "格力和美的空调哪个质量好怎么选",
+      "mode": "compare",
+      "note": "qvp2 服务器历史 Agent 会话"
+    },
+    {
+      "id": "his-12",
+      "source": "qvp2_history_session",
+      "query": "手机碎屏险有必要买吗",
+      "mode": "general",
+      "note": "qvp2 服务器历史 Agent 会话"
+    }
+  ],
+  "note": "2026-09-14 用户批准减半真实批（10 题 ≈ ¥25-33）：4 oss + 6 his，general/compare 7/3"
+}
