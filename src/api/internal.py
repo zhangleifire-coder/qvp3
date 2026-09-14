@@ -7,12 +7,33 @@
   仅发布阶段事件，不进成本台账（cost 恒为 0）
 """
 from fastapi import APIRouter, Header, HTTPException
+from sqlalchemy import select
 
 from src.config import settings
+from src.db.session import SessionLocal
 from src.gateway.tool_ledger import task_quotas, tool_ledger
+from src.models.tasks import Task
+from src.services.style_risk import image_candidates_for_style
 from src.stream.bus import bus
 
 router = APIRouter()
+
+
+@router.get("/api/internal/image_gen_plan")
+async def image_gen_plan(task_id: str, x_internal_token: str = Header(default="")):
+    """MCP 生图前查询该任务每页候选张数（1/2）——按风格首轮 sim 风险自适应
+    （2026-09-14 双候选选优门控；统计失败/无风格回退 1，绝不阻断生图）。"""
+    if x_internal_token != settings.internal_callback_token:
+        raise HTTPException(status_code=403, detail="invalid internal token")
+    style = None
+    try:
+        async with SessionLocal() as s:
+            row = await s.execute(
+                select(Task.gen_image_style).where(Task.id == task_id))
+            style = row.scalar()
+    except Exception:  # noqa: BLE001——回退单候选
+        pass
+    return {"candidates": await image_candidates_for_style(style)}
 
 
 @router.post("/api/internal/quota_acquire")

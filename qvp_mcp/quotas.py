@@ -31,3 +31,24 @@ async def check_and_consume(task_id: str, kind: str, n: int = 1) -> None:
         raise QuotaExceededError(
             f"任务 {task_id} 的 {kind} 配额已用尽（上限 {r.get('limit')}，"
             f"已用 {r.get('used')}）。请停止继续调用该工具，用现有结果继续完成任务。")
+
+
+async def fetch_image_gen_plan(task_id: str) -> int:
+    """查询该任务每页候选张数（双候选选优门控，2026-09-14）。
+
+    后端按风格首轮 sim 风险返回 1/2；任何失败（后端不可达/异常）回退 1
+    ——门控只影响成本与选优，绝不阻断生图。
+    """
+    url = f"{settings.mcp_callback_base_url}/api/internal/image_gen_plan"
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.get(
+                url, params={"task_id": str(task_id)},
+                headers={"X-Internal-Token": settings.internal_callback_token})
+            if resp.status_code != 200:
+                return 1
+            n = int(resp.json().get("candidates") or 1)
+            return n if n in (1, 2) else 1
+    except Exception as e:  # noqa: BLE001
+        print(f"[mcp-quota] 生图方案查询失败，回退单候选: {type(e).__name__}", flush=True)
+        return 1

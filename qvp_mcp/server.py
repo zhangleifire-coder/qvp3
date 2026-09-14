@@ -19,9 +19,15 @@ from src.gateway.prompt_versions import get_image_prompt
 from src.gateway.web_search import web_search as _web_search_impl
 
 from .cost_report import report_usage
-from .quotas import check_and_consume
+from .quotas import check_and_consume, fetch_image_gen_plan
 
 mcp = FastMCP("qvp-tools")
+
+
+def pick_best_candidate(scored: list[tuple[dict, float]]) -> tuple[dict, float]:
+    """双候选 OCR 选优（2026-09-14）：sim 高者优先；并列取先生成（索引小）者。"""
+    _idx, (cand, sim) = max(enumerate(scored), key=lambda t: (t[1][1], -t[0]))
+    return cand, sim
 
 # 与后端 static/generated 同一目录（同机部署，磁盘共享）
 GENERATED_DIR = Path(__file__).resolve().parent.parent / "static" / "generated"
@@ -109,12 +115,16 @@ async def generate_images(task_id: str, pages: list[str], mode: str = "general",
     - reference_urls: compare/single 模式的实景参考图 URL（来自 image_search 结果）
 
     返回每页 {page_index, prompt, image_url(本地路径), origin_url, hash, size_ok}。
-    同任务生图配额有限（默认 8 张，含去重重生），失败页会在 warnings 里说明。
+    同任务生图总预算有限（image_total，默认 14 张含全部重生）；失败页会在 warnings 里说明。
+    双候选选优（2026-09-14）：后端按该任务风格的近 7 天首轮 sim 风险判定每页
+    生成 1-2 张候选；2 候选时逐页 OCR 选优（100% 相等优先，其次 sim 高者）。
     """
     pages = [str(p or "").strip() for p in (pages or [])]
     if not pages:
         raise ValueError("pages 不能为空：请传入 6 页分页文案")
-    await check_and_consume(task_id, "image_total", n=len(pages))
+    # 双候选门控：mock 模式保持单候选（占位图无需选优）；后端不可达回退 1
+    n_cand = 1 if settings.mock_image_gen else await fetch_image_gen_plan(task_id)
+    await check_and_consume(task_id, "image_total", n=len(pages) * n_cand)
 
     reference_urls = [u for u in (reference_urls or []) if u]
     total_pages = len(pages)
@@ -141,25 +151,67 @@ async def generate_images(task_id: str, pages: list[str], mode: str = "general",
         raise RuntimeError(f"第{i}页生图 3 次尝试均失败: {last_err}") from last_err
 
     # 并行分批生成（IMAGE_GEN_PARALLEL 控制批量，批间隔防限流）；
-    # 单页失败不炸整批：聚合后明确报出失败页，Agent 无需整批重试（配额有限）
+    # 单页失败不炸整批：聚合后明确报出失败页，Agent 无需整批重试（配额有限）。
+    # 双候选模式：每页生成 n_cand 张，部分候选失败但至少有 1 张成功即可交付。
     page_list = list(enumerate(pages, start=1))
     results: dict[int, dict] = {}
     failed_pages: list[str] = []
+
+    async def _gen_candidates(i: int, body: str) -> tuple[int, list[dict]]:
+        outs = await asyncio.gather(*[_gen_one(i, body) for _ in range(n_cand)],
+                                    return_exceptions=True)
+        ok = [o for o in outs if not isinstance(o, BaseException)]
+        if not ok:
+            first = outs[0]
+            raise first if isinstance(first, BaseException) else RuntimeError(
+                f"第{i}页全部候选生成失败")
+        return i, ok
+
     batches = _batches(page_list, settings.image_gen_parallel)
     for bi, batch in enumerate(batches):
-        outs = await asyncio.gather(*[_gen_one(i, b) for i, b in batch],
+        outs = await asyncio.gather(*[_gen_candidates(i, b) for i, b in batch],
                                     return_exceptions=True)
         for (i, _b), r in zip(batch, outs):
             if isinstance(r, BaseException):
                 failed_pages.append(f"第{i}页: {r}")
             else:
-                results[r["page_index"]] = r
+                idx, cands = r
+                results[idx] = cands[0] if len(cands) == 1 else {"cands": cands,
+                                                                 "page_index": i,
+                                                                 "body": _b}
         if bi < len(batches) - 1:
             await asyncio.sleep(settings.image_gen_delay_seconds)
     if failed_pages:
         raise RuntimeError(
-            "部分页生图失败（每页已重试 3 次，勿整批重试，请稍后单页补生成或结束本轮）: "
+            "部分页生图失败（每页每候选已重试 3 次，勿整批重试，请稍后单页补生成或结束本轮）: "
             + "；".join(f[:150] for f in failed_pages))
+
+    # ── 双候选 OCR 选优（2026-09-14）：每页候选逐张 OCR，与分页文案归一化比对
+    # （复用质检同口径 _text_similarity，100% 相等=1.0）；选优不消耗 image_total
+    # （生成时已按 n_cand 一次性扣账），OCR 成本如实记账。
+    if n_cand == 2 and not settings.mock_image_gen:
+        from src.gateway.ocr import ocr_image
+        from src.pipeline.agent_shared import _text_similarity
+        for i, body in page_list:
+            r = results.get(i)
+            if not r or "cands" not in r:
+                continue
+            scored: list[tuple[dict, float]] = []
+            for c in r["cands"]:
+                sim = 0.0
+                try:
+                    o = await ocr_image(c["origin_url"])
+                    sim = _text_similarity(o["raw_text"], body)
+                    await report_usage(task_id, "ocr", o.get("cost_cny", 0),
+                                       {"page": i, "purpose": "cand_select"})
+                except Exception:  # noqa: BLE001——单候选 OCR 失败按 sim=0 参与选优
+                    pass
+                scored.append((c, sim))
+            best, sim = pick_best_candidate(scored)
+            print(f"[image-gen] 双候选选优 第{i}页 sim={sim:.3f} "
+                  f"(best-of-{len(scored)})", flush=True)
+            best.pop("cands", None)
+            results[i] = best
 
     # 内容级去重（跨批，按页序）：重复页串行换构图重生一次（配额已含余量）
     seen_hashes: set[str] = set()
