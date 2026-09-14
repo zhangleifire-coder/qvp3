@@ -123,13 +123,19 @@ async def _gen_one_with_review(task_id, page_index: int, page_text: str,
                             "rounds": 0,
                             "flagged": ["任务出图预算用尽，未完成生成"]}
         local_url, model, data, ctype = await _gen(last_prompt)
-        # ① 文字正确性（OCR 对撞）
+        # ① 文字正确性（OCR 对撞）；OCR 判不合格先经 VL 申诉复核（2026-09-14 P2），
+        # VL 确认图中文字逐字一致 → 视为通过（OCR 误判），不一致维持原判定
         text_ok = True
         try:
             ocr = await ocr_image(local_url)
             text_ok = _text_similarity(ocr["raw_text"], page_text) >= _GARBLE_THRESHOLD
         except Exception:  # noqa: BLE001
             text_ok = True
+        if not text_ok:
+            from src.services.visual_check import check_text_match
+            appeal = await check_text_match(local_url, page_text)
+            if appeal is not None and appeal["ok"]:
+                text_ok = True
         # ② 实景协调性（qwen-vl）
         vl = await _vl_review(local_url, page_text, page_index, ref_mode, bench_url)
         review = {"pass": text_ok and vl["pass"], "issues": vl.get("issues", []),

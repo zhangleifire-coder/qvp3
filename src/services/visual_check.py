@@ -57,3 +57,55 @@ async def check_subject_match(image_url: str, page_text: str) -> dict | None:
         import traceback
         traceback.print_exc()   # VL 审核失败不阻塞出图
         return None
+
+
+_TEXT_APPEAL_PROMPT = """你是图片文字质检员。看这张图文卡片，把图中实际渲染的
+文字与给定文案逐字比对（文案：「{text}」）。
+判定口径：忽略标点、空白、全半角差异；繁体/异体字与对应简体视为一致；
+图中文字与文案逐字相同（不增字、不漏字、不改写）才算一致。
+注意：只依据图中真实渲染的文字判定，不要因为字体风格（粗黑/宋体/手写感）
+或文字被装饰元素部分遮挡而判不一致——遮挡到无法辨认该字才算缺失。
+只输出严格 JSON，不要任何其他文字：
+{{"consistent": true/false, "actual": "<图中实际文字，30字内概述>"}}"""
+
+
+async def check_text_match(image_url: str, expected_text: str) -> dict | None:
+    """100% OCR 标准的 VL 申诉通道（2026-09-14 P2）。
+
+    OCR 判不合格的页，由 VL 直接看图复核「图中文字是否与文案逐字一致」：
+    consistent=true → OCR 误判申诉成功，放行；false/None → 维持 OCR 判定
+    （调用方走重生）。放行口径仍是 100%，只给 OCR 误判一个复核出口。
+    返回 {"ok": bool, "actual": str}；VL 不可用/解析失败返回 None。
+    """
+    if not settings.visual_text_appeal_enabled or not (expected_text or "").strip():
+        return None
+    try:
+        from src.gateway.ocr import _image_to_data_url
+        data_url = await _image_to_data_url(image_url)
+        prompt = _TEXT_APPEAL_PROMPT.replace("{text}", expected_text.strip())
+        payload = {
+            "model": settings.visual_check_model,
+            "messages": [{"role": "user", "content": [
+                {"type": "image_url", "image_url": {"url": data_url}},
+                {"type": "text", "text": prompt},
+            ]}],
+            "max_tokens": 200,
+        }
+        resp = await get_client("visual_check", timeout=60).post(
+            f"{settings.ocr_base_url}/chat/completions",
+            headers={"Authorization": f"Bearer {settings.dashscope_api_key}"},
+            json=payload)
+        if resp.status_code != 200:
+            return None
+        raw = (resp.json()["choices"][0]["message"]["content"] or "").strip()
+        if raw.startswith("```"):
+            raw = raw.strip("`").lstrip("json").strip()
+        obj = json.loads(raw[raw.index("{"):raw.rindex("}") + 1])
+        if isinstance(obj.get("consistent"), bool):
+            return {"ok": obj["consistent"],
+                    "actual": str(obj.get("actual", ""))[:30]}
+        return None
+    except Exception:
+        import traceback
+        traceback.print_exc()   # VL 复核失败不阻塞（维持 OCR 判定，走重生）
+        return None

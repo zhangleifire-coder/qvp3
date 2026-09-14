@@ -380,7 +380,17 @@ async def _garble_check_and_regen(task_id, pages: list[str], localized: list[dic
             sim = _text_similarity(r["raw_text"], page_text)
         except Exception:  # noqa: BLE001
             sim = 1.0        # OCR 本身失败不误杀（cross_check 兜底）
+        img["first_sim"] = sim          # 024 首过率治理：首轮 sim 落库供统计
         if sim >= _GARBLE_THRESHOLD:
+            continue
+        # ── VL 申诉通道（2026-09-14 P2）：OCR 判不合格的页先经 qwen-vl-max 复核
+        # 「图中文字是否与文案逐字一致」——一致即放行（OCR 误判申诉成功，图中文字
+        # 实际渲染正确，重生无意义只会再烧一张）；VL 说不一致或不可用才进重生。
+        # 放行口径仍是 100%，只是给 OCR 误判一个复核出口。
+        from src.services.visual_check import check_text_match
+        appeal = await check_text_match(img["image_url"], page_text)
+        if appeal is not None and appeal["ok"]:
+            img["prompt_used"] = (img.get("prompt_used", "") + "|vlappeal").strip("|")
             continue
         # 换构图重生（最多 _GARBLE_MAX_REGEN 次）：9-14 P1 修正——重生图必须与
         # 整页文案逐字全等（100% 标准），所以提示词要求逐字复现原文案重排版，
@@ -648,6 +658,7 @@ async def _persist_assets(session, task_id, query: str, localized: list[dict],
             origin_url=img["origin_url"] or None,
             model_version=mv, is_illustration=False,
             subject_mismatch=bool(img.get("subject_mismatch")),
+            first_sim=img.get("first_sim"),   # 024 首过率治理（garble 首轮 sim）
             prompt_used=img.get("prompt_used") or None))   # 定点修改/AI审核要复用原提示词
 
 

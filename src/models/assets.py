@@ -26,6 +26,8 @@ class Asset(Base):
     prompt_used = Column(Text)
     # 017：视觉主体审核——图主体与该页文案不符（重画后仍不符）时 true，人工关卡把关
     subject_mismatch = Column(Boolean, nullable=False, default=False)
+    # 024 首过率治理：该页配图首轮 OCR 对撞相似度（garble 质检写入，纯观测）
+    first_sim = Column(Float)
     is_history = Column(Boolean, nullable=False, default=False)
     edit_note = Column(Text)
     created_at = Column(TIMESTAMP(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))

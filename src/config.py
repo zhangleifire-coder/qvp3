@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     # 主体不符自动重画一次，仍不符标记 subject_mismatch 交人工把关
     visual_subject_check_enabled: bool = True
     visual_check_model: str = "qwen-vl-max"   # dashscope VL（复用 ocr 的 key/网关）
+    # 100% OCR 标准的 VL 申诉通道（2026-09-14 P2）：OCR 判不合格的页先经
+    # qwen-vl-max 复核「图中文字是否与文案逐字一致」——一致即放行（OCR 误判申诉
+    # 成功），不一致才重生。放行口径仍是 100%，只给 OCR 误判一个复核出口。
+    visual_text_appeal_enabled: bool = True
     mock_image_gen: bool = False         # 开发阶段模拟生图（不调 API、不花钱）
     # 搜实景图 provider（openserp 免费默认 / doubao_ark / bing_api 预留）
     image_search_provider: str = "openserp"
