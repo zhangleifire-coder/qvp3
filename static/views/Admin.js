@@ -176,20 +176,47 @@ const AdminView = {
           <span v-if="balance.deepseek && balance.deepseek.fetched_at">；DeepSeek 余额拉取于 {{ fmtTime(balance.deepseek.fetched_at) }}</span>
         </p>
         <div class="grid grid-2" style="margin-bottom:12px" v-if="balance">
-          <div class="stat" v-for="p in [['fusion', 'FusionAI（生图主通道）'], ['kimi', 'Kimi（校稿文本）']]" :key="p[0]">
-            <div class="n">{{ estText(balance[p[0]]) }}</div>
-            <div class="l">{{ p[1] }} 估算余额</div>
-            <div class="muted" style="font-size:12px;margin-top:4px" v-if="balance[p[0]] && balance[p[0]].ok">
-              基准 ¥{{ fmtNum(balance[p[0]].baseline_cny) }}（{{ fmtTime(balance[p[0]].recorded_at) }} 录入）
-              − 此后台账消耗 {{ fmtMoney(balance[p[0]].consumed_since_cny) }}；
-              日均 {{ fmtMoney(balance[p[0]].daily_avg_7d_cny) }}，
-              预计可用 {{ balance[p[0]].est_available_days == null ? '-' : balance[p[0]].est_available_days + ' 天' }}
+          <!-- FusionAI：无公开余额 API，保持基准估算 -->
+          <div class="stat">
+            <div class="n">{{ estText(balance.fusion) }}</div>
+            <div class="l">FusionAI（生图主通道）估算余额</div>
+            <div class="muted" style="font-size:12px;margin-top:4px" v-if="balance.fusion && balance.fusion.ok">
+              基准 ¥{{ fmtNum(balance.fusion.baseline_cny) }}（{{ fmtTime(balance.fusion.recorded_at) }} 录入）
+              − 此后台账消耗 {{ fmtMoney(balance.fusion.consumed_since_cny) }}；
+              日均 {{ fmtMoney(balance.fusion.daily_avg_7d_cny) }}，
+              预计可用 {{ balance.fusion.est_available_days == null ? '-' : balance.fusion.est_available_days + ' 天' }}
             </div>
-            <div class="muted" style="font-size:12px;margin-top:4px" v-else>{{ balance[p[0]] && balance[p[0]].note }}</div>
+            <div class="muted" style="font-size:12px;margin-top:4px" v-else>{{ balance.fusion && balance.fusion.note }}</div>
+            <div class="muted" style="font-size:12px;margin-top:4px;color:#666" v-if="balance.fusion && balance.fusion.rate">
+              单次计费：{{ balance.fusion.rate.model }} 按次 ¥{{ fmtNum(balance.fusion.rate.per_call_cny) }}
+            </div>
             <div style="margin-top:6px;display:flex;gap:6px">
-              <input type="number" step="0.01" min="0" v-model="baselineForm[p[0]]" placeholder="控制台实际余额（元）" style="width:160px">
-              <button class="btn btn-outline btn-sm" @click="saveBaseline(p[0])">录入基准</button>
+              <input type="number" step="0.01" min="0" v-model="baselineForm.fusion" placeholder="控制台实际余额（元）" style="width:160px">
+              <button class="btn btn-outline btn-sm" @click="saveBaseline('fusion')">录入基准</button>
             </div>
+          </div>
+          <!-- Kimi：实拉开放平台余额 -->
+          <div class="stat">
+            <template v-if="balance.kimi && balance.kimi.ok">
+              <div class="n">¥{{ fmtNum(balance.kimi.available_balance) }}</div>
+              <div class="l">Kimi（校稿文本）真实余额</div>
+              <div class="muted" style="font-size:16px;margin-top:4px">
+                赠 ¥{{ fmtNum(balance.kimi.voucher_balance) }} / 充 ¥{{ fmtNum(balance.kimi.cash_balance) }}
+              </div>
+              <div class="muted" style="font-size:12px;margin-top:4px">
+                日均 {{ fmtMoney(balance.kimi.daily_avg_7d_cny) }}，
+                预计可用 {{ balance.kimi.est_available_days == null ? '-' : balance.kimi.est_available_days + ' 天' }}
+                <span v-if="balance.kimi.fetched_at">；拉取于 {{ fmtTime(balance.kimi.fetched_at) }}</span>
+              </div>
+              <div class="muted" style="font-size:12px;margin-top:4px;color:#666" v-if="balance.kimi.rate">
+                单次计费：{{ balance.kimi.rate.model }} 输入命中 ¥{{ fmtNum(balance.kimi.rate.input_hit_peak) }}/1M tokens，
+                输出 ¥{{ fmtNum(balance.kimi.rate.output_peak) }}/1M tokens
+              </div>
+            </template>
+            <template v-else>
+              <div class="n" style="color:#c00;font-size:16px">{{ (balance.kimi && balance.kimi.error) || '拉取失败' }}</div>
+              <div class="l">Kimi（校稿文本）真实余额</div>
+            </template>
           </div>
         </div>
         <div style="margin:10px 0;display:flex;gap:8px">

@@ -276,6 +276,33 @@ async def _fetch_deepseek_balance() -> dict:
         return {"ok": False, "error": f"余额拉取失败：{type(e).__name__}"}
 
 
+async def _fetch_kimi_balance() -> dict:
+    """实拉 Kimi (Moonshot) 账户余额（GET /v1/users/me/balance）；失败返回错误标记。"""
+    from src.config import settings
+    from src.gateway.http_client import get_client
+    key = settings.kimi_api_key
+    if not key or key.startswith("sk-xxx"):
+        return {"ok": False, "error": "未配置 Kimi API Key"}
+    try:
+        resp = await get_client("admin_balance", timeout=10.0).get(
+            "https://api.moonshot.cn/v1/users/me/balance",
+            headers={"Authorization": f"Bearer {key}"})
+        if resp.status_code != 200:
+            return {"ok": False, "error": f"Kimi 接口 HTTP {resp.status_code}"}
+        data = resp.json()
+        d = data.get("data") or {}
+        return {
+            "ok": True,
+            "currency": "CNY",
+            "available_balance": float(d.get("available_balance") or 0),
+            "voucher_balance": float(d.get("voucher_balance") or 0),
+            "cash_balance": float(d.get("cash_balance") or 0),
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
+        }
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": f"余额拉取失败：{type(e).__name__}"}
+
+
 # 无公开余额 API 的厂商（2026-09-09 实测）：基准录入 + 台账类别消耗扣减估算
 _ESTIMATE_PROVIDERS = {
     # provider → (台账消耗归类函数说明, 口径备注)
@@ -365,9 +392,9 @@ async def put_balance_baseline(payload: BalanceBaselineIn):
 
 @router.get("/api/admin/balance")
 async def account_balance():
-    """账户余额掌握：DeepSeek 真实余额（API 实拉，失败给错误标记）；
-    FusionAI/Kimi 无公开余额 API → 基准录入 + 台账类别消耗扣减估算；
-    附本地台账累计与按近 7 天日均的预计可用天数。"""
+    """账户余额掌握：DeepSeek / Kimi 真实余额（API 实拉，失败给错误标记）；
+    FusionAI 无公开余额 API → 基准录入 + 台账类别消耗扣减估算；
+    附本地台账累计、按近 7 天日均的预计可用天数，以及关键模型单次计费口径。"""
     from datetime import timedelta
     from src.models.events import NodeEvent
     from src.gateway.cost_tracker import resolve_model_key
@@ -385,6 +412,18 @@ async def account_balance():
             select(NodeEvent.node_name, NodeEvent.model_version,
                    NodeEvent.cost_estimate_cny, NodeEvent.finished_at)
             .where(NodeEvent.cost_estimate_cny > 0))).all()
+        # 关键单次计费口径（展示用，不用于实际扣费）
+        fusion_per_call = (
+            await session.execute(text(
+                "SELECT per_call_cny FROM model_rates WHERE model_key='gpt-image-2.5-flare@fusion'"))
+        ).scalar()
+        if fusion_per_call is None:
+            fusion_per_call = (
+                await session.execute(text(
+                    "SELECT per_call_cny FROM model_rates WHERE model_key='gpt-image-2.5-flare'"))
+            ).scalar() or 0
+        kimi_rate_row = (await session.execute(text(
+            "SELECT input_hit_peak, output_peak FROM model_rates WHERE model_key='k3'"))).first() or (0, 0)
     daily_avg = float(last_7d) / 7
     ds = await _fetch_deepseek_balance()
     est_days = (round(ds["total_balance"] / daily_avg, 1)
@@ -397,7 +436,18 @@ async def account_balance():
     kimi_avg = sum(float(c or 0) for n, m, c, f in week_rows
                    if m and resolve_model_key(m) == "k3") / 7
     fusion = await _provider_estimate("fusion", rows, fusion_avg)
-    kimi = await _provider_estimate("kimi", rows, kimi_avg)
+    fusion["rate"] = {"model": "gpt-image-2.5-flare", "per_call_cny": round(float(fusion_per_call), 4)}
+    kimi = await _fetch_kimi_balance()
+    if kimi.get("ok"):
+        kimi["daily_avg_7d_cny"] = round(kimi_avg, 4)
+        kimi["est_available_days"] = (
+            round(kimi["available_balance"] / kimi_avg, 1)
+            if kimi_avg > 0 else None)
+        kimi["rate"] = {
+            "model": "k3",
+            "input_hit_peak": round(float(kimi_rate_row[0]), 4),
+            "output_peak": round(float(kimi_rate_row[1]), 4),
+        }
     return {
         "deepseek": ds,
         "fusion": fusion,
