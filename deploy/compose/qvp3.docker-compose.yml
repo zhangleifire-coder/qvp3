@@ -33,10 +33,10 @@ services:
 
   app:
     build:
-      context: .
+      context: ../..
       dockerfile: deploy/Dockerfile.dsh
     container_name: qvp3-app
-    env_file: .env
+    env_file: ../../.env
     environment:
       # 容器内服务发现（覆盖 .env 里的本机地址）
       DATABASE_URL: postgresql+asyncpg://qvp:qvp@qvp3-postgres:5432/qvp
@@ -61,7 +61,7 @@ services:
     ports:
       - "8005:8005"
     volumes:
-      - ./.env:/app/.env:ro
+      - ../../.env:/app/.env:ro
       - qvp3_generated:/app/static/generated
       - qvp3_exports:/app/exports
       - qvp3_dshhome:/data/dsh        # dsh 会话/记忆持久卷（spike 验证 d 项）
