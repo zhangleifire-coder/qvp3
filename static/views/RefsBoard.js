@@ -9,6 +9,7 @@ const RefsBoardView = {
       researchQ: '', researching: false, timer: null,
       uploading: false,   // 手工上传中
       zoom: null,         // 全屏查看器（放大细察候选图）
+      sortOrder: 'desc',  // 左侧队列排序：desc=最新在前，asc=最早在前
     };
   },
   computed: {
@@ -18,6 +19,14 @@ const RefsBoardView = {
     },
     keepCount() { return Object.keys(this.keep).filter(k => this.keep[k]).length; },
     awaitingCount() { return this.total; },
+    sortedItems() {
+      const dir = this.sortOrder === 'asc' ? 1 : -1;
+      return (this.items || []).slice().sort((a, b) => {
+        const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return (ta - tb) * dir;
+      });
+    },
   },
   methods: {
     // 全屏查看候选图：放大细察细节（缩放锚定光标位置），←→/按钮切换上一张下一张
@@ -120,11 +129,19 @@ const RefsBoardView = {
   <app-layout title="审图 · 实景参考图筛选">
     <div class="refs-layout">
       <div class="card refs-list">
-        <h2>待确认任务 <span class="tag tag-yellow">{{ awaitingCount }}</span></h2>
-        <div v-if="!items.length" class="empty" style="padding:18px 0">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+          <h2 style="margin-bottom:0">待确认任务 <span class="tag tag-yellow">{{ awaitingCount }}</span></h2>
+          <div style="display:flex;align-items:center;gap:8px">
+            <select v-model="sortOrder" style="width:auto;padding:4px 8px;font-size:13px">
+              <option value="desc">最新在前</option>
+              <option value="asc">最早在前</option>
+            </select>
+          </div>
+        </div>
+        <div v-if="!sortedItems.length" class="empty" style="padding:18px 0">
           暂无待确认任务——compare/single 任务搜集完参考图后会在这里等你筛选
         </div>
-        <div v-for="t in items" :key="t.id" class="refs-item" :class="{on: cur && cur.id === t.id}"
+        <div v-for="t in sortedItems" :key="t.id" class="refs-item" :class="{on: cur && cur.id === t.id}"
              @click="pick(t)">
           <b>{{ t.query }}</b>
           <span style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
@@ -136,7 +153,7 @@ const RefsBoardView = {
         </div>
       </div>
 
-      <div class="card" style="flex:1">
+      <div class="card refs-main" style="flex:1">
         <template v-if="detail">
           <h2>{{ detail.task.query }}
             <span class="tag tag-yellow">待确认</span>

@@ -350,7 +350,10 @@ input, select, textarea { font-size: 15px; }
 .style-form input { min-width: 160px; }
 
 /* ── 审图板块（实景参考图筛选工作台）── */
-.refs-layout { display: flex; gap: 16px; align-items: flex-start; }
+.refs-layout { display: flex; gap: 16px; align-items: stretch; height: calc(100vh - var(--topbar-h) - 56px); overflow: hidden; }
+.refs-layout > .refs-list,
+.refs-layout > .refs-main { overflow-y: auto; min-height: 0; }
+.refs-main { padding-right: 4px; }
 .refs-list { width: 300px; flex-shrink: 0; }
 .refs-item { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px;
   border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; cursor: pointer; }
