@@ -10,6 +10,7 @@ const TasksView = {
       list: [], total: 0, error: '', loading: false,
       approvedCount: 0,      // 审核通过的任务数（>0 才可导出内容包）
       fStatus: '', fMode: '', fRisk: '', auto: true,
+      sortOrder: 'desc',     // 列表时间排序：desc=最新在前，asc=最早在前
       nodes: [], timer: null, es: null, sseTimer: null, agentTimer: null,
       live: {},              // task_id -> 内存实时态（current_node/debug/imgs）
       detail: null, detailError: '', retrying: false,
@@ -90,6 +91,14 @@ const TasksView = {
       return this.list.length > 0 && this.list.every(t => this.selected[t.id]);
     },
     isAdmin() { const u = getUser(); return u && u.role === 'admin'; },
+    sortedList() {
+      const dir = this.sortOrder === 'asc' ? 1 : -1;
+      return (this.list || []).slice().sort((a, b) => {
+        const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return (ta - tb) * dir;
+      });
+    },
   },
   methods: {
     fmtTime, roleName,
@@ -574,6 +583,10 @@ const TasksView = {
         <option value="">全部风险</option>
         <option value="green">绿</option><option value="yellow">黄</option><option value="red">红</option>
       </select>
+      <select v-model="sortOrder" style="width:auto">
+        <option value="desc">时间：最新在前</option>
+        <option value="asc">时间：最早在前</option>
+      </select>
       <label class="auto-refresh"><input type="checkbox" v-model="auto" style="width:auto"> 自动刷新</label>
       <input v-model="search" @keyup.enter="load" placeholder="🔍 搜索 Query…" style="width:170px">
       <button v-if="search" class="btn btn-outline btn-sm" @click="search=''; load()">清除</button>
@@ -592,12 +605,12 @@ const TasksView = {
       <span class="muted" style="margin-left:auto">共 {{ total }} 条</span>
     </div>
     <p v-if="error" class="form-error">{{ error }}</p>
-    <div class="card">
-      <div v-if="!list.length" class="empty">暂无任务，<router-link to="/import">去导入 →</router-link></div>
+    <div class="card tasks-table-wrap">
+      <div v-if="!sortedList.length" class="empty">暂无任务，<router-link to="/import">去导入 →</router-link></div>
       <table v-else class="table">
         <thead><tr><th style="width:30px"><input type="checkbox" :checked="allPageSelected" @change="toggleSelectAll" style="width:auto" title="全选本页"></th><th>Query</th><th>模式</th><th>状态</th><th>风险</th><th>当前节点</th><th>创建时间</th><th style="text-align:right">操作</th></tr></thead>
         <tbody>
-          <tr v-for="t in list" :key="t.id" @click="open(t)" :class="{selected: detailTask && detailTask.id === t.id}" :title="rowLiveMsg(t)">
+          <tr v-for="t in sortedList" :key="t.id" @click="open(t)" :class="{selected: detailTask && detailTask.id === t.id}" :title="rowLiveMsg(t)">
             <td @click.stop><input type="checkbox" v-model="selected[t.id]" style="width:auto"></td>
             <td class="q-cell">{{ t.query }}</td>
             <td><span class="tag tag-blue">{{ modeLabel(t.mode) }}</span></td>
