@@ -255,11 +255,11 @@ async def node_evidence_build(input_data: dict) -> dict:
         task = (await session.execute(
             select(Task).where(Task.id == input_data["task_id"]))).scalar_one()
         query = task.query
-    # 1. 豆包检索（结构化来源）
+    # 1. 网页检索（结构化来源：doubao / kimi / deepseek）
     results = await web_search(query, count=6)
     # 2. DeepSeek 联网验证（交叉校验）
     deepseek_text, verify_cost = await deepseek_verify(query)
-    # 3. 争议检测：豆包来源 vs DeepSeek 结论的关键数字不一致
+    # 3. 争议检测：结构化来源 vs DeepSeek 结论的关键数字不一致
     conflicts = detect_conflict([r["summary"] or "" for r in results], deepseek_text)
     async with SessionLocal() as session:
         claim = Claim(task_id=input_data["task_id"], claim_text=query,
@@ -275,9 +275,15 @@ async def node_evidence_build(input_data: dict) -> dict:
             session.add(Issue(task_id=input_data["task_id"], role="A", priority="P1",
                               description="证据争议: " + "; ".join(conflicts)))
         await session.commit()
+    if settings.web_search_provider == "kimi":
+        search_cost = settings.kimi_search_cost_per_call
+    elif settings.web_search_provider == "doubao":
+        search_cost = settings.doubao_search_cost_per_call
+    else:
+        search_cost = 0.0
     return {"evidence_built": True, "evidence_count": len(results),
             "conflicts": conflicts,
-            "cost_cny": settings.doubao_search_cost_per_call + verify_cost}
+            "cost_cny": search_cost + verify_cost}
 
 
 # 信源可信度分级（2026-09-01 吸收 8002，对齐人工审核 SOP 采信优先级：

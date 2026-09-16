@@ -36,12 +36,12 @@ def test_primary_ok_no_fallback(tmp_path):
 
 
 def test_model_prefix_dsh(tmp_path):
-    """model 字段带 dsh: 前缀（灰度按栈筛数据），降级时为 dsh:k3。"""
+    """model 字段带 dsh: 前缀（灰度按栈筛数据），降级时为 dsh:kimi-k2.6。"""
     pool = _pool(tmp_path, {})
     chunks, emit = _collect()
     out = run_with_failover(pool, "hi", "s1", emit)
-    assert out.model == "dsh:deepseek-v4-flash"
-    assert all(c.get("model") == "dsh:deepseek-v4-flash" for c in chunks)
+    assert out.model == "dsh:deepseek-flash"
+    assert all(c.get("model") == "dsh:deepseek-flash" for c in chunks)
 
     def bad(_p, _s, _e, _pool):
         raise TimeoutError("t")
@@ -49,8 +49,8 @@ def test_model_prefix_dsh(tmp_path):
     pool2 = _pool(tmp_path / "b", {"primary": bad})
     chunks2, emit2 = _collect()
     out2 = run_with_failover(pool2, "hi", "s1", emit2)
-    assert out2.model == "dsh:kimi-k3"   # 备1：开放平台 kimi-k3（2026-09-10 起）
-    assert all(c.get("model") == "dsh:kimi-k3" for c in chunks2)
+    assert out2.model == "dsh:kimi-k2.6"   # 备1：开放平台 kimi-k2.6（2026-09-16 起）
+    assert all(c.get("model") == "dsh:kimi-k2.6" for c in chunks2)
 
 
 def test_usage_chunks_emit_cumulative(tmp_path):

@@ -24,6 +24,9 @@ DEFAULT_RATES: dict[str, dict] = {
     "k3": {"label": "Kimi K3 旗舰（2026-08-14 旧价待校准）",
            "input_hit_peak": 20.0, "input_miss_peak": 20.0,
            "output_peak": 100.0, "offpeak_ratio": 1.0, "per_call_cny": 0.0},
+    "kimi-k2.6": {"label": "Kimi K2.6（2026-09-16 参考价 ¥7/29 待账单校准）",
+                  "input_hit_peak": 1.0, "input_miss_peak": 7.0,
+                  "output_peak": 29.0, "offpeak_ratio": 1.0, "per_call_cny": 0.0},
     "qwen-vl-ocr": {"label": "百炼 qwen-vl-ocr（2026-08-20 官网价）",
                     "input_hit_peak": 0.3, "input_miss_peak": 0.3,
                     "output_peak": 0.5, "offpeak_ratio": 1.0, "per_call_cny": 0.0},
@@ -112,6 +115,8 @@ def resolve_model_key(model: str) -> str:
         return "deepseek-v4-flash"
     if "deepseek" in m:
         return "deepseek-v4-pro"
+    if "k2.6" in m or "kimi-k2-6" in m:
+        return "kimi-k2.6"
     if "moonshot" in m or "kimi" in m or "k3" in m:
         return "k3"
     if "gpt-image-2.5" in m:

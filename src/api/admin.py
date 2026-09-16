@@ -338,7 +338,7 @@ def _provider_consumption(rows, provider: str, since) -> float:
         c = float(cost or 0)
         if provider == "fusion" and classify_category(node, model) == "image_gen":
             total += c
-        elif provider == "kimi" and model and resolve_model_key(model) == "k3":
+        elif provider == "kimi" and model and resolve_model_key(model) in ("k3", "kimi-k2.6"):
             total += c
     return total
 
@@ -443,7 +443,7 @@ async def account_balance():
                     "SELECT per_call_cny FROM model_rates WHERE model_key='gpt-image-2.5-flare'"))
             ).scalar() or 0
         kimi_rate_row = (await session.execute(text(
-            "SELECT input_hit_peak, output_peak FROM model_rates WHERE model_key='k3'"))).first() or (0, 0)
+            "SELECT input_hit_peak, output_peak FROM model_rates WHERE model_key='kimi-k2.6'"))).first() or (0, 0)
     daily_avg = float(last_7d) / 7
     ds = await _fetch_deepseek_balance()
     ds["manual_balance"] = await _fetch_manual_balance("deepseek")
@@ -460,7 +460,7 @@ async def account_balance():
     fusion_avg = _provider_consumption(week_rows, "fusion",
                                        now - timedelta(days=7)) / 7
     kimi_avg = sum(float(c or 0) for n, m, c, f in week_rows
-                   if m and resolve_model_key(m) == "k3") / 7
+                   if m and resolve_model_key(m) in ("k3", "kimi-k2.6")) / 7
     fusion = await _provider_estimate("fusion", rows, fusion_avg)
     fusion["manual_balance"] = await _fetch_manual_balance("fusion")
     fusion["rate"] = {"model": "gpt-image-2.5-flare", "per_call_cny": round(float(fusion_per_call), 4)}
@@ -475,7 +475,7 @@ async def account_balance():
             round(display_kimi / kimi_avg, 1)
             if kimi_avg > 0 else None)
         kimi["rate"] = {
-            "model": "k3",
+            "model": "kimi-k2.6",
             "input_hit_peak": round(float(kimi_rate_row[0]), 4),
             "output_peak": round(float(kimi_rate_row[1]), 4),
         }

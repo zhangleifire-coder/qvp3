@@ -8,14 +8,14 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     # 文本模型（spec §1.1 已确定选型）
     deepseek_api_key: str = "sk-xxx"      # DeepSeek：正文生成 + 生图提示词
-    # 主模型（2026-09-10 起 deepseek-v4-flash，官方价约为 pro 的 1/3；改这里全局生效）
-    deepseek_model: str = "deepseek-v4-flash"
+    # 主模型（2026-09-16 起 deepseek-flash，即 DeepSeek V4.1 Flash 官方 ID；改这里全局生效）
+    deepseek_model: str = "deepseek-flash"
     kimi_api_key: str = "sk-yyy"          # Kimi K3（备1：开放平台按量，api.moonshot.cn）
     # 备2：Kimi Code 会员兜底线（api.kimi.com/coding，anthropic 协议）；
     # 默认空 = 第三级自动禁用，填入老 sk-kimi- 前缀 key 即启用
     kimi_code_api_key: str = ""
     # 备用链开关（2026-09-10 超管控制台在线切换；system_settings 持久化）
-    text_fallback1_enabled: bool = True   # 备1 Kimi 开放平台 kimi-k3
+    text_fallback1_enabled: bool = True   # 备1 Kimi 开放平台 kimi-k2.6
     text_fallback2_enabled: bool = True   # 备2 Kimi Code k3
     # 图片模型（z-image-turbo，阿里百炼，中文渲染优）
     dashscope_api_key: str = "sk-zzz"     # DashScope API key
@@ -64,10 +64,11 @@ class Settings(BaseSettings):
     # 旧 ChatGPT 生图字段（保留占位）
     chatgpt_api_key: str = "sk-zzz"
     chatgpt_proxy_url: str = ""
-    # 搜索（证据包网页搜索：doubao 结构化 / deepseek 联网，搜实景图：openserp）
-    web_search_provider: str = "doubao"   # doubao（结构化来源）/ deepseek（联网总结）
+    # 搜索（证据包网页搜索：doubao 结构化 / deepseek 联网 / kimi 联网，搜实景图：openserp）
+    web_search_provider: str = "doubao"   # doubao（结构化来源）/ deepseek（联网总结）/ kimi（联网搜索）
     doubao_search_key: str = "sk-www"     # 豆包搜索 API：证据包
     doubao_ark_key: str = "sk-vvv"        # 豆包方舟：搜实景图（预留）
+    kimi_search_cost_per_call: float = 0.03   # Kimi 联网搜索每次调用额外费用（元/次）
     # 队列 / 自适应并发（降并发：测试账户限流，串行处理）
     initial_concurrency: int = 1
     min_concurrency: int = 1

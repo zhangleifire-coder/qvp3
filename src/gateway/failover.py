@@ -2,14 +2,13 @@ import asyncio
 from src.config import settings
 from src.gateway.litellm_adapter import call_provider
 
-# 文本模型三级线路（2026-09-10 起）：
-#   主   DeepSeek 官方 deepseek-v4-flash（价约 pro 1/3；推理模型 max_tokens
-#        含 reasoning_tokens 见 litellm_adapter）
-#   备1  Kimi 开放平台 kimi-k3（OpenAI 兼容协议，按量付费）
+# 文本模型三级线路（2026-09-16 起）：
+#   主   DeepSeek 官方 deepseek-flash（V4.1 Flash 官方 ID；价约 pro 1/3）
+#   备1  Kimi 开放平台 kimi-k2.6（OpenAI 兼容协议，按量付费）
 #   备2  Kimi Code 会员 k3（Anthropic 兼容协议，会员额度兜底；
 #        KIMI_CODE_API_KEY 为空则该级自动禁用）
 DEEPSEEK_MODEL = f"deepseek/{settings.deepseek_model}"
-KIMI_MODEL = "openai/kimi-k3"        # 备1：开放平台走 OpenAI 兼容（litellm openai/ 前缀）
+KIMI_MODEL = "openai/kimi-k2.6"      # 备1：开放平台走 OpenAI 兼容（litellm openai/ 前缀）
 KIMI_API_BASE = "https://api.moonshot.cn/v1"
 KIMI_CODE_MODEL = "anthropic/k3"     # 备2：Kimi Code 走 Anthropic 兼容协议
 KIMI_CODE_API_BASE = "https://api.kimi.com/coding"

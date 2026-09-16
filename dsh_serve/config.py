@@ -16,14 +16,14 @@ class Settings(BaseSettings):
 
     # --- 主路由（DeepSeek 官方，OpenAI 兼容）---
     primary_provider: str = "deepseek-official"
-    primary_model: str = "deepseek-v4-flash"   # 2026-09-10 起 flash（价约 pro 1/3）；可用环境变量 PRIMARY_MODEL 覆盖
+    primary_model: str = "deepseek-flash"   # 2026-09-16 起使用官方 V4.1 Flash ID；可用环境变量 PRIMARY_MODEL 覆盖
     deepseek_base_url: str = "https://api.deepseek.com/v1"
 
     # --- 备1 路由（Kimi 开放平台，OpenAI 兼容；2026-09-10 从 Kimi Code 会员额度
     # 切换到开放平台按量付费，解决周配额上限问题）---
     fallback_enabled: bool = True
     fallback_provider: str = "kimi"
-    fallback_model: str = "kimi-k3"
+    fallback_model: str = "kimi-k2.6"
     fallback_api: str = "openai-completions"      # 开放平台 OpenAI 兼容协议
     kimi_base_url: str = "https://api.moonshot.cn/v1"
 

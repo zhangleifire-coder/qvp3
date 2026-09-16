@@ -1,0 +1,16 @@
+# v15.1.7 incremental build (review batch menu toggle)
+FROM qvp3-app:latest
+
+ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+
+COPY requirements.txt .
+RUN pip install -i ${PIP_INDEX_URL} -r requirements.txt
+
+COPY dsh_serve/requirements.txt dsh_serve/requirements.txt
+RUN pip install -i ${PIP_INDEX_URL} -r dsh_serve/requirements.txt
+
+COPY . /app
+RUN chmod +x /app/deploy/entrypoint.dsh.sh
+
+EXPOSE 8005
+ENTRYPOINT ["/app/deploy/entrypoint.dsh.sh"]

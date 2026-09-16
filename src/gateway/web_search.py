@@ -6,13 +6,15 @@ from src.config import settings
 async def web_search(query: str, count: int = 6) -> list:
     """网页搜索（证据包），返回结构化结果 list[dict]（title/url/summary）。
 
-    预留 provider 切换：doubao（结构化来源，默认）/ deepseek（联网总结）。
+    支持 provider 切换：doubao（结构化来源，默认）/ deepseek（联网总结）/ kimi（联网搜索）。
     """
     provider = settings.web_search_provider
     if provider == "doubao":
         return await _search_doubao(query, count)
     if provider == "deepseek":
         return await _search_deepseek(query)
+    if provider == "kimi":
+        return await _search_kimi(query, count)
     raise ValueError(f"unknown web search provider: {provider}")
 
 
@@ -82,3 +84,41 @@ async def _search_doubao(query: str, count: int) -> list:
 async def _search_deepseek(query: str) -> list:
     text = await deepseek_verify(query)
     return [{"title": "deepseek-web-search", "url": "", "summary": text}]
+
+
+async def _search_kimi(query: str, count: int = 6) -> list:
+    """Kimi 联网搜索：优先调用新 /v1/tools/search 接口；失败则返回空列表。
+
+    接口文档：https://platform.kimi.com/docs/guide/use-web-search
+    每次搜索额外收取工具调用费（由 settings.kimi_search_cost_per_call 记录）。
+    """
+    import logging
+    logger = logging.getLogger("src.gateway.web_search")
+    url = "https://api.moonshot.cn/v1/tools/search"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {settings.kimi_api_key}",
+    }
+    body = {"text_query": query, "limit": max(1, min(int(count), 20)),
+            "include_content": False}
+    try:
+        from src.gateway.http_client import get_client
+        resp = await get_client("search", timeout=30).post(url, json=body, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("kimi search failed: %s", e)
+        return []
+
+    candidates = data.get("search_results") or []
+    if not isinstance(candidates, list):
+        candidates = []
+    results = []
+    for item in candidates:
+        if not isinstance(item, dict):
+            continue
+        title = item.get("title") or ""
+        link = item.get("url") or ""
+        summary = item.get("snippet") or ""
+        results.append({"title": str(title), "url": str(link), "summary": str(summary)})
+    return results

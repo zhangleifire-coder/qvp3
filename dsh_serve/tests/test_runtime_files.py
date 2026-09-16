@@ -68,7 +68,7 @@ def test_settings_yaml_registers_kimi_provider(tmp_path):
     assert kimi["api"] == "openai-completions"   # 备1：开放平台（2026-09-10 起）
     assert kimi["baseURL"] == "https://api.moonshot.cn/v1"
     assert kimi["apiKeyEnv"] == "KIMI_API_KEY"
-    assert kimi["models"] == [{"id": "kimi-k3", "contextWindow": 131072}]
+    assert kimi["models"] == [{"id": "kimi-k2.6", "contextWindow": 131072}]
     assert s.kimi_api_key not in raw  # 密钥不落盘
 
 
