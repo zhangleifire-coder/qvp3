@@ -159,7 +159,10 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--primary); b
 .step.fail .step-label { color: var(--red); }
 
 /* 审核工作台 */
-.review-layout { display: grid; grid-template-columns: 300px 1fr; gap: 16px; align-items: start; }
+.review-layout { display: grid; grid-template-columns: 300px 1fr; gap: 16px; align-items: stretch; height: calc(100vh - var(--topbar-h) - 56px); overflow: hidden; }
+.review-layout > .review-queue,
+.review-layout > .review-main { overflow-y: auto; min-height: 0; }
+.review-main { padding-right: 4px; }
 .queue-item { padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; cursor: pointer; }
 .queue-item:hover { border-color: var(--primary); }
 .queue-item.on { border-color: var(--primary); outline: 1px solid var(--primary); }

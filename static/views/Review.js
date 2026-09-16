@@ -15,6 +15,7 @@ const ReviewView = {
       activeRole: '',       // 当前审核角色（allAccess 时可切换，默认账号自身角色）
       roleCounts: {},       // 各角色待审计数（与菜单徽标同口径 /api/meta/review_counts）
       countsTimer: null,
+      sortOrder: 'desc',    // 左侧队列排序：desc=最新在前，asc=最早在前
     };
   },
   computed: {
@@ -22,6 +23,14 @@ const ReviewView = {
     role() { return this.user ? this.user.role : ''; },
     isReviewer() { return ['A', 'B', 'C'].includes(this.role) || this.allAccess; },
     marksList() { return Object.values(this.marks).sort((a, b) => a.page_index - b.page_index); },
+    sortedQueue() {
+      const dir = this.sortOrder === 'asc' ? 1 : -1;
+      return (this.queue || []).slice().sort((a, b) => {
+        const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return (ta - tb) * dir;
+      });
+    },
     timerText() {
       const m = String(Math.floor(this.seconds / 60)).padStart(2, '0');
       const s = String(this.seconds % 60).padStart(2, '0');
@@ -182,13 +191,19 @@ const ReviewView = {
           </div>
           <p v-if="allAccess" class="muted" style="font-size:12.5px;margin:6px 0 10px">
             试运行模式：全员可审全部角色（默认进入你的账号角色 {{ role || 'A' }}），正式生产时将按账号分配固定角色。</p>
-          <div style="display:flex;justify-content:space-between;align-items:center">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
             <b v-if="allAccess" style="font-size:14px">待审队列 · {{ roleName(activeRole) }}</b>
-            <span v-else></span>
-            <button class="btn btn-outline btn-sm" @click="loadQueue">刷新</button>
+            <span v-else style="font-size:14px;font-weight:600">待审队列</span>
+            <div style="display:flex;align-items:center;gap:8px;margin-left:auto">
+              <select v-model="sortOrder" style="width:auto;padding:4px 8px;font-size:13px">
+                <option value="desc">最新在前</option>
+                <option value="asc">最早在前</option>
+              </select>
+              <button class="btn btn-outline btn-sm" @click="loadQueue">刷新</button>
+            </div>
           </div>
-          <div v-if="!queue.length" class="empty">暂无待审任务</div>
-          <div v-for="t in queue" :key="t.task_id" class="queue-item" :class="{on: currentId === t.task_id}" @click="select(t)">
+          <div v-if="!sortedQueue.length" class="empty">暂无待审任务</div>
+          <div v-for="t in sortedQueue" :key="t.task_id" class="queue-item" :class="{on: currentId === t.task_id}" @click="select(t)">
             <div class="q">{{ t.query }}</div>
             <div>
               <span class="tag tag-blue">{{ modeLabel(t.mode) }}</span>
