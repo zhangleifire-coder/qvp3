@@ -452,6 +452,8 @@ async def account_balance():
                   else (ds.get("total_balance") if ds.get("ok") else 0))
     est_days = (round(display_ds / daily_avg, 1)
                 if display_ds and daily_avg > 0 else None)
+    ds["daily_avg_7d_cny"] = round(daily_avg, 4)
+    ds["est_available_days"] = est_days
     # 各 provider 的近 7 天日均消耗（同类口径）：用于估算可用天数
     week_rows = [(n, m, c, f) for n, m, c, f in rows
                  if f and f >= now - timedelta(days=7)]

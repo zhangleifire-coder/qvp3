@@ -174,15 +174,13 @@ const AdminView = {
 
       <div class="card">
         <h2>费率与余额 <span class="muted" style="font-weight:normal;font-size:13px">费率改库/保存即生效（60s 内全进程刷新）；高峰=北京时间工作日 9:00-12:00、14:00-18:00，空闲按折扣价</span></h2>
+
+        <!-- DeepSeek -->
         <div class="grid grid-4" style="margin:12px 0" v-if="balance">
           <div class="stat">
             <template v-if="balance.deepseek && balance.deepseek.manual_balance">
               <div class="n">¥{{ fmtNum(balance.deepseek.manual_balance.balance_cny) }}</div>
               <div class="l">DeepSeek 手工校准余额</div>
-              <div class="muted" style="font-size:12px;margin-top:4px">
-                API 实拉 ¥{{ fmtNum(balance.deepseek.total_balance) }}；
-                校准于 {{ fmtTime(balance.deepseek.manual_balance.recorded_at) }}
-              </div>
             </template>
             <template v-else>
               <div class="n" v-if="balance.deepseek && balance.deepseek.ok">¥{{ fmtNum(balance.deepseek.total_balance) }}</div>
@@ -190,75 +188,82 @@ const AdminView = {
               <div class="l">DeepSeek 真实余额</div>
             </template>
           </div>
-          <div class="stat" v-if="balance.deepseek && balance.deepseek.ok && !balance.deepseek.manual_balance">
-            <div class="n" style="font-size:16px">赠 ¥{{ fmtNum(balance.deepseek.granted_balance) }} / 充 ¥{{ fmtNum(balance.deepseek.topped_up_balance) }}</div>
-            <div class="l">赠送 / 充值（扣费优先扣赠送）</div>
-          </div>
-          <div class="stat"><div class="n">{{ fmtMoney(balance.ledger.daily_avg_7d_cny) }}</div><div class="l">近7天日均消耗（台账）</div></div>
-          <div class="stat"><div class="n">{{ balance.est_available_days == null ? '-' : balance.est_available_days + ' 天' }}</div><div class="l">预计可用天数</div></div>
-        </div>
-        <p class="muted" style="font-size:13px" v-if="balance">
-          台账口径：累计 {{ fmtMoney(balance.ledger.total_cny) }}，近24h {{ fmtMoney(balance.ledger.last_24h_cny) }}，近7天 {{ fmtMoney(balance.ledger.last_7d_cny) }}
-          <span v-if="balance.deepseek && balance.deepseek.fetched_at">；DeepSeek 余额拉取于 {{ fmtTime(balance.deepseek.fetched_at) }}</span>
-        </p>
-        <div class="grid grid-2" style="margin-bottom:12px" v-if="balance">
-          <!-- FusionAI：无公开余额 API，保持基准估算 -->
           <div class="stat">
-            <div class="n">{{ estText(balance.fusion) }}</div>
-            <div class="l">FusionAI（生图主通道）估算余额</div>
-            <div class="muted" style="font-size:12px;margin-top:4px" v-if="balance.fusion && balance.fusion.ok">
-              基准 ¥{{ fmtNum(balance.fusion.baseline_cny) }}（{{ fmtTime(balance.fusion.recorded_at) }} 录入）
-              − 此后台账消耗 {{ fmtMoney(balance.fusion.consumed_since_cny) }}；
-              日均 {{ fmtMoney(balance.fusion.daily_avg_7d_cny) }}，
-              预计可用 {{ balance.fusion.est_available_days == null ? '-' : balance.fusion.est_available_days + ' 天' }}
-            </div>
-            <div class="muted" style="font-size:12px;margin-top:4px" v-else>{{ balance.fusion && balance.fusion.note }}</div>
-            <div class="muted" style="font-size:12px;margin-top:4px;color:#666" v-if="balance.fusion && balance.fusion.rate">
-              单次计费：{{ balance.fusion.rate.model }} 按次 ¥{{ fmtNum(balance.fusion.rate.per_call_cny) }}
-            </div>
+            <template v-if="balance.deepseek && balance.deepseek.manual_balance && balance.deepseek.ok">
+              <div class="n" style="font-size:16px">API 实拉 ¥{{ fmtNum(balance.deepseek.total_balance) }}</div>
+              <div class="muted" style="font-size:12px">赠 ¥{{ fmtNum(balance.deepseek.granted_balance) }} / 充 ¥{{ fmtNum(balance.deepseek.topped_up_balance) }}</div>
+            </template>
+            <template v-else-if="balance.deepseek && balance.deepseek.ok">
+              <div class="n" style="font-size:16px">赠 ¥{{ fmtNum(balance.deepseek.granted_balance) }} / 充 ¥{{ fmtNum(balance.deepseek.topped_up_balance) }}</div>
+            </template>
+            <div class="l">余额明细</div>
           </div>
-          <!-- Kimi：实拉开放平台余额，支持手工校准覆盖 -->
+          <div class="stat"><div class="n">{{ fmtMoney(balance.deepseek && balance.deepseek.daily_avg_7d_cny != null ? balance.deepseek.daily_avg_7d_cny : balance.ledger.daily_avg_7d_cny) }}</div><div class="l">近7天日均消耗</div></div>
+          <div class="stat"><div class="n">{{ balance.deepseek && balance.deepseek.est_available_days != null ? balance.deepseek.est_available_days + ' 天' : '-' }}</div><div class="l">预计可用天数</div></div>
+        </div>
+        <p class="muted" style="font-size:13px" v-if="balance && balance.deepseek && (balance.deepseek.fetched_at || balance.deepseek.manual_balance)">
+          <span v-if="balance.deepseek.manual_balance">手工校准于 {{ fmtTime(balance.deepseek.manual_balance.recorded_at) }}；</span>
+          <span v-if="balance.deepseek.fetched_at">API 拉取于 {{ fmtTime(balance.deepseek.fetched_at) }}</span>
+        </p>
+
+        <!-- Kimi -->
+        <div class="grid grid-4" style="margin:12px 0" v-if="balance">
           <div class="stat">
             <template v-if="balance.kimi && balance.kimi.manual_balance">
               <div class="n">¥{{ fmtNum(balance.kimi.manual_balance.balance_cny) }}</div>
-              <div class="l">Kimi（校稿文本）手工校准余额</div>
-              <div class="muted" style="font-size:12px;margin-top:4px">
-                API 实拉 ¥{{ fmtNum(balance.kimi.available_balance) }}
-                （赠 ¥{{ fmtNum(balance.kimi.voucher_balance) }} / 充 ¥{{ fmtNum(balance.kimi.cash_balance) }}）；
-                校准于 {{ fmtTime(balance.kimi.manual_balance.recorded_at) }}
-              </div>
-              <div class="muted" style="font-size:12px;margin-top:4px">
-                日均 {{ fmtMoney(balance.kimi.daily_avg_7d_cny) }}，
-                预计可用 {{ balance.kimi.est_available_days == null ? '-' : balance.kimi.est_available_days + ' 天' }}
-                <span v-if="balance.kimi.fetched_at">；拉取于 {{ fmtTime(balance.kimi.fetched_at) }}</span>
-              </div>
-              <div class="muted" style="font-size:12px;margin-top:4px;color:#666" v-if="balance.kimi.rate">
-                单次计费：{{ balance.kimi.rate.model }} 输入命中 ¥{{ fmtNum(balance.kimi.rate.input_hit_peak) }}/1M tokens，
-                输出 ¥{{ fmtNum(balance.kimi.rate.output_peak) }}/1M tokens
-              </div>
+              <div class="l">Kimi 手工校准余额</div>
             </template>
             <template v-else-if="balance.kimi && balance.kimi.ok">
               <div class="n">¥{{ fmtNum(balance.kimi.available_balance) }}</div>
-              <div class="l">Kimi（校稿文本）真实余额</div>
-              <div class="muted" style="font-size:16px;margin-top:4px">
-                赠 ¥{{ fmtNum(balance.kimi.voucher_balance) }} / 充 ¥{{ fmtNum(balance.kimi.cash_balance) }}
-              </div>
-              <div class="muted" style="font-size:12px;margin-top:4px">
-                日均 {{ fmtMoney(balance.kimi.daily_avg_7d_cny) }}，
-                预计可用 {{ balance.kimi.est_available_days == null ? '-' : balance.kimi.est_available_days + ' 天' }}
-                <span v-if="balance.kimi.fetched_at">；拉取于 {{ fmtTime(balance.kimi.fetched_at) }}</span>
-              </div>
-              <div class="muted" style="font-size:12px;margin-top:4px;color:#666" v-if="balance.kimi.rate">
-                单次计费：{{ balance.kimi.rate.model }} 输入命中 ¥{{ fmtNum(balance.kimi.rate.input_hit_peak) }}/1M tokens，
-                输出 ¥{{ fmtNum(balance.kimi.rate.output_peak) }}/1M tokens
-              </div>
+              <div class="l">Kimi 真实余额</div>
             </template>
             <template v-else>
               <div class="n" style="color:#c00;font-size:16px">{{ (balance.kimi && balance.kimi.error) || '拉取失败' }}</div>
-              <div class="l">Kimi（校稿文本）真实余额</div>
+              <div class="l">Kimi 余额</div>
             </template>
           </div>
+          <div class="stat">
+            <template v-if="balance.kimi && balance.kimi.manual_balance && balance.kimi.ok">
+              <div class="n" style="font-size:16px">API 实拉 ¥{{ fmtNum(balance.kimi.available_balance) }}</div>
+              <div class="muted" style="font-size:12px">赠 ¥{{ fmtNum(balance.kimi.voucher_balance) }} / 充 ¥{{ fmtNum(balance.kimi.cash_balance) }}</div>
+            </template>
+            <template v-else-if="balance.kimi && balance.kimi.ok">
+              <div class="n" style="font-size:16px">赠 ¥{{ fmtNum(balance.kimi.voucher_balance) }} / 充 ¥{{ fmtNum(balance.kimi.cash_balance) }}</div>
+            </template>
+            <div class="l">余额明细</div>
+          </div>
+          <div class="stat"><div class="n">{{ fmtMoney(balance.kimi && balance.kimi.daily_avg_7d_cny != null ? balance.kimi.daily_avg_7d_cny : 0) }}</div><div class="l">近7天日均消耗</div></div>
+          <div class="stat"><div class="n">{{ balance.kimi && balance.kimi.est_available_days != null ? balance.kimi.est_available_days + ' 天' : '-' }}</div><div class="l">预计可用天数</div></div>
         </div>
+        <p class="muted" style="font-size:13px" v-if="balance && balance.kimi && (balance.kimi.fetched_at || balance.kimi.manual_balance)">
+          <span v-if="balance.kimi.manual_balance">手工校准于 {{ fmtTime(balance.kimi.manual_balance.recorded_at) }}；</span>
+          <span v-if="balance.kimi.fetched_at">API 拉取于 {{ fmtTime(balance.kimi.fetched_at) }}</span>
+          <span v-if="balance.kimi.rate">；单次计费：{{ balance.kimi.rate.model }} 输入命中 ¥{{ fmtNum(balance.kimi.rate.input_hit_peak) }}/1M tokens，输出 ¥{{ fmtNum(balance.kimi.rate.output_peak) }}/1M tokens</span>
+        </p>
+
+        <!-- FusionAI -->
+        <div class="grid grid-4" style="margin:12px 0" v-if="balance">
+          <div class="stat">
+            <div class="n" v-if="balance.fusion && balance.fusion.ok">¥{{ fmtNum(balance.fusion.estimated_balance_cny) }}</div>
+            <div class="n" v-else style="color:#c00;font-size:16px">{{ (balance.fusion && balance.fusion.error) || '未录入基准' }}</div>
+            <div class="l">FusionAI 估算余额</div>
+          </div>
+          <div class="stat">
+            <div class="n" style="font-size:16px" v-if="balance.fusion && balance.fusion.ok">基准 ¥{{ fmtNum(balance.fusion.baseline_cny) }} / 已消耗 ¥{{ fmtNum(balance.fusion.consumed_since_cny) }}</div>
+            <div class="l">余额明细</div>
+          </div>
+          <div class="stat"><div class="n">{{ fmtMoney(balance.fusion && balance.fusion.daily_avg_7d_cny != null ? balance.fusion.daily_avg_7d_cny : 0) }}</div><div class="l">近7天日均消耗</div></div>
+          <div class="stat"><div class="n">{{ balance.fusion && balance.fusion.est_available_days != null ? balance.fusion.est_available_days + ' 天' : '-' }}</div><div class="l">预计可用天数</div></div>
+        </div>
+        <p class="muted" style="font-size:13px" v-if="balance && balance.fusion">
+          <span v-if="balance.fusion.ok">基准录入于 {{ fmtTime(balance.fusion.recorded_at) }}</span>
+          <span v-else>{{ balance.fusion.note }}</span>
+          <span v-if="balance.fusion.rate">；单次计费：{{ balance.fusion.rate.model }} 按次 ¥{{ fmtNum(balance.fusion.rate.per_call_cny) }}</span>
+        </p>
+
+        <p class="muted" style="font-size:13px" v-if="balance">
+          台账口径：累计 {{ fmtMoney(balance.ledger.total_cny) }}，近24h {{ fmtMoney(balance.ledger.last_24h_cny) }}，近7天 {{ fmtMoney(balance.ledger.last_7d_cny) }}
+        </p>
         <div style="margin:10px 0;display:flex;gap:8px">
           <button class="btn btn-outline btn-sm" @click="loadBalance" :disabled="balanceLoading">{{ balanceLoading ? '拉取中…' : '刷新余额' }}</button>
           <button class="btn btn-outline btn-sm" @click="loadRates">刷新费率</button>
