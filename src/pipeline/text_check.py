@@ -289,6 +289,26 @@ async def run_text_check(task_id) -> dict:
         task.text_review = review
         task.status = "awaiting_text"
         await session.commit()
+        task_query = task.query
+
+    # 全绿（query_clean 无 issues + 正文规则无 issues）自动放行，进入生产
+    if review["auto_ok"]:
+        from src.stream.scheduler import scheduler
+        from src.services.activity import log_action
+        async with SessionLocal() as session:
+            task = (await session.execute(
+                select(Task).where(Task.id == task_id))).scalar_one()
+            task.status = "draft"
+            await session.commit()
+        await scheduler.enqueue(task_id, task_query, kind="pipeline")
+        await log_action("system", "text_auto_confirm",
+                         "文字核查全绿，自动放行进入生产", task_id=task_id)
+        return {"candidates_pages": len(pages),
+                "issues": len(review["query_clean"]["issues"]),
+                "auto_ok": True, "auto_confirmed": True,
+                "cost_cny": (result.get("cost_cny") or 0) + polish_trace["cost_cny"],
+                "model_version": result.get("model_version")}
+
     return {"candidates_pages": len(pages), "issues": len(review["query_clean"]["issues"]),
             "auto_ok": review["auto_ok"],
             # 节点成本（execute_node 从返回 dict 提取入 node_events）：

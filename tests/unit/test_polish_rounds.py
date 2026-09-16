@@ -12,7 +12,9 @@ import json
 import uuid
 
 from sqlalchemy import select
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from src.db.session import SessionLocal
 from src.gateway import skill_loader
@@ -50,6 +52,13 @@ async def _review(task_id) -> dict:
     async with SessionLocal() as s:
         t = (await s.execute(select(Task).where(Task.id == task_id))).scalar_one()
         return t.text_review
+
+
+@pytest.fixture(autouse=True)
+def _patch_text_check_scheduler():
+    """run_text_check 全绿时会自动放行，测试中把 scheduler.enqueue  mock 掉。"""
+    with patch("src.pipeline.text_check.scheduler.enqueue", new=AsyncMock()) as m:
+        yield m
 
 
 # ── 提示词库注册 ──

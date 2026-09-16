@@ -75,9 +75,11 @@ async def test_manual_task_not_skipped_by_gate():
                    "query_clean": {"issues": [], "suggested": ""},
                    "body_draft": "正文" * 250,
                    "pages_draft": ["1"] * 6, "image_prompt_draft": ["d"] * 6},
-                   ensure_ascii=False), "model_version": "m"}):
+                   ensure_ascii=False), "model_version": "m"}), \
+         patch("src.pipeline.text_check.scheduler.enqueue", new=AsyncMock()) as auto_enq:
         r = await _node_text_check({"task_id": tid})
     assert r.get("text_gate") is True          # 走了起草（改写模式），未跳过
+    assert auto_enq.called                     # 全绿自动放行进入生产
     # 起草完成后再跑 pipeline：幂等跳过（body_draft 已存在）
     r2 = await _node_text_check({"task_id": tid})
     assert r2.get("skipped") is True
@@ -103,14 +105,16 @@ async def test_text_check_rewrite_mode_keeps_user_body():
             "pages_draft": ["P1", "P2", "P3", "P4", "P5", "P6"],
             "image_prompt_draft": ["d1", "d2", "d3", "d4", "d5", "d6"],
         }, ensure_ascii=False), "model_version": "m", "degraded": False}
-    with patch("src.pipeline.text_check.call_with_failover", side_effect=fake_failover):
+    with patch("src.pipeline.text_check.call_with_failover", side_effect=fake_failover), \
+         patch("src.pipeline.text_check.scheduler.enqueue", new=AsyncMock()) as auto_enq:
         r = await run_text_check(tid)
-    assert r["auto_ok"] is True
+    assert r["auto_ok"] is True and r.get("auto_confirmed") is True
+    assert auto_enq.called                          # 全绿自动放行
     assert "用户手写正文" in captured["prompt"]      # 走了改写 prompt
     assert _BODY[:30] in captured["prompt"]          # 手写内容注入
     async with SessionLocal() as s:
         task = (await s.execute(select(Task).where(Task.id == uuid.UUID(tid)))).scalar_one()
-        assert task.status == "awaiting_text"
+        assert task.status == "draft"               # 自动确认后进入生产队列
         rv = task.text_review
         assert rv["source"] == "manual" and rv["user_body"] == _BODY   # 原稿保留
         assert rv["body_draft"].startswith("改写后的正文")
@@ -151,7 +155,8 @@ async def test_text_reject_marks_drive_targeted_rewrite():
             "pages_draft": ["P1新", "P2", "P3", "P4", "P5", "P6"],
             "image_prompt_draft": ["d1", "d2", "d3", "d4", "d5", "d6"]},
             ensure_ascii=False), "model_version": "m"}
-    with patch("src.pipeline.text_check.call_with_failover", side_effect=fake_failover):
+    with patch("src.pipeline.text_check.call_with_failover", side_effect=fake_failover), \
+         patch("src.pipeline.text_check.scheduler.enqueue", new=AsyncMock()) as auto_enq:
         r = await reject_text(tid, TextRejectIn(actor="张三", marks=[
             {"target": "page:1", "note": "封面文案不够吸引人，改成疑问句式"},
             {"target": "body", "note": "第二段太啰嗦，压缩到两句话"},
@@ -168,9 +173,10 @@ async def test_text_reject_marks_drive_targeted_rewrite():
     assert "驳回标记与修改意见" in p
     assert "第1页图上文案" in p and "疑问句式" in p        # 标记+意见注入
     assert "P1旧" in p and "第一版正文" in p               # 当前草稿作为底稿
+    assert auto_enq.called                                  # 改写后全绿，自动放行
     async with SessionLocal() as s:
         task = (await s.execute(select(Task).where(Task.id == uuid.UUID(tid)))).scalar_one()
-        assert task.status == "awaiting_text"               # 改完回到核查
+        assert task.status == "draft"                       # 自动确认后进入生产队列
         rv = task.text_review
         assert "feedback" not in rv or not rv.get("feedback")   # 已处理清除
         lf = rv.get("last_feedback") or []
