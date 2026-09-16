@@ -60,7 +60,7 @@ async def _ensure_test_db():
         for m in sorted(_MIGRATION_DIR.glob("*.sql")):
             if m.name.startswith("."):
                 continue
-            await conn.execute(m.read_text())
+            await conn.execute(m.read_text(encoding="utf-8"))
     finally:
         await conn.close()
 

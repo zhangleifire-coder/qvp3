@@ -47,6 +47,37 @@ DEFAULT_RATES: dict[str, dict] = {
     "gpt-image-2@openox": {"label": "gpt-image-2 · Openox（参照 fusion 待校准）",
                            "input_hit_peak": 0.0, "input_miss_peak": 0.0,
                            "output_peak": 0.0, "offpeak_ratio": 1.0, "per_call_cny": 0.2},
+    # gpt-image-2.5 系列（025，2026-09-14）：默认 flare，sunburst 同价待校准
+    "gpt-image-2.5-flare": {"label": "gpt-image-2.5-flare 生图（按次计费，通道基准价）",
+                            "input_hit_peak": 0.0, "input_miss_peak": 0.0,
+                            "output_peak": 0.0, "offpeak_ratio": 1.0, "per_call_cny": 0.2},
+    "gpt-image-2.5-flare@fusion": {"label": "gpt-image-2.5-flare · FusionAI（参照 gpt-image-2 待校准）",
+                                   "input_hit_peak": 0.0, "input_miss_peak": 0.0,
+                                   "output_peak": 0.0, "offpeak_ratio": 1.0, "per_call_cny": 0.2},
+    "gpt-image-2.5-flare@linkai": {"label": "gpt-image-2.5-flare · LinkAI（参照 fusion 待校准）",
+                                   "input_hit_peak": 0.0, "input_miss_peak": 0.0,
+                                   "output_peak": 0.0, "offpeak_ratio": 1.0, "per_call_cny": 0.2},
+    "gpt-image-2.5-flare@moacode": {"label": "gpt-image-2.5-flare · Moacode（参照 fusion 待校准）",
+                                    "input_hit_peak": 0.0, "input_miss_peak": 0.0,
+                                    "output_peak": 0.0, "offpeak_ratio": 1.0, "per_call_cny": 0.2},
+    "gpt-image-2.5-flare@openox": {"label": "gpt-image-2.5-flare · Openox（参照 fusion 待校准）",
+                                   "input_hit_peak": 0.0, "input_miss_peak": 0.0,
+                                   "output_peak": 0.0, "offpeak_ratio": 1.0, "per_call_cny": 0.2},
+    "gpt-image-2.5-sunburst": {"label": "gpt-image-2.5-sunburst 生图（按次计费，通道基准价）",
+                               "input_hit_peak": 0.0, "input_miss_peak": 0.0,
+                               "output_peak": 0.0, "offpeak_ratio": 1.0, "per_call_cny": 0.2},
+    "gpt-image-2.5-sunburst@fusion": {"label": "gpt-image-2.5-sunburst · FusionAI（参照 gpt-image-2 待校准）",
+                                      "input_hit_peak": 0.0, "input_miss_peak": 0.0,
+                                      "output_peak": 0.0, "offpeak_ratio": 1.0, "per_call_cny": 0.2},
+    "gpt-image-2.5-sunburst@linkai": {"label": "gpt-image-2.5-sunburst · LinkAI（参照 fusion 待校准）",
+                                      "input_hit_peak": 0.0, "input_miss_peak": 0.0,
+                                      "output_peak": 0.0, "offpeak_ratio": 1.0, "per_call_cny": 0.2},
+    "gpt-image-2.5-sunburst@moacode": {"label": "gpt-image-2.5-sunburst · Moacode（参照 fusion 待校准）",
+                                       "input_hit_peak": 0.0, "input_miss_peak": 0.0,
+                                       "output_peak": 0.0, "offpeak_ratio": 1.0, "per_call_cny": 0.2},
+    "gpt-image-2.5-sunburst@openox": {"label": "gpt-image-2.5-sunburst · Openox（参照 fusion 待校准）",
+                                      "input_hit_peak": 0.0, "input_miss_peak": 0.0,
+                                      "output_peak": 0.0, "offpeak_ratio": 1.0, "per_call_cny": 0.2},
     "default": {"label": "兜底费率（未识别模型）",
                 "input_hit_peak": 3.0, "input_miss_peak": 3.0,
                 "output_peak": 6.0, "offpeak_ratio": 1.0, "per_call_cny": 0.0},
@@ -83,6 +114,10 @@ def resolve_model_key(model: str) -> str:
         return "deepseek-v4-pro"
     if "moonshot" in m or "kimi" in m or "k3" in m:
         return "k3"
+    if "gpt-image-2.5" in m:
+        if "sunburst" in m:
+            return "gpt-image-2.5-sunburst"
+        return "gpt-image-2.5-flare"
     if "gpt-image" in m:
         return "gpt-image-2"
     if "gpt" in m:
@@ -141,8 +176,8 @@ def estimate_cost(model: str, prompt_tokens: int, completion_tokens: int,
 def per_call_cost(model: str, fallback: float = 0.0) -> float:
     """按次计费通道（如生图）的单价（元/次）。
 
-    精确匹配先行（如 gpt-image-2@fusion 通道行）；无该行时回落到基础模型行
-    （gpt-image-2 基准价）；仍为 0 时返回 fallback（调用方传
+    精确匹配先行（如 gpt-image-2.5-flare@fusion 通道行）；无该行时回落到基础模型行
+    （gpt-image-2.5-flare 基准价）；仍为 0 时返回 fallback（调用方传
     settings.image_cost_per_image_cny 作全局兜底）。
     """
     m = (model or "").lower()

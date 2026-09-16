@@ -22,6 +22,11 @@ def test_per_call_channel_rates():
     assert per_call_cost("gpt-image-2@openox") == 0.2
     # 无通道后缀 → 基准行；未识别模型 → fallback 全局兜底
     assert per_call_cost("gpt-image-2") == 0.2
+    # 新默认模型 gpt-image-2.5-flare（025）
+    assert per_call_cost("gpt-image-2.5-flare@fusion") == 0.2
+    assert per_call_cost("gpt-image-2.5-flare@linkai") == 0.2
+    assert per_call_cost("gpt-image-2.5-flare") == 0.2
+    assert per_call_cost("gpt-image-2.5-sunburst@moacode") == 0.2
     assert per_call_cost("totally-unknown", fallback=0.35) == 0.35
 
 
@@ -58,6 +63,7 @@ def test_classify_category_by_node():
 def test_classify_category_by_model_fallback():
     assert classify_category("some_node", "qwen-vl-ocr") == "ocr"
     assert classify_category("some_node", "gpt-image-2@fusion") == "image_gen"
+    assert classify_category("some_node", "gpt-image-2.5-flare@fusion") == "image_gen"
     assert classify_category("some_node", "nanobot:dsh:k3") == "text_llm"
     assert classify_category("some_node", None) == "text_llm"
 
@@ -79,7 +85,7 @@ def _dsn() -> str:
 
 async def test_migration_021_idempotent_and_guards_admin_edits():
     sql = (Path(__file__).resolve().parents[2]
-           / "migrations" / "021_channel_rates_and_balance_baselines.sql").read_text()
+           / "migrations" / "021_channel_rates_and_balance_baselines.sql").read_text(encoding="utf-8")
     conn = await asyncpg.connect(_dsn())
     try:
         await conn.execute(sql)

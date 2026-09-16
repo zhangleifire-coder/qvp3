@@ -805,9 +805,10 @@ async def node_asset_gen(input_data: dict) -> dict:
         # 分通道计费（2026-09-09）：成图按各自通道价，去重/尺寸重生按基准价
         from src.gateway.cost_tracker import per_call_cost, refresh_rates
         await refresh_rates()
-        base_rate = per_call_cost("gpt-image-2",
+        image_model = settings.image_model
+        base_rate = per_call_cost(image_model,
                                   fallback=settings.image_cost_per_image_cny)
-        cost = sum(per_call_cost(f"gpt-image-2@{r.get('channel') or ''}",
+        cost = sum(per_call_cost(f"{image_model}@{r.get('channel') or ''}",
                                  fallback=base_rate) for r in results)
         cost += extra_gen * base_rate
     async with SessionLocal() as session:

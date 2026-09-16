@@ -249,15 +249,16 @@ async def generate_images(task_id: str, pages: list[str], mode: str = "general",
     if settings.mock_image_gen:
         cost = 0
     else:
-        # 分通道计费（2026-09-09）：成图按各自通道价（gpt-image-2@<channel> 行），
+        # 分通道计费（2026-09-09）：成图按各自通道价（<image_model>@<channel> 行），
         # 去重重生有实际通道按通道、无行回退基准价 → 全局兜底
         from src.gateway.cost_tracker import per_call_cost
-        base_rate = per_call_cost("gpt-image-2",
+        image_model = settings.image_model
+        base_rate = per_call_cost(image_model,
                                   fallback=settings.image_cost_per_image_cny)
-        cost = sum(per_call_cost(f"gpt-image-2@{r.get('channel') or ''}",
+        cost = sum(per_call_cost(f"{image_model}@{r.get('channel') or ''}",
                                  fallback=base_rate)
                    for r in results.values())
-        cost += sum(per_call_cost(f"gpt-image-2@{c}", fallback=base_rate)
+        cost += sum(per_call_cost(f"{image_model}@{c}", fallback=base_rate)
                     for c in regen_channels)
     await report_usage(task_id, "image_gen", cost, {
         "pages": total_pages, "extra_regens": extra_gen, "mode": mode,

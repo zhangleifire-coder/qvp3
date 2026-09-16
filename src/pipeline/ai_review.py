@@ -103,7 +103,7 @@ async def _gen_one_with_review(task_id, page_index: int, page_text: str,
         r = await generate_image(prompt, reference_image_urls=ref_urls or None)
         data, ctype = await fetch_image_bytes(r["image_url"])
         local_url = _persist_image(task_id, page_index, "p", data, ctype)
-        return local_url, r.get("model_version", "gpt-image-2"), data, ctype
+        return local_url, r.get("model_version", settings.image_model), data, ctype
 
     bench_url = await get_benchmark_shot(mode or ("compare" if ref_mode else "general"))
     last_prompt = base_prompt

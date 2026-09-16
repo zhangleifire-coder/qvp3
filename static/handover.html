@@ -83,7 +83,7 @@ FastAPI 后端（uvicorn，单进程 asyncio）         Docker Compose（每套�
 <p>一次 Agent 路径生产的数据流：
 导入 → 文字核查关卡（人工放行）→ 实景搜图关卡（人工筛选，compare/single 才有）→
 <code>agent_production</code> 一次调用创作 Agent（Nanobot 或 dsh_serve，协议一致；内部用
-MCP 工具：豆包搜索取证 → 生图 gpt-image-2 → 逐页 OCR 自检）→ 后端收契约 JSON
+MCP 工具：豆包搜索取证 → 生图 gpt-image-2.5-flare → 逐页 OCR 自检）→ 后端收契约 JSON
 做确定性收尾（图片本地化/去重/尺寸校验/落库 → 规则机 → 交叉核验 → 风险分级 →
 人工审图 → 会签 → 快照）。</p>
 <h2 id="3">3. 技术栈清单</h2>
@@ -104,12 +104,12 @@ MCP 工具：豆包搜索取证 → 生图 gpt-image-2 → 逐页 OCR 自检）�
 <tr>
 <td>ORM/DB</td>
 <td>SQLAlchemy 2 async + asyncpg + PostgreSQL 16</td>
-<td>迁移是编号 SQL（<code>migrations/001-021</code>），entrypoint 的 <code>init_db.py</code> 幂等应用</td>
+<td>迁移是编号 SQL（<code>migrations/001-025</code>），entrypoint 的 <code>init_db.py</code> 幂等应用</td>
 </tr>
 <tr>
 <td>费率核算</td>
 <td><code>model_rates</code> 表 + <code>src/gateway/cost_tracker.py</code>（020/021，2026-09-09）</td>
-<td>费率 DB 权威、改库/管理页保存即生效（进程内缓存 60s+代码兜底）；DeepSeek 按缓存命中/未命中分段计价，北京时间工作日 9-12/14-18 点高峰、空闲半价；生图分通道按次计费（<code>gpt-image-2@&lt;channel&gt;</code> 行，fusion=0.2 元/张账单实证，无通道行回退基准行→<code>IMAGE_COST_PER_IMAGE_CNY</code> 兜底）；费用四类拆分 text_llm/image_gen/search/ocr（节点名优先、模型名兜底）；管理页 <code>GET/PUT /api/admin/rates</code>、<code>GET /api/admin/balance</code>（DeepSeek 余额 API 实拉 + FusionAI/Kimi 基准录入扣减估算 + <code>PUT /api/admin/balance_baseline</code>）</td>
+<td>费率 DB 权威、改库/管理页保存即生效（进程内缓存 60s+代码兜底）；DeepSeek 按缓存命中/未命中分段计价，北京时间工作日 9-12/14-18 点高峰、空闲半价；生图分通道按次计费（<code>gpt-image-2.5-flare@&lt;channel&gt;</code> 行，fusion=0.2 元/张待校准，无通道行回退基准行→<code>IMAGE_COST_PER_IMAGE_CNY</code> 兜底）；费用四类拆分 text_llm/image_gen/search/ocr（节点名优先、模型名兜底）；管理页 <code>GET/PUT /api/admin/rates</code>、<code>GET /api/admin/balance</code>（DeepSeek 余额 API 实拉 + FusionAI/Kimi 基准录入扣减估算 + <code>PUT /api/admin/balance_baseline</code>）</td>
 </tr>
 <tr>
 <td>缓存/限流</td>
@@ -143,8 +143,8 @@ MCP 工具：豆包搜索取证 → 生图 gpt-image-2 → 逐页 OCR 自检）�
 </tr>
 <tr>
 <td>生图</td>
-<td>gpt-image-2，三通道轮询</td>
-<td>FusionAI（主）/LinkAI/Moacode，<code>IMAGE_GEN_CHANNELS</code>；画质档 <code>high</code></td>
+<td>gpt-image-2.5-flare，四通道轮询</td>
+<td>FusionAI（主）/LinkAI/Moacode/Openox，<code>IMAGE_GEN_CHANNELS</code>；画质档 <code>high</code></td>
 </tr>
 <tr>
 <td>实景搜图</td>
@@ -190,7 +190,7 @@ MCP 工具：豆包搜索取证 → 生图 gpt-image-2 → 逐页 OCR 自检）�
 │  │   │                     协议 1:1，NANOBOT_BASE_URL 可指 Nanobot 或 dsh_serve）
 │  │   ├─ skill_loader.py   ★skills/ 取词器（SKILL.md frontmatter/片段/列表片段/
 │  │   │                     字数契约常量；首读落缓存，测试可 reload()）
-│  │   ├─ image_gen.py      gpt-image-2 三通道轮询（生成+编辑/图生图）
+│  │   ├─ image_gen.py      gpt-image-2.5-flare 四通道轮询（生成+编辑/图生图）
 │  │   ├─ image_search.py / web_search.py / ocr.py
 │  │   ├─ prompt_versions.py 提示词库门面（常量名/三级覆盖语义不变，内部改从
 │  │   │                     skill_loader 读；演进注释仍在）
@@ -492,8 +492,8 @@ MCP 工具：豆包搜索取证 → 生图 gpt-image-2 → 逐页 OCR 自检）�
 <td>文本 LLM 主/备（dsh_serve 主备路由也用这两个）</td>
 </tr>
 <tr>
-<td><code>OPENAI_IMAGE_*</code> / <code>MOACODE_*</code> / <code>FUSIONAI_*</code></td>
-<td>gpt-image-2 三通道</td>
+<td><code>OPENAI_IMAGE_*</code> / <code>MOACODE_*</code> / <code>FUSIONAI_*</code> / <code>OPENOX_*</code></td>
+<td>gpt-image-2.5-flare 四通道</td>
 </tr>
 <tr>
 <td><code>IMAGE_GEN_CHANNELS</code></td>

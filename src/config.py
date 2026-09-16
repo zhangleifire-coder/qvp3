@@ -20,24 +20,25 @@ class Settings(BaseSettings):
     # 图片模型（z-image-turbo，阿里百炼，中文渲染优）
     dashscope_api_key: str = "sk-zzz"     # DashScope API key
     dashscope_base_url: str = "https://ws-7349xztoo3gwseol.cn-beijing.maas.aliyuncs.com/api/v1"
-    # 图片生成（gpt-image-2，OpenAI 兼容 Images API，经转发机）
+    # 图片生成（gpt-image-2.5-flare，OpenAI 兼容 Images API，经转发机；
+    # 可选 gpt-image-2.5-sunburst，同 API 同参数）
     openai_image_base_url: str = ""      # 通道1：LinkAI（OpenAI 兼容，含 /v1）
     openai_image_api_key: str = "sk-xxx" # 通道1 key
-    # 通道2：Moacode gpt-image-2（OpenAI Responses API，SSE 流式，返回 base64）
+    # 通道2：Moacode gpt-image-2.5（OpenAI Responses API，SSE 流式，返回 base64）
     moacode_api_key: str = ""            # cr_... ；空则该通道不可用
     moacode_base_url: str = "https://moacode.org/v1"
-    # 通道3（主）：FusionAI gpt-image-2（Images API 生成+编辑，返回 b64_json，
+    # 通道3（主）：FusionAI gpt-image-2.5（Images API 生成+编辑，返回 b64_json，
     # 1K/2K/4K，支持 6 图并发；生图可能数分钟，读超时给足）
     fusionai_api_key: str = ""           # sk-fusion-... ；空则该通道不可用
     fusionai_base_url: str = "https://api.fusionaix.cn/v1"
-    # 通道4（备份，2026-09-08）：openox gpt-image-2（OpenAI 兼容 Images API，
+    # 通道4（备份，2026-09-08）：openox gpt-image-2.5（OpenAI 兼容 Images API，
     # 只确认支持文生图 /images/generations，不参与图生图）
     openox_api_key: str = ""             # sk-... ；空则该通道不可用
     openox_base_url: str = "https://api.openox.net/v1"
     image_gen_channels: str = "fusion,linkai,moacode,openox"  # fusion 主通道轮询优先
-    image_model: str = "gpt-image-2"
+    image_model: str = "gpt-image-2.5-flare"
     image_size: str = "1152x1536"        # 竖版（1152x1536，3:4）
-    # 生图画质档（2026-09-01）：gpt-image-2 API 默认 auto≠high，网页端等效 high——
+    # 生图画质档（2026-09-01）：gpt-image-2.5 API 默认 auto≠high，网页端等效 high——
     # 不显式传 high 会跑 medium/low，细节纹理锐度明显下降
     image_quality: str = "high"
     # ── 2026-09-01 吸收 8002 优化（全部可独立关闭，默认不破坏现行为）──
@@ -76,8 +77,8 @@ class Settings(BaseSettings):
     # 任务内生图并行批量（2026-08-24）：6 张按批并发调用生图 API，
     # 1=退回串行（openox 老线路防限流用），2-3=linkai 等容忍并发的线路
     image_gen_parallel: int = 2
-    # 生图全局兜底价（元/张）：权威费率在 model_rates 表 gpt-image-2@<channel>
-    # 行（021，fusion=0.2 账单实证 2026-09-09），本值仅在表内无对应行时兜底
+    # 生图全局兜底价（元/张）：权威费率在 model_rates 表 gpt-image-2.5-flare@<channel>
+    # 行（025，fusion=0.2 账单实证待校准），本值仅在表内无对应行时兜底
     image_cost_per_image_cny: float = 0.4
     # OCR（阿里百炼 qwen 系列，模型可按需换 qwen3.5-ocr / qwen3-vl-flash 等）
     ocr_model: str = "qwen-vl-ocr"

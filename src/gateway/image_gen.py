@@ -76,12 +76,12 @@ def _mock_result(prompt: str) -> dict:
 async def generate_image(prompt: str, size: str = None,
                          reference_image_urls: list[str] | None = None,
                          max_retries: int = 3) -> dict:
-    """调用 gpt-image-2 生成一张图；reference_image_urls 非空则图生图。
+    """调用 gpt-image-2.5 生成一张图；reference_image_urls 非空则图生图。
 
     多通道轮询负载均衡（_next_channel）：fusion / linkai / moacode / openox
     按配置交替使用，单通道失败自动降级其他通道；mock_image_gen 开启时返回占位图。
     返回 dict 含 channel 字段（实际出图通道），调用方按通道费率
-    （model_rates 的 gpt-image-2@<channel> 行）计成本。
+    （model_rates 的 <image_model>@<channel> 行）计成本。
     """
     if settings.mock_image_gen:
         return _mock_result(prompt)
@@ -308,7 +308,7 @@ async def _edit_with_references(prompt: str, reference_image_urls: list[str],
         ext = {"image/png": "png", "image/jpeg": "jpg",
                "image/webp": "webp"}.get(ctype, "png")
         files.append(("image[]", (f"ref_{i}.{ext}", content, ctype)))
-    # gpt-image-2 编辑时自动高保真，传 input_fidelity 会返回 400，故不传
+    # gpt-image-2.5 编辑时自动高保真，传 input_fidelity 会返回 400，故不传
     data = {"model": IMAGE_MODEL, "prompt": prompt, "size": size,
             "n": "1", "response_format": "url", "quality": settings.image_quality}
     resp = await _client().post(url, data=data, files=files, headers=_headers(),

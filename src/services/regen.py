@@ -250,7 +250,8 @@ async def partial_regen(task_id) -> dict:
         # 分通道计费（2026-09-09）：成图按通道价，重生按基准价
         from src.gateway.cost_tracker import per_call_cost, refresh_rates
         await refresh_rates()
-        base_rate = per_call_cost("gpt-image-2",
+        image_model = settings.image_model
+        base_rate = per_call_cost(image_model,
                                   fallback=settings.image_cost_per_image_cny)
         for p in images_to_regen:
             prompt = get_image_prompt(
@@ -276,7 +277,7 @@ async def partial_regen(task_id) -> dict:
                     page_body=body_map.get(p, ""))
                 extra_gen += extra
                 gen_costs.append(
-                    per_call_cost(f"gpt-image-2@{r.get('channel') or ''}",
+                    per_call_cost(f"{image_model}@{r.get('channel') or ''}",
                                   fallback=base_rate))
             async with SessionLocal() as session:
                 olds = (await session.execute(

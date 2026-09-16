@@ -1010,7 +1010,7 @@ async def _do_image_edit(aid, prompt: str, ref_urls: list, instr: str, actor: st
                 source_type="ai_generated", copyright_status="clear",
                 hash=hashlib.md5(data).hexdigest(), image_url=new_url,
                 origin_url=r["image_url"] if not str(r["image_url"]).startswith("data:") else None,
-                model_version=r.get("model_version", "gpt-image-2"),
+                model_version=r.get("model_version", settings.image_model),
                 is_illustration=False, prompt_used=prompt,
                 edit_note=instr or "定点重新生产"))
             for m in (await session.execute(
