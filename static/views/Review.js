@@ -13,9 +13,8 @@ const ReviewView = {
       zoom: null,           // 图片放大浏览 {src, title, text}
       allAccess: false,     // 试运行期全员开放三角色（ROLE_ALL_ACCESS）
       activeRole: '',       // 当前审核角色（allAccess 时可切换，默认账号自身角色）
-      roleCounts: {},       // 各角色待审计数（与菜单徽标同口径 /api/meta/review_counts）
-      countsTimer: null,
       sortOrder: 'desc',    // 左侧队列排序：desc=最新在前，asc=最早在前
+      selected: {},         // task_id -> bool（左侧队列批量选择）
     };
   },
   computed: {
@@ -36,6 +35,8 @@ const ReviewView = {
       const s = String(this.seconds % 60).padStart(2, '0');
       return `${m}:${s}`;
     },
+    selectedIds() { return Object.keys(this.selected).filter(k => this.selected[k]); },
+    allSelected() { return this.sortedQueue.length > 0 && this.sortedQueue.every(t => this.selected[t.task_id]); },
     // 交付配图（AI 生成）与实景参考图分区展示
     genAssets() {
       return ((this.current && this.current.assets) || []).filter(a => a.source_type !== 'official');
@@ -86,12 +87,10 @@ const ReviewView = {
       if (!this.isReviewer || !this.activeRole) return;
       try { this.queue = (await api.get(`/api/review/queue/${this.activeRole}`)).sessions || []; this.error = ''; }
       catch (e) { this.error = e.message; }
-      this.loadCounts();
-    },
-    // 各角色待审计数（与左侧菜单徽标同口径）：切 tab 前即可看到单在哪个角色
-    async loadCounts() {
-      try { this.roleCounts = (await api.get('/api/meta/review_counts')).review_by_role || {}; }
-      catch (e) { /* 静默失败，不影响队列 */ }
+      // 刷新后保留仍存在于队列中的选中项
+      const sel = {};
+      for (const t of this.queue) if (this.selected[t.task_id]) sel[t.task_id] = true;
+      this.selected = sel;
     },
     switchRole(r) {
       if (r === this.activeRole) return;
@@ -100,6 +99,7 @@ const ReviewView = {
       this.queue = []; this.current = null; this.currentId = null;
       this.claimed = false; this.lockedBy = ''; this.msg = ''; this.error = '';
       this.marks = {}; this.showReject = false; this.rejectReason = '';
+      this.selected = {};
       this.loadQueue();
     },
     async select(t) {
@@ -159,9 +159,39 @@ const ReviewView = {
       } catch (e) { this.error = e.message; }
       finally { this.acting = false; }
     },
+    toggleSelectAll() {
+      const all = !this.allSelected;
+      const sel = { ...this.selected };
+      for (const t of this.sortedQueue) sel[t.task_id] = all;
+      this.selected = sel;
+    },
+    async batchApprove() {
+      const ids = this.selectedIds;
+      if (!ids.length) { this.error = '请先选择任务'; return; }
+      this.acting = true; this.error = '';
+      try {
+        const r = await api.post('/api/review/batch_approve', { task_ids: ids, role: this.activeRole, reviewer_id: this.user.name });
+        this.msg = `批量通过 ${r.approved} 条（跳过 ${r.skipped.length}）`;
+        this.selected = {};
+        await this.loadQueue();
+      } catch (e) { this.error = e.message; }
+      finally { this.acting = false; }
+    },
+    async batchDelete() {
+      const ids = this.selectedIds;
+      if (!ids.length) { this.error = '请先选择任务'; return; }
+      this.acting = true; this.error = '';
+      try {
+        const r = await api.post('/api/tasks/batch_delete', { ids, actor: this.user.name });
+        this.msg = `已删除 ${r.deleted} 条（跳过 ${r.skipped.length}）`;
+        this.selected = {};
+        await this.loadQueue();
+      } catch (e) { this.error = e.message; }
+      finally { this.acting = false; }
+    },
     releaseTimers() {
-      clearInterval(this.hbTimer); clearInterval(this.tickTimer); clearInterval(this.countsTimer);
-      this.hbTimer = this.tickTimer = this.countsTimer = null;
+      clearInterval(this.hbTimer); clearInterval(this.tickTimer);
+      this.hbTimer = this.tickTimer = null;
     },
   },
   async mounted() {
@@ -171,7 +201,6 @@ const ReviewView = {
     } catch (e) { /* 取不到按收权处理 */ }
     this.activeRole = ['A', 'B', 'C'].includes(this.role) ? this.role : 'A';
     this.loadQueue();
-    this.countsTimer = setInterval(() => this.loadCounts(), 15000);
   },
   beforeUnmount() { this.releaseTimers(); },
   template: `
@@ -182,18 +211,9 @@ const ReviewView = {
       <p v-if="msg" class="form-ok">{{ msg }}</p>
       <div class="review-layout">
         <div class="card review-queue">
-          <h2 v-if="!allAccess">待审队列 · {{ activeRole }}（{{ roleName(activeRole) }}）</h2>
-          <h2 v-else style="margin-bottom:6px">审核角色</h2>
-          <div v-if="allAccess" class="tabs">
-            <button v-for="r in ['A','B','C']" :key="r" class="tab" :class="{on: activeRole===r}"
-                    @click="switchRole(r)" style="flex:1">{{ r }} · {{ roleName(r) }}<span
-                    v-if="roleCounts[r]" class="menu-badge" style="margin-left:6px">{{ roleCounts[r] }}</span></button>
-          </div>
-          <p v-if="allAccess" class="muted" style="font-size:12.5px;margin:6px 0 10px">
-            试运行模式：全员可审全部角色（默认进入你的账号角色 {{ role || 'A' }}），正式生产时将按账号分配固定角色。</p>
+          <h2>待审队列</h2>
           <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
-            <b v-if="allAccess" style="font-size:14px">待审队列 · {{ roleName(activeRole) }}</b>
-            <span v-else style="font-size:14px;font-weight:600">待审队列</span>
+            <span style="font-size:14px;font-weight:600">待审队列</span>
             <div style="display:flex;align-items:center;gap:8px;margin-left:auto">
               <select v-model="sortOrder" style="width:auto;padding:4px 8px;font-size:13px">
                 <option value="desc">最新在前</option>
@@ -202,13 +222,25 @@ const ReviewView = {
               <button class="btn btn-outline btn-sm" @click="loadQueue">刷新</button>
             </div>
           </div>
+          <div style="display:flex;align-items:center;gap:10px;margin:10px 0;flex-wrap:wrap">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+              <input type="checkbox" :checked="allSelected" @change="toggleSelectAll"> 全选
+            </label>
+            <button class="btn btn-success btn-sm" :disabled="acting || !selectedIds.length" @click="batchApprove">✓ 通过选中（{{ selectedIds.length }}）</button>
+            <button class="btn btn-danger btn-sm" :disabled="acting || !selectedIds.length" @click="batchDelete">✗ 删除选中（{{ selectedIds.length }}）</button>
+          </div>
           <div v-if="!sortedQueue.length" class="empty">暂无待审任务</div>
           <div v-for="t in sortedQueue" :key="t.task_id" class="queue-item" :class="{on: currentId === t.task_id}" @click="select(t)">
-            <div class="q">{{ t.query }}</div>
-            <div>
-              <span class="tag tag-blue">{{ modeLabel(t.mode) }}</span>
-              <span v-if="riskTag(t.risk_level)" class="tag" :class="riskTag(t.risk_level).cls">风险：{{ riskTag(t.risk_level).label }}</span>
-              <span v-if="t.locked" class="tag tag-yellow">🔒 {{ t.locked_by }} 审核中</span>
+            <div style="display:flex;align-items:flex-start;gap:8px">
+              <input type="checkbox" v-model="selected[t.task_id]" @click.stop style="margin-top:4px;flex-shrink:0">
+              <div style="flex:1;min-width:0">
+                <div class="q">{{ t.query }}</div>
+                <div>
+                  <span class="tag tag-blue">{{ modeLabel(t.mode) }}</span>
+                  <span v-if="riskTag(t.risk_level)" class="tag" :class="riskTag(t.risk_level).cls">风险：{{ riskTag(t.risk_level).label }}</span>
+                  <span v-if="t.locked" class="tag tag-yellow">🔒 {{ t.locked_by }} 审核中</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>

@@ -140,6 +140,67 @@ async def action(payload: ActionIn):
             "auto_regen": auto}
 
 
+class BatchApproveIn(BaseModel):
+    task_ids: list[str]
+    role: str
+    reviewer_id: str
+
+
+@router.post("/api/review/batch_approve")
+async def batch_approve(payload: BatchApproveIn):
+    if payload.role not in REVIEW_ROLES:
+        raise HTTPException(status_code=400, detail=f"invalid role {payload.role}")
+    approved, skipped = 0, []
+    now = datetime.now(timezone.utc)
+    async with SessionLocal() as session:
+        reviewer_id = await get_or_create_user(session, payload.reviewer_id, payload.role)
+        await session.commit()
+    for tid_str in payload.task_ids[:200]:
+        try:
+            tid = uuid.UUID(tid_str)
+        except ValueError:
+            skipped.append({"id": tid_str, "reason": "无效 id"})
+            continue
+        try:
+            async with SessionLocal() as session:
+                rs = (await session.execute(
+                    select(ReviewSession).where(
+                        ReviewSession.task_id == tid,
+                        ReviewSession.role == payload.role,
+                        ReviewSession.finished_at.is_(None)))).scalars().first()
+                if not rs:
+                    skipped.append({"id": tid_str, "reason": "无活跃审核会话"})
+                    continue
+                if rs.reviewer_id is None:
+                    rs.reviewer_id = reviewer_id
+                session.add(ReviewAction(
+                    review_session_id=rs.id,
+                    idempotency_key=f"{rs.id}-approve-{uuid.uuid4().hex[:8]}",
+                    action_type="approve",
+                    client_ts=now, server_ts=now,
+                    payload={"reason": ""}))
+                rs.finished_at = now
+                session.add(Approval(task_id=tid, role=payload.role,
+                                     approver_id=reviewer_id, conclusion="approve"))
+                task = (await session.execute(select(Task).where(Task.id == tid))).scalars().first()
+                if task is not None:
+                    task.status = "approved"
+                await session.execute(
+                    delete(ReviewSession).where(
+                        ReviewSession.task_id == tid,
+                        ReviewSession.finished_at.is_(None)))
+                await session.commit()
+                approved += 1
+        except HTTPException as e:
+            skipped.append({"id": tid_str, "reason": e.detail})
+        except Exception as e:  # noqa: BLE001
+            skipped.append({"id": tid_str, "reason": str(e)[:100]})
+    from src.services.activity import log_action
+    await log_action(payload.reviewer_id, "review_batch_approve",
+                     f"批量通过 {approved} 条（跳过 {len(skipped)}）")
+    return {"ok": True, "approved": approved, "skipped": skipped}
+
+
 @router.get("/api/review/queue/{role}")
 async def queue(role: str):
     from sqlalchemy import text
