@@ -223,16 +223,16 @@ const ReviewView = {
             </div>
           </div>
           <div style="display:flex;align-items:center;gap:10px;margin:10px 0;flex-wrap:wrap">
-            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
-              <input type="checkbox" :checked="allSelected" @change="toggleSelectAll"> 全选
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;white-space:nowrap">
+              <input type="checkbox" :checked="allSelected" @change="toggleSelectAll" style="width:auto"> 全选
             </label>
-            <button class="btn btn-success btn-sm" :disabled="acting || !selectedIds.length" @click="batchApprove">✓ 通过选中（{{ selectedIds.length }}）</button>
-            <button class="btn btn-danger btn-sm" :disabled="acting || !selectedIds.length" @click="batchDelete">✗ 删除选中（{{ selectedIds.length }}）</button>
+            <button class="btn btn-success btn-sm" style="white-space:nowrap" :disabled="acting || !selectedIds.length" @click="batchApprove">✓ 通过选中（{{ selectedIds.length }}）</button>
+            <button class="btn btn-danger btn-sm" style="white-space:nowrap" :disabled="acting || !selectedIds.length" @click="batchDelete">✗ 删除选中（{{ selectedIds.length }}）</button>
           </div>
           <div v-if="!sortedQueue.length" class="empty">暂无待审任务</div>
           <div v-for="t in sortedQueue" :key="t.task_id" class="queue-item" :class="{on: currentId === t.task_id}" @click="select(t)">
             <div style="display:flex;align-items:flex-start;gap:8px">
-              <input type="checkbox" v-model="selected[t.task_id]" @click.stop style="margin-top:4px;flex-shrink:0">
+              <input type="checkbox" v-model="selected[t.task_id]" @click.stop style="margin-top:4px;flex-shrink:0;width:auto">
               <div style="flex:1;min-width:0">
                 <div class="q">{{ t.query }}</div>
                 <div>
