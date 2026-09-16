@@ -99,14 +99,17 @@ async def _gen_one_with_review(task_id, page_index: int, page_text: str,
     from src.pipeline.agent_production import _text_similarity, _GARBLE_THRESHOLD
     from src.pipeline.nodes import _persist_image
 
-    async def _gen(prompt: str) -> tuple[str, str, bytes, str]:
-        r = await generate_image(prompt, reference_image_urls=ref_urls or None)
+    async def _gen(prompt: str, model: str | None = None,
+                   channel: str | None = None) -> tuple[str, str, bytes, str]:
+        r = await generate_image(prompt, reference_image_urls=ref_urls or None,
+                                 model=model, channel=channel)
         data, ctype = await fetch_image_bytes(r["image_url"])
         local_url = _persist_image(task_id, page_index, "p", data, ctype)
         return local_url, r.get("model_version", settings.image_model), data, ctype
 
     bench_url = await get_benchmark_shot(mode or ("compare" if ref_mode else "general"))
     last_prompt = base_prompt
+    use_sunburst = False
     review: dict = {"pass": True, "issues": [], "suggest": "", "rounds": 0, "flagged": []}
     best: tuple | None = None
     for rnd in range(1, _MAX_ROUNDS + 1):
@@ -122,7 +125,10 @@ async def _gen_one_with_review(task_id, page_index: int, page_text: str,
             return "", "", {"pass": False, "issues": [], "suggest": "",
                             "rounds": 0,
                             "flagged": ["任务出图预算用尽，未完成生成"]}
-        local_url, model, data, ctype = await _gen(last_prompt)
+        local_url, model, data, ctype = await _gen(
+            last_prompt,
+            model="gpt-image-2.5-sunburst" if use_sunburst else None,
+            channel="fusion" if use_sunburst else None)
         # ① 文字正确性（OCR 对撞）；OCR 判不合格先经 VL 申诉复核（2026-09-14 P2），
         # VL 确认图中文字逐字一致 → 视为通过（OCR 误判），不一致维持原判定
         text_ok = True
@@ -146,11 +152,17 @@ async def _gen_one_with_review(task_id, page_index: int, page_text: str,
         if review["pass"]:
             return best[0], best[1], review
         # 不达标：按建议调整提示词进下一轮
-        adjust = vl.get("suggest") or ("文字保持正确，构图换一种" if not text_ok
+        # 2026-09-15：文字类错误第二轮用 gpt-image-2.5-sunburst 精修一次，
+        # 并追加「准确性优先」硬约束，避免持续无意义重绘。
+        is_text_issue = not text_ok
+        adjust = vl.get("suggest") or ("文字保持正确，构图换一种" if is_text_issue
                                        else "精简图上文字，主体更突出")
         last_prompt = (base_prompt
                        + f"（AI 审核第{rnd}轮发现问题：{'；'.join(review['flagged'])[:80]}。"
-                         f"调整要求：{adjust[:120]}）")
+                         f"调整要求：{adjust[:120]}。"
+                         f"If visual beauty conflicts with Chinese character accuracy, "
+                         f"sacrifice visual beauty and preserve the exact Chinese characters.）")
+        use_sunburst = is_text_issue and rnd == 1
     # 两轮仍不达标：保留最新图但标记，交人工审核
     review["flagged"] = review["flagged"] or ["AI 审核未通过"]
     return best[0], best[1], review

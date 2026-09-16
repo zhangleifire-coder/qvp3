@@ -334,7 +334,10 @@ async def _fallback_ocr(rows: list[tuple]) -> tuple[list, float]:
 _GARBLE_THRESHOLD = 1.0  # 归一化后逐字全等（100% 标准）；低于 1.0 即拦
 _GARBLE_MAX_REGEN = 1      # 每页最多换构图重生 1 次（9-14 P1：与交接文档
                            # 「自动重试一次」口径对齐；重生有效性靠提示词修正
-                           # （逐字复现）保障，不再靠次数）
+                           # （逐字复现）保障，不再靠次数）。
+                           # 2026-09-15：该次重生固定用 gpt-image-2.5-sunburst
+                           # 精修文字错误，只修一次、不到顶不继续。
+_SUNBURST_MODEL = "gpt-image-2.5-sunburst"
 
 
 def _text_similarity(a: str, b: str) -> float:
@@ -406,8 +409,12 @@ async def _garble_check_and_regen(task_id, pages: list[str], localized: list[dic
                     image_tpl.replace("{page_body}", page_text)
                     + "（重新排版：图中文字必须逐字复现上述文案，一字不得增删改、"
                       "不得精简替换；换一个与之前不同的构图与配色，"
-                      "确保每个字清晰可辨、标准黑体不变形）")
-                r2 = await generate_image(regen_prompt)
+                      "确保每个字清晰可辨、标准黑体不变形。"
+                      "If visual beauty conflicts with Chinese character accuracy, "
+                      "sacrifice visual beauty and preserve the exact Chinese characters.）")
+                # 单次 Sunburst 精修：文字错误不再多次换构图烧钱
+                r2 = await generate_image(regen_prompt,
+                                          model=_SUNBURST_MODEL, channel="fusion")
                 data, ctype = await _fetch_bytes(r2["image_url"])
                 local_url = _persist_image(task_id, idx, "p", data, ctype)
                 try:

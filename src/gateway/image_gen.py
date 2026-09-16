@@ -75,18 +75,24 @@ def _mock_result(prompt: str) -> dict:
 
 async def generate_image(prompt: str, size: str = None,
                          reference_image_urls: list[str] | None = None,
-                         max_retries: int = 3) -> dict:
+                         max_retries: int = 3,
+                         model: str | None = None,
+                         channel: str | None = None) -> dict:
     """调用 gpt-image-2.5 生成一张图；reference_image_urls 非空则图生图。
 
     多通道轮询负载均衡（_next_channel）：fusion / linkai / moacode / openox
     按配置交替使用，单通道失败自动降级其他通道；mock_image_gen 开启时返回占位图。
     返回 dict 含 channel 字段（实际出图通道），调用方按通道费率
     （model_rates 的 <image_model>@<channel> 行）计成本。
+
+    可选 model 覆盖默认 IMAGE_MODEL（如 Sunburst 精修）；可选 channel 强制指定
+    通道（与 model 覆盖配合使用，避免中转商不支持的型号进入错误通道）。
     """
     if settings.mock_image_gen:
         return _mock_result(prompt)
     size = size or IMAGE_SIZE
-    channel = _next_channel()
+    use_model = model or IMAGE_MODEL
+    channel = channel or _next_channel()
     for attempt in range(max_retries):
         try:
             if reference_image_urls:
@@ -100,10 +106,10 @@ async def generate_image(prompt: str, size: str = None,
                     # 图生图按通道路由：fusion=主(edits multipart b64) /
                     # moacode=垫图(input_image) / linkai=images/edits
                     if channel == "fusion":
-                        return await _edit_fusion(prompt, reference_image_urls, size)
+                        return await _edit_fusion(prompt, reference_image_urls, size, model=use_model)
                     if channel == "moacode":
-                        return await _edit_moacode(prompt, reference_image_urls, size)
-                    return await _edit_with_references(prompt, reference_image_urls, size)
+                        return await _edit_moacode(prompt, reference_image_urls, size, model=use_model)
+                    return await _edit_with_references(prompt, reference_image_urls, size, model=use_model)
                 except Exception as e:  # noqa: BLE001
                     # 当前通道图生图失败 → 先试另一通道的图生图（保住参考图语义），
                     # 两通道都败才降级文生图，且必须留痕（静默降级会让对比模式失效）
@@ -111,14 +117,14 @@ async def generate_image(prompt: str, size: str = None,
                           flush=True)
                     try:
                         if channel == "moacode":
-                            return await _edit_with_references(prompt, reference_image_urls, size)
+                            return await _edit_with_references(prompt, reference_image_urls, size, model=use_model)
                         if "moacode" in _channels():
-                            return await _edit_moacode(prompt, reference_image_urls, size)
+                            return await _edit_moacode(prompt, reference_image_urls, size, model=use_model)
                     except Exception as e2:  # noqa: BLE001
                         print(f"[image_gen] 备用通道图生图也失败（{type(e2).__name__}），降级文生图",
                               flush=True)
-                    return await _generate_by_channel(prompt, size, channel)
-            return await _generate_by_channel(prompt, size, channel)
+                    return await _generate_by_channel(prompt, size, channel, model=use_model)
+            return await _generate_by_channel(prompt, size, channel, model=use_model)
         except Exception as e:  # noqa: BLE001
             if attempt == max_retries - 1:
                 # 当前通道耗尽重试 → 降级另一通道再试一次
@@ -126,33 +132,35 @@ async def generate_image(prompt: str, size: str = None,
                 if other:
                     print(f"[image_gen] {channel} 通道失败，降级 {other[0]}: {type(e).__name__}",
                           flush=True)
-                    return await _generate_by_channel(prompt, size, other[0])
+                    return await _generate_by_channel(prompt, size, other[0], model=use_model)
                 raise
             await asyncio.sleep(2 * (2 ** attempt))
 
 
-async def _generate_by_channel(prompt: str, size: str, channel: str) -> dict:
+async def _generate_by_channel(prompt: str, size: str, channel: str,
+                                model: str = IMAGE_MODEL) -> dict:
     """按通道路由生图：fusion=主通道(Images API b64) / moacode=Responses API
     SSE / openox=备份(Images API url，仅文生图) / linkai=Images API url。"""
     if channel == "fusion":
-        return await _generate_fusion(prompt, size)
+        return await _generate_fusion(prompt, size, model=model)
     if channel == "moacode":
-        return await _generate_moacode(prompt, size)
+        return await _generate_moacode(prompt, size, model=model)
     if channel == "openox":
         return await _generate(prompt, size, api_key=settings.openox_api_key,
-                               base_url=settings.openox_base_url, channel="openox")
-    return await _generate(prompt, size)
+                               base_url=settings.openox_base_url, channel="openox",
+                               model=model)
+    return await _generate(prompt, size, model=model)
 
 
 def _fusion_headers() -> dict:
     return {"Authorization": f"Bearer {settings.fusionai_api_key}"}
 
 
-async def _generate_fusion(prompt: str, size: str) -> dict:
+async def _generate_fusion(prompt: str, size: str, model: str = IMAGE_MODEL) -> dict:
     """FusionAI 通道（主）：POST /images/generations，返回 b64_json → data URI。
     生图可能数分钟（官方口径），读超时 600s。"""
     url = f"{settings.fusionai_base_url.rstrip('/')}/images/generations"
-    payload = {"model": IMAGE_MODEL, "prompt": prompt, "size": size, "n": 1,
+    payload = {"model": model, "prompt": prompt, "size": size, "n": 1,
                "quality": settings.image_quality}
     resp = await _client().post(
         url, json=payload, headers=_fusion_headers(),
@@ -167,11 +175,12 @@ async def _generate_fusion(prompt: str, size: str) -> dict:
         raise RuntimeError(f"fusion 响应缺 b64_json: {str(data)[:200]}")
     return {"image_url": f"data:image/png;base64,{b64}",
             "hash": hashlib.md5(b64.encode()).hexdigest(),
-            "model_version": f"{IMAGE_MODEL}@fusion",
+            "model_version": f"{model}@fusion",
             "channel": "fusion"}
 
 
-async def _edit_fusion(prompt: str, reference_image_urls: list[str], size: str) -> dict:
+async def _edit_fusion(prompt: str, reference_image_urls: list[str], size: str,
+                        model: str = IMAGE_MODEL) -> dict:
     """FusionAI 图生图：/images/edits multipart，参考图压缩上传，b64_json 返回。"""
     url = f"{settings.fusionai_base_url.rstrip('/')}/images/edits"
     files = []
@@ -180,7 +189,7 @@ async def _edit_fusion(prompt: str, reference_image_urls: list[str], size: str) 
         ext = {"image/png": "png", "image/jpeg": "jpg",
                "image/webp": "webp"}.get(ctype, "png")
         files.append(("image[]", (f"ref_{i}.{ext}", content, ctype)))
-    data = {"model": IMAGE_MODEL, "prompt": prompt, "size": size, "n": "1",
+    data = {"model": model, "prompt": prompt, "size": size, "n": "1",
             "quality": settings.image_quality}
     resp = await _client().post(
         url, data=data, files=files, headers=_fusion_headers(),
@@ -195,12 +204,13 @@ async def _edit_fusion(prompt: str, reference_image_urls: list[str], size: str) 
         raise RuntimeError(f"fusion 编辑响应缺 b64_json: {str(j)[:200]}")
     return {"image_url": f"data:image/png;base64,{b64}",
             "hash": hashlib.md5(b64.encode()).hexdigest(),
-            "model_version": f"{IMAGE_MODEL}@fusion",
+            "model_version": f"{model}@fusion",
             "channel": "fusion"}
 
 
 async def _generate_moacode(prompt: str, size: str,
-                            reference_data_uris: list[str] | None = None) -> dict:
+                            reference_data_uris: list[str] | None = None,
+                            model: str = IMAGE_MODEL) -> dict:
     """Moacode 通道：POST /v1/responses，SSE 流式（官方文档口径，2026-08-27）。
 
     - 取图两步缺一不可：优先 response.output_item.done 的最终图；
@@ -218,7 +228,7 @@ async def _generate_moacode(prompt: str, size: str,
     for uri in (reference_data_uris or [])[:3]:
         content.append({"type": "input_image", "image_url": uri})
     body = {
-        "model": IMAGE_MODEL,
+        "model": model,
         "input": [{"type": "message", "role": "user", "content": content}],
         "stream": True,
         "store": False,
@@ -258,7 +268,7 @@ async def _generate_moacode(prompt: str, size: str,
     tag = "@moacode" if b64_final else "@moacode:partial"
     return {"image_url": data_uri,
             "hash": hashlib.md5(b64.encode()).hexdigest(),
-            "model_version": f"{IMAGE_MODEL}{tag}",
+            "model_version": f"{model}{tag}",
             "channel": "moacode"}
 
 
@@ -275,7 +285,8 @@ async def _edit_moacode(prompt: str, reference_image_urls: list[str],
 
 
 async def _generate(prompt: str, size: str, api_key: str = None,
-                    base_url: str = None, channel: str = "linkai") -> dict:
+                    base_url: str = None, channel: str = "linkai",
+                    model: str = IMAGE_MODEL) -> dict:
     """文生图：POST /v1/images/generations。
 
     linkai 与 openox 备份通道共用此路径（同为 OpenAI 兼容 Images API），
@@ -284,7 +295,7 @@ async def _generate(prompt: str, size: str, api_key: str = None,
     api_key = api_key or settings.openai_image_api_key
     base_url = base_url or settings.openai_image_base_url
     url = f"{base_url}/images/generations"
-    payload = {"model": IMAGE_MODEL, "prompt": prompt, "size": size, "n": 1,
+    payload = {"model": model, "prompt": prompt, "size": size, "n": 1,
                "response_format": "url", "quality": settings.image_quality}
     resp = await _client().post(url, json=payload,
                                 headers={"Authorization": f"Bearer {api_key}"},
@@ -295,11 +306,11 @@ async def _generate(prompt: str, size: str, api_key: str = None,
     u = data["data"][0].get("url")
     if not u:
         raise RuntimeError(f"image response missing url field: {str(data)[:200]}")
-    return _result(u, channel)
+    return _result(u, channel, model=model)
 
 
 async def _edit_with_references(prompt: str, reference_image_urls: list[str],
-                                size: str) -> dict:
+                                size: str, model: str = IMAGE_MODEL) -> dict:
     """图生图：POST /v1/images/edits，参考图 multipart 上传。"""
     url = f"{settings.openai_image_base_url}/images/edits"
     files = []
@@ -309,7 +320,7 @@ async def _edit_with_references(prompt: str, reference_image_urls: list[str],
                "image/webp": "webp"}.get(ctype, "png")
         files.append(("image[]", (f"ref_{i}.{ext}", content, ctype)))
     # gpt-image-2.5 编辑时自动高保真，传 input_fidelity 会返回 400，故不传
-    data = {"model": IMAGE_MODEL, "prompt": prompt, "size": size,
+    data = {"model": model, "prompt": prompt, "size": size,
             "n": "1", "response_format": "url", "quality": settings.image_quality}
     resp = await _client().post(url, data=data, files=files, headers=_headers(),
                                 timeout=240)
@@ -319,9 +330,9 @@ async def _edit_with_references(prompt: str, reference_image_urls: list[str],
     u = j["data"][0].get("url")
     if not u:
         raise RuntimeError(f"image response missing url field: {str(j)[:200]}")
-    return _result(u, "linkai")
+    return _result(u, "linkai", model=model)
 
 
-def _result(image_url: str, channel: str = "linkai") -> dict:
+def _result(image_url: str, channel: str = "linkai", model: str = IMAGE_MODEL) -> dict:
     return {"image_url": image_url, "hash": hashlib.md5(image_url.encode()).hexdigest(),
-            "model_version": f"{IMAGE_MODEL}@{channel}", "channel": channel}
+            "model_version": f"{model}@{channel}", "channel": channel}

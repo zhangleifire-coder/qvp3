@@ -42,7 +42,7 @@ class TestGenWithReview:
         buf = io.BytesIO(); Image.new("RGB", (10, 10)).save(buf, format="PNG")
         png = buf.getvalue()
 
-        async def fake_gen(prompt, reference_image_urls=None):
+        async def fake_gen(prompt, reference_image_urls=None, **kwargs):
             return {"image_url": "data:image/png;base64,xxx",
                     "model_version": "gpt-image-2"}
         async def fake_fetch(url):
@@ -65,7 +65,7 @@ class TestGenWithReview:
         buf = io.BytesIO(); Image.new("RGB", (10, 10)).save(buf, format="PNG")
         png = buf.getvalue()
 
-        async def fake_gen(prompt, reference_image_urls=None):
+        async def fake_gen(prompt, reference_image_urls=None, **kwargs):
             return {"image_url": "data:image/png;base64,xxx", "model_version": "m"}
         async def fake_fetch(url):
             return (png, "image/png")
