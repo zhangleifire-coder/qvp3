@@ -15,6 +15,7 @@ const ReviewView = {
       activeRole: '',       // 当前审核角色（allAccess 时可切换，默认账号自身角色）
       sortOrder: 'desc',    // 左侧队列排序：desc=最新在前，asc=最早在前
       selected: {},         // task_id -> bool（左侧队列批量选择）
+      showBatchMenu: false, // 批量操作菜单展开/收起
     };
   },
   computed: {
@@ -100,6 +101,7 @@ const ReviewView = {
       this.claimed = false; this.lockedBy = ''; this.msg = ''; this.error = '';
       this.marks = {}; this.showReject = false; this.rejectReason = '';
       this.selected = {};
+      this.showBatchMenu = false;
       this.loadQueue();
     },
     async select(t) {
@@ -173,6 +175,7 @@ const ReviewView = {
         const r = await api.post('/api/review/batch_approve', { task_ids: ids, role: this.activeRole, reviewer_id: this.user.name });
         this.msg = `批量通过 ${r.approved} 条（跳过 ${r.skipped.length}）`;
         this.selected = {};
+        this.showBatchMenu = false;
         await this.loadQueue();
       } catch (e) { this.error = e.message; }
       finally { this.acting = false; }
@@ -185,6 +188,7 @@ const ReviewView = {
         const r = await api.post('/api/tasks/batch_delete', { ids, actor: this.user.name });
         this.msg = `已删除 ${r.deleted} 条（跳过 ${r.skipped.length}）`;
         this.selected = {};
+        this.showBatchMenu = false;
         await this.loadQueue();
       } catch (e) { this.error = e.message; }
       finally { this.acting = false; }
@@ -222,12 +226,19 @@ const ReviewView = {
               <button class="btn btn-outline btn-sm" @click="loadQueue">刷新</button>
             </div>
           </div>
-          <div style="display:flex;align-items:center;gap:10px;margin:10px 0;flex-wrap:wrap">
-            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;white-space:nowrap">
-              <input type="checkbox" :checked="allSelected" @change="toggleSelectAll" style="width:auto"> 全选
-            </label>
-            <button class="btn btn-success btn-sm" style="white-space:nowrap" :disabled="acting || !selectedIds.length" @click="batchApprove">✓ 通过选中（{{ selectedIds.length }}）</button>
-            <button class="btn btn-danger btn-sm" style="white-space:nowrap" :disabled="acting || !selectedIds.length" @click="batchDelete">✗ 删除选中（{{ selectedIds.length }}）</button>
+          <div style="margin:10px 0">
+            <button class="btn btn-outline btn-sm" @click="showBatchMenu = !showBatchMenu">
+              批量操作 {{ showBatchMenu ? '▲' : '▼' }}
+            </button>
+            <div v-if="showBatchMenu" style="margin-top:8px;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--card)">
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;white-space:nowrap">
+                  <input type="checkbox" :checked="allSelected" @change="toggleSelectAll" style="width:auto"> 全选
+                </label>
+                <button class="btn btn-success btn-sm" style="white-space:nowrap" :disabled="acting || !selectedIds.length" @click="batchApprove">✓ 通过选中（{{ selectedIds.length }}）</button>
+                <button class="btn btn-danger btn-sm" style="white-space:nowrap" :disabled="acting || !selectedIds.length" @click="batchDelete">✗ 删除选中（{{ selectedIds.length }}）</button>
+              </div>
+            </div>
           </div>
           <div v-if="!sortedQueue.length" class="empty">暂无待审任务</div>
           <div v-for="t in sortedQueue" :key="t.task_id" class="queue-item" :class="{on: currentId === t.task_id}" @click="select(t)">
