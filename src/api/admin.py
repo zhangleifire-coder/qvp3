@@ -303,12 +303,28 @@ async def _fetch_kimi_balance() -> dict:
         return {"ok": False, "error": f"余额拉取失败：{type(e).__name__}"}
 
 
-# 无公开余额 API 的厂商（2026-09-09 实测）：基准录入 + 台账类别消耗扣减估算
-_ESTIMATE_PROVIDERS = {
-    # provider → (台账消耗归类函数说明, 口径备注)
-    "fusion": "无公开余额 API：控制台抄录基准 + 台账扣减估算（生图类别消耗，fusion 为主通道）",
-    "kimi": "无公开余额 API：控制台抄录基准 + 台账扣减估算（k3 文本模型消耗）",
+# 支持手工录入/校准余额的厂商（有公开 API 的厂商，手工值优先于 API 实拉值展示）
+_MANUAL_BALANCE_PROVIDERS = {
+    "deepseek": "DeepSeek：可手工校准余额；未校准时自动实拉 /user/balance",
+    "kimi": "Kimi：可手工校准余额；未校准时自动实拉 /v1/users/me/balance",
+    "fusion": "FusionAI：无公开余额 API，必须手工录入控制台余额作为估算基准",
 }
+
+
+async def _fetch_manual_balance(provider: str) -> dict | None:
+    """从 balance_baselines 读取某厂商的手工余额校准记录。"""
+    async with SessionLocal() as session:
+        row = (await session.execute(text(
+            "SELECT balance_cny, recorded_at, updated_by"
+            " FROM balance_baselines WHERE provider = :p"),
+            {"p": provider})).first()
+    if not row:
+        return None
+    return {
+        "balance_cny": round(float(row[0]), 4),
+        "recorded_at": row[1].isoformat() if row[1] else None,
+        "updated_by": row[2],
+    }
 
 
 def _provider_consumption(rows, provider: str, since) -> float:
@@ -335,7 +351,7 @@ async def _provider_estimate(provider: str, rows, daily_avg: float) -> dict:
             " FROM balance_baselines WHERE provider = :p"),
             {"p": provider})).first()
     base = {"ok": False, "provider": provider,
-            "note": _ESTIMATE_PROVIDERS[provider],
+            "note": _MANUAL_BALANCE_PROVIDERS[provider],
             "daily_avg_7d_cny": round(daily_avg, 4)}
     if not row:
         return {**base, "error": "未录入余额基准（请从厂商控制台抄录后保存）"}
@@ -361,13 +377,17 @@ class BalanceBaselineIn(BaseModel):
 
 @router.put("/api/admin/balance_baseline")
 async def put_balance_baseline(payload: BalanceBaselineIn):
-    """录入无公开余额 API 厂商（fusion/kimi）的控制台余额基准点（仅 admin）。"""
+    """手工录入/校准厂商余额（DeepSeek / Kimi / FusionAI）。
+
+    有公开余额 API 的厂商（deepseek/kimi），手工值会优先展示；
+    FusionAI 无公开 API，手工值作为估算基准。
+    """
     await _require_admin(payload.actor)
     provider = payload.provider.strip().lower()
-    if provider not in _ESTIMATE_PROVIDERS:
+    if provider not in _MANUAL_BALANCE_PROVIDERS:
         raise HTTPException(
             status_code=400,
-            detail=f"provider 必须是 {'/'.join(_ESTIMATE_PROVIDERS)}")
+            detail=f"provider 必须是 {'/'.join(_MANUAL_BALANCE_PROVIDERS)}")
     if payload.balance_cny < 0:
         raise HTTPException(status_code=400, detail="balance_cny 不能为负")
     recorded_at = payload.recorded_at or datetime.now(timezone.utc)
@@ -383,7 +403,7 @@ async def put_balance_baseline(payload: BalanceBaselineIn):
              "u": payload.actor})
         await session.commit()
     await log_action(payload.actor, "balance_baseline",
-                     f"录入 {provider} 余额基准 ¥{payload.balance_cny:.2f}"
+                     f"校准 {provider} 余额为 ¥{payload.balance_cny:.2f}"
                      f"（{recorded_at.isoformat()}）")
     return {"ok": True, "provider": provider,
             "balance_cny": payload.balance_cny,
@@ -426,8 +446,12 @@ async def account_balance():
             "SELECT input_hit_peak, output_peak FROM model_rates WHERE model_key='k3'"))).first() or (0, 0)
     daily_avg = float(last_7d) / 7
     ds = await _fetch_deepseek_balance()
-    est_days = (round(ds["total_balance"] / daily_avg, 1)
-                if ds.get("ok") and daily_avg > 0 else None)
+    ds["manual_balance"] = await _fetch_manual_balance("deepseek")
+    display_ds = (ds["manual_balance"]["balance_cny"]
+                  if ds.get("manual_balance")
+                  else (ds.get("total_balance") if ds.get("ok") else 0))
+    est_days = (round(display_ds / daily_avg, 1)
+                if display_ds and daily_avg > 0 else None)
     # 各 provider 的近 7 天日均消耗（同类口径）：用于估算可用天数
     week_rows = [(n, m, c, f) for n, m, c, f in rows
                  if f and f >= now - timedelta(days=7)]
@@ -436,12 +460,17 @@ async def account_balance():
     kimi_avg = sum(float(c or 0) for n, m, c, f in week_rows
                    if m and resolve_model_key(m) == "k3") / 7
     fusion = await _provider_estimate("fusion", rows, fusion_avg)
+    fusion["manual_balance"] = await _fetch_manual_balance("fusion")
     fusion["rate"] = {"model": "gpt-image-2.5-flare", "per_call_cny": round(float(fusion_per_call), 4)}
     kimi = await _fetch_kimi_balance()
+    kimi["manual_balance"] = await _fetch_manual_balance("kimi")
     if kimi.get("ok"):
         kimi["daily_avg_7d_cny"] = round(kimi_avg, 4)
+        display_kimi = (kimi["manual_balance"]["balance_cny"]
+                        if kimi.get("manual_balance")
+                        else kimi["available_balance"])
         kimi["est_available_days"] = (
-            round(kimi["available_balance"] / kimi_avg, 1)
+            round(display_kimi / kimi_avg, 1)
             if kimi_avg > 0 else None)
         kimi["rate"] = {
             "model": "k3",

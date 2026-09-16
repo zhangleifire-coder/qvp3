@@ -4,7 +4,7 @@ const AdminView = {
     return { st: null, error: '', msg: '', timer: null, logs: [], showLogs: false,
              costs: null, costTask: null,
              rates: null, balance: null, balanceLoading: false, ratesSaving: false,
-             baselineForm: { fusion: '', kimi: '' } };
+             baselineForm: { deepseek: '', kimi: '', fusion: '' } };
   },
   computed: {
     isAdmin() { const u = getUser(); return u && u.role === 'admin'; },
@@ -157,14 +157,40 @@ const AdminView = {
       </div>
 
       <div class="card">
+        <h2>余额手工校准 <span class="muted" style="font-weight:normal;font-size:13px">充值后在这里重新录入实际余额；录入后会覆盖 API 实拉值展示</span></h2>
+        <div class="grid grid-3" v-if="balance">
+          <div v-for="p in [['deepseek', 'DeepSeek'], ['kimi', 'Kimi'], ['fusion', 'FusionAI']]" :key="p[0]" style="display:flex;flex-direction:column;gap:6px">
+            <div class="muted" style="font-size:13px">{{ p[1] }}</div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <input type="number" step="0.01" min="0" v-model="baselineForm[p[0]]" :placeholder="'当前' + (balance[p[0]] && balance[p[0]].manual_balance ? '已校准 ¥' + fmtNum(balance[p[0]].manual_balance.balance_cny) : '未校准')" style="width:160px">
+              <button class="btn btn-outline btn-sm" @click="saveBaseline(p[0])">保存</button>
+            </div>
+            <div class="muted" style="font-size:12px" v-if="balance[p[0]] && balance[p[0]].manual_balance">
+              已校准 ¥{{ fmtNum(balance[p[0]].manual_balance.balance_cny) }}（{{ fmtTime(balance[p[0]].manual_balance.recorded_at) }}）
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
         <h2>费率与余额 <span class="muted" style="font-weight:normal;font-size:13px">费率改库/保存即生效（60s 内全进程刷新）；高峰=北京时间工作日 9:00-12:00、14:00-18:00，空闲按折扣价</span></h2>
         <div class="grid grid-4" style="margin:12px 0" v-if="balance">
           <div class="stat">
-            <div class="n" v-if="balance.deepseek && balance.deepseek.ok">¥{{ fmtNum(balance.deepseek.total_balance) }}</div>
-            <div class="n" v-else style="color:#c00;font-size:16px">{{ (balance.deepseek && balance.deepseek.error) || '拉取失败' }}</div>
-            <div class="l">DeepSeek 真实余额</div>
+            <template v-if="balance.deepseek && balance.deepseek.manual_balance">
+              <div class="n">¥{{ fmtNum(balance.deepseek.manual_balance.balance_cny) }}</div>
+              <div class="l">DeepSeek 手工校准余额</div>
+              <div class="muted" style="font-size:12px;margin-top:4px">
+                API 实拉 ¥{{ fmtNum(balance.deepseek.total_balance) }}；
+                校准于 {{ fmtTime(balance.deepseek.manual_balance.recorded_at) }}
+              </div>
+            </template>
+            <template v-else>
+              <div class="n" v-if="balance.deepseek && balance.deepseek.ok">¥{{ fmtNum(balance.deepseek.total_balance) }}</div>
+              <div class="n" v-else style="color:#c00;font-size:16px">{{ (balance.deepseek && balance.deepseek.error) || '拉取失败' }}</div>
+              <div class="l">DeepSeek 真实余额</div>
+            </template>
           </div>
-          <div class="stat" v-if="balance.deepseek && balance.deepseek.ok">
+          <div class="stat" v-if="balance.deepseek && balance.deepseek.ok && !balance.deepseek.manual_balance">
             <div class="n" style="font-size:16px">赠 ¥{{ fmtNum(balance.deepseek.granted_balance) }} / 充 ¥{{ fmtNum(balance.deepseek.topped_up_balance) }}</div>
             <div class="l">赠送 / 充值（扣费优先扣赠送）</div>
           </div>
@@ -190,14 +216,28 @@ const AdminView = {
             <div class="muted" style="font-size:12px;margin-top:4px;color:#666" v-if="balance.fusion && balance.fusion.rate">
               单次计费：{{ balance.fusion.rate.model }} 按次 ¥{{ fmtNum(balance.fusion.rate.per_call_cny) }}
             </div>
-            <div style="margin-top:6px;display:flex;gap:6px">
-              <input type="number" step="0.01" min="0" v-model="baselineForm.fusion" placeholder="控制台实际余额（元）" style="width:160px">
-              <button class="btn btn-outline btn-sm" @click="saveBaseline('fusion')">录入基准</button>
-            </div>
           </div>
-          <!-- Kimi：实拉开放平台余额 -->
+          <!-- Kimi：实拉开放平台余额，支持手工校准覆盖 -->
           <div class="stat">
-            <template v-if="balance.kimi && balance.kimi.ok">
+            <template v-if="balance.kimi && balance.kimi.manual_balance">
+              <div class="n">¥{{ fmtNum(balance.kimi.manual_balance.balance_cny) }}</div>
+              <div class="l">Kimi（校稿文本）手工校准余额</div>
+              <div class="muted" style="font-size:12px;margin-top:4px">
+                API 实拉 ¥{{ fmtNum(balance.kimi.available_balance) }}
+                （赠 ¥{{ fmtNum(balance.kimi.voucher_balance) }} / 充 ¥{{ fmtNum(balance.kimi.cash_balance) }}）；
+                校准于 {{ fmtTime(balance.kimi.manual_balance.recorded_at) }}
+              </div>
+              <div class="muted" style="font-size:12px;margin-top:4px">
+                日均 {{ fmtMoney(balance.kimi.daily_avg_7d_cny) }}，
+                预计可用 {{ balance.kimi.est_available_days == null ? '-' : balance.kimi.est_available_days + ' 天' }}
+                <span v-if="balance.kimi.fetched_at">；拉取于 {{ fmtTime(balance.kimi.fetched_at) }}</span>
+              </div>
+              <div class="muted" style="font-size:12px;margin-top:4px;color:#666" v-if="balance.kimi.rate">
+                单次计费：{{ balance.kimi.rate.model }} 输入命中 ¥{{ fmtNum(balance.kimi.rate.input_hit_peak) }}/1M tokens，
+                输出 ¥{{ fmtNum(balance.kimi.rate.output_peak) }}/1M tokens
+              </div>
+            </template>
+            <template v-else-if="balance.kimi && balance.kimi.ok">
               <div class="n">¥{{ fmtNum(balance.kimi.available_balance) }}</div>
               <div class="l">Kimi（校稿文本）真实余额</div>
               <div class="muted" style="font-size:16px;margin-top:4px">
