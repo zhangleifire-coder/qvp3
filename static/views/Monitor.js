@@ -385,7 +385,7 @@ const MonitorView = {
       <div class="stat"><div class="n" style="color:var(--primary)">{{ counts.processing || 0 }}</div><div class="l">生产中</div></div>
       <div class="stat"><div class="n" style="color:var(--green)">{{ counts.done || 0 }}</div><div class="l">本次完成</div></div>
       <div class="stat"><div class="n" style="color:var(--red)">{{ counts.failed || 0 }}</div><div class="l">本次失败</div></div>
-      <div class="stat"><div class="n">{{ limiter.capacity || '-' }}</div><div class="l">当前并发（上限 {{ limiter.max_c || '-' }}）</div></div>
+      <div class="stat"><div class="n">{{ limiter.in_flight || 0 }}</div><div class="l">当前并发（上限 {{ limiter.max_c || '-' }}）</div></div>
     </div>
 
     <div class="card" style="margin-top:16px">

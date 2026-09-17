@@ -46,7 +46,13 @@ services:
       NANOBOT_BASE_URL: http://127.0.0.1:8901/v1
       DSH_HOME: /data/dsh
       DSH_SERVE_PORT: "8901"
-      DSH_MAX_CONCURRENT: "4"        # 必须与后端 MAX_CONCURRENCY 一致（消除隐形排队）
+      # 并发对齐上游承载力：deepseek/kimi 文本 40 路、FusionAI 生图 12 路。
+      # 任务级并发 8 + 每任务生图并发 2 ≈ 16 张图在飞，接近生图 12 路上限；
+      # 文本侧 8 路远低于 40 路，保留余量避免事件循环过载。
+      MAX_CONCURRENCY: "8"
+      INITIAL_CONCURRENCY: "8"
+      IMAGE_GEN_PARALLEL: "2"
+      DSH_MAX_CONCURRENT: "8"        # 必须与后端 MAX_CONCURRENCY 一致（消除隐形排队）
       DSH_WORKSPACE: /app
       # litellm 主进程不远程拉价表（容器启动快 ~6-13s；价表走本地兜底 + DB 费率表。
       # 此前只在 MCP_EXTRA_ENV 里对 MCP 子进程设过，主后端进程漏了）
