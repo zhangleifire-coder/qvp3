@@ -24,6 +24,7 @@ const TasksView = {
       refKeep: {},           // 参考图勾选 {assetId: true}
       confirmingRefs: false, // 确认中防抖
       imgEdit: null,         // 定点修改弹窗 {asset, instruction, busy}
+      uploadingManual: {},   // asset_id -> bool（人工图上传中）
       selected: {},          // 批量删除勾选 {taskId: true}
       taskRecycle: [],       // 任务回收站（仅 admin）
       showTaskRecycle: false,
@@ -337,6 +338,28 @@ const TasksView = {
         await this.open({ id: this.detailTask.id });
         this.load();
       } catch (err) { alert('修改失败：' + err.message); e.busy = false; }
+    },
+    async uploadManual(a, event) {
+      const files = event && event.target ? event.target.files : null;
+      if (!files || !files.length) return;
+      this.uploadingManual = { ...this.uploadingManual, [a.id]: true };
+      try {
+        const fd = new FormData();
+        fd.append('file', files[0]);
+        fd.append('actor', this.actorName || 'anonymous');
+        await api.postForm(`/api/assets/${a.id}/upload_manual`, fd);
+        event.target.value = '';
+        await this.open({ id: this.detailTask.id });
+        this.load();
+      } catch (err) { alert('上传失败：' + err.message); }
+      finally {
+        const u = { ...this.uploadingManual };
+        delete u[a.id];
+        this.uploadingManual = u;
+      }
+    },
+    downloadPackage(a) {
+      window.open(`/api/assets/${a.id}/page_package`);
     },
     refCandidates() {
       // 待确认参考图候选（awaiting_refs 状态展示）
@@ -770,14 +793,18 @@ const TasksView = {
           </template>
 
           <template v-if="genAssets.length">
-            <h3>交付配图（{{ genAssets.length }}）<span class="muted" style="font-weight:normal;font-size:13px">不满意的图可点「修改」定点重新生产，老图存历史可对比</span></h3>
+            <h3>交付配图（{{ genAssets.length }}）<span class="muted" style="font-weight:normal;font-size:13px">不满意的图可点「修改」定点重新生产，或下载「本页生图包」到本地修图/外部生图后上传「人工图」替换</span></h3>
             <div class="img-grid">
               <figure v-for="a in genAssets" :key="a.page_index">
                 <img :src="thumbOf(a)" loading="lazy" alt="" @click="openZoom(a, false)">
-                <figcaption class="muted">
-                  P{{ a.page_index }} · AI 生成
-                  <button class="btn btn-outline btn-sm" style="margin-left:6px"
-                          @click.stop="imgEdit = { asset: a, instruction: '', busy: false }">✎ 修改</button>
+                <figcaption class="muted" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                  <span>P{{ a.page_index }} · {{ a.model_version === 'manual' ? '人工图' : 'AI 生成' }}</span>
+                  <button class="btn btn-outline btn-sm" @click.stop="imgEdit = { asset: a, instruction: '', busy: false }">✎ 修改</button>
+                  <button class="btn btn-outline btn-sm" :disabled="uploadingManual[a.id]" @click.stop="$refs['manualFile_'+a.id][0].click()">
+                    {{ uploadingManual[a.id] ? '上传中…' : '⬆ 人工图' }}
+                  </button>
+                  <input :ref="'manualFile_'+a.id" type="file" accept="image/*" style="display:none" @change="uploadManual(a, $event)">
+                  <button class="btn btn-outline btn-sm" @click.stop="downloadPackage(a)">⬇ 本页生图包</button>
                   <span v-if="historyOf(a.page_index).length" class="tag tag-yellow" style="margin-left:4px;font-size:11px">历史 {{ historyOf(a.page_index).length }}</span>
 <span v-if="a.subject_mismatch" class="tag tag-red" style="margin-left:4px;font-size:11px" title="视觉审核：图中主体与该页文案不符（重画后仍存疑），请人工复核">主体待审</span>
                 </figcaption>

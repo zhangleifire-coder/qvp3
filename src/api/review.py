@@ -260,7 +260,8 @@ async def task_detail(task_id: str):
                 ev_by_claim.setdefault(ev.claim_id, []).append(ev)
         evidences = [ev for c in claims for ev in ev_by_claim.get(c.id, [])]
         assets = (await session.execute(
-            select(Asset).where(Asset.task_id == tid).order_by(Asset.page_index))).scalars().all()
+            select(Asset).where(Asset.task_id == tid, Asset.is_history.is_(False))
+            .order_by(Asset.page_index))).scalars().all()
         ocrs = (await session.execute(
             select(OcrResult).where(OcrResult.asset_id.in_([a.id for a in assets])))).scalars().all()
         risk = (await session.execute(
@@ -270,7 +271,8 @@ async def task_detail(task_id: str):
             "draft": {"body": draft.body, "model_version": draft.model_version} if draft else None,
             "claims": [{"claim_text": c.claim_text, "risk_level": c.risk_level} for c in claims],
             "evidences": [{"source_url": e.source_url, "excerpt": e.excerpt} for e in evidences],
-            "assets": [{"page_index": a.page_index, "source_type": a.source_type,
+            "assets": [{"id": str(a.id), "page_index": a.page_index,
+                        "source_type": a.source_type, "model_version": a.model_version,
                         "image_url": a.image_url, "copyright_status": a.copyright_status,
                         "display_url": f"/api/assets/{a.id}/image"} for a in assets],
             "ocr": [{"asset_id": str(o.asset_id), "raw_text": o.raw_text} for o in ocrs],

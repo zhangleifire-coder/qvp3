@@ -16,6 +16,8 @@ const ReviewView = {
       sortOrder: 'desc',    // 左侧队列排序：desc=最新在前，asc=最早在前
       selected: {},         // task_id -> bool（左侧队列批量选择）
       showBatchMenu: false, // 批量操作菜单展开/收起
+      imgEdit: null,        // 定点修改弹窗 {asset, instruction, busy}
+      uploadingManual: {},  // asset_id -> bool（人工图上传中）
     };
   },
   computed: {
@@ -197,6 +199,38 @@ const ReviewView = {
       clearInterval(this.hbTimer); clearInterval(this.tickTimer);
       this.hbTimer = this.tickTimer = null;
     },
+    async submitImgEdit() {
+      const e = this.imgEdit;
+      if (!e || e.busy) return;
+      e.busy = true;
+      try {
+        await api.post(`/api/assets/${e.asset.id}/edit_image`,
+          { instruction: e.instruction.trim(), actor: this.user.name });
+        this.imgEdit = null;
+        await this.select({ task_id: this.currentId });
+      } catch (err) { this.error = '修改失败：' + err.message; e.busy = false; }
+    },
+    async uploadManual(a, event) {
+      const files = event && event.target ? event.target.files : null;
+      if (!files || !files.length) return;
+      this.uploadingManual = { ...this.uploadingManual, [a.id]: true };
+      try {
+        const fd = new FormData();
+        fd.append('file', files[0]);
+        fd.append('actor', this.user.name || 'anonymous');
+        await api.postForm(`/api/assets/${a.id}/upload_manual`, fd);
+        event.target.value = '';
+        await this.select({ task_id: this.currentId });
+      } catch (err) { this.error = '上传失败：' + err.message; }
+      finally {
+        const u = { ...this.uploadingManual };
+        delete u[a.id];
+        this.uploadingManual = u;
+      }
+    },
+    downloadPackage(a) {
+      window.open(`/api/assets/${a.id}/page_package`);
+    },
   },
   async mounted() {
     // 试运行期（ROLE_ALL_ACCESS=true）：全员开放 A/B/C 切换；默认进自己账号的角色
@@ -312,13 +346,20 @@ const ReviewView = {
               </div>
             </div>
             <div class="card" v-if="genAssets.length">
-              <h2>交付配图 <span class="muted" style="font-weight:normal;font-size:13px">有问题的图可点「标问题」定点驳回，重试只重做该图</span></h2>
+              <h2>交付配图 <span class="muted" style="font-weight:normal;font-size:13px">不满意的图可点「修改」定点重新生产，或下载「本页生图包」到本地修图/外部生图后上传「人工图」替换</span></h2>
               <div class="img-grid">
                 <figure v-for="a in genAssets" :key="a.page_index">
                   <img :src="thumbOf(a)" loading="lazy" alt="" @click="openZoom(a, false)">
-                  <figcaption class="muted">P{{ a.page_index }}
+                  <figcaption class="muted" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                    <span>P{{ a.page_index }} · {{ a.model_version === 'manual' ? '人工图' : 'AI 生成' }}</span>
+                    <button class="btn btn-sm btn-outline" @click.stop="imgEdit = { asset: a, instruction: '', busy: false }">✎ 修改</button>
+                    <button class="btn btn-sm btn-outline" :disabled="uploadingManual[a.id]" @click.stop="$refs['manualFile_'+a.id][0].click()">
+                      {{ uploadingManual[a.id] ? '上传中…' : '⬆ 人工图' }}
+                    </button>
+                    <input :ref="'manualFile_'+a.id" type="file" accept="image/*" style="display:none" @change="uploadManual(a, $event)">
+                    <button class="btn btn-sm btn-outline" @click.stop="downloadPackage(a)">⬇ 本页生图包</button>
                     <button class="btn btn-sm" :class="isMarked('image', a.page_index) ? 'btn-danger' : 'btn-outline'"
-                            style="margin-left:6px" @click.stop="toggleMark('image', a.page_index); showReject = true">
+                            @click.stop="toggleMark('image', a.page_index); showReject = true">
                       {{ isMarked('image', a.page_index) ? '✓ 已标记' : '⚑ 标问题' }}
                     </button>
                   </figcaption>
@@ -353,6 +394,25 @@ const ReviewView = {
         </div>
       </div>
     </template>
+    <div v-if="imgEdit" class="drawer-mask" @click.self="imgEdit=null">
+      <div class="card" style="width:480px;margin:14vh auto 0">
+        <h2>定点修改 P{{ imgEdit.asset.page_index }} 配图</h2>
+        <p class="muted" style="font-size:13px;margin:4px 0 10px">老图将存入历史（可在图上对比新旧）。重新生产沿用原提示词 + 你的修改意见。</p>
+        <div style="display:flex;gap:10px;margin-bottom:10px">
+          <img :src="imgEdit.asset.display_url || imgEdit.asset.image_url" style="width:96px;border-radius:8px">
+          <div style="flex:1">
+            <label>修改意见（可选，留空=换构图重生成）</label>
+            <textarea v-model="imgEdit.instruction" rows="3"
+              placeholder="如：把标题改成「吸力实测对比」；构图换俯视；文字少一点"></textarea>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button class="btn btn-outline btn-sm" @click="imgEdit=null">取消</button>
+          <button class="btn btn-primary" :disabled="imgEdit.busy"
+                  @click="submitImgEdit">{{ imgEdit.busy ? '重新生产中…' : '↻ 重新生产该图' }}</button>
+        </div>
+      </div>
+    </div>
     <img-lightbox :img="zoom" @close="zoom=null" />
   </app-layout>`,
   created() { this.MODE = MODE; },

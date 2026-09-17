@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -34,6 +35,9 @@ class Route:
     harness: object = None          # deepseek_harness.DeepSeekHarness，懒启动
     lock: threading.Lock = field(default_factory=threading.Lock)
     start_error: str | None = None
+    requests_served: int = 0        # 本路由成功服务请求数
+    last_activity_at: float | None = None   # 最近一次 run 开始/结束时间
+    last_success_at: float | None = None    # 最近一次成功返回时间
 
 
 def write_runtime_files(settings: Settings) -> tuple[str | None, str | None]:
@@ -124,6 +128,11 @@ DISABLED_BUILTIN_ROWS = (
 class HarnessPool:
     """按路由管理 DeepSeekHarness 实例（每路由一个常驻 dsh 子进程）。"""
 
+    #: 路由重启兜底：每服务 N 次请求后主动重建 harness，避免子进程长期运行累积死锁
+    RESTART_INTERVAL_REQUESTS: int = 30
+    #: 路由重启兜底：超过 N 秒没有成功返回则主动重建
+    RESTART_INTERVAL_SECONDS: float = 1800.0
+
     def __init__(self, settings: Settings,
                  harness_factory: Callable | None = None) -> None:
         self.settings = settings
@@ -195,9 +204,18 @@ class HarnessPool:
         """同步执行一轮（在 worker 线程里调用）；返回 RunResult。
 
         on_event 回调收到的是 session.event 的 event 字典（根会话事件流）。
+        执行前会按请求数/时间兜底重建 harness，减少子进程长期运行死锁风险。
         """
         route = self.routes[route_name]
         with route.lock:  # 同路由串行；进程崩溃后由调用方决定是否换路由
+            now = time.time()
+            # 兜底重建：请求数或空闲时间达到阈值时主动换 harness
+            if route.harness is not None and (
+                route.requests_served >= self.RESTART_INTERVAL_REQUESTS
+                or (route.last_success_at is not None
+                    and now - route.last_success_at >= self.RESTART_INTERVAL_SECONDS)
+            ):
+                self._close_route(route)
             self._ensure_started(route)
 
             def on_notification(n) -> None:
@@ -210,8 +228,60 @@ class HarnessPool:
                 if isinstance(ev, dict):
                     on_event(ev)
 
-            return route.harness.run(prompt, session_id=session_id,
-                                     on_notification=on_notification)
+            route.last_activity_at = now
+            try:
+                result = route.harness.run(prompt, session_id=session_id,
+                                           on_notification=on_notification)
+                route.requests_served += 1
+                route.last_success_at = time.time()
+                return result
+            except Exception:
+                route.last_activity_at = time.time()
+                raise
+
+    def _close_route(self, route: Route) -> None:
+        """关闭并清理单个路由的 harness，允许下一次 _ensure_started 重建。"""
+        if route.harness is None:
+            return
+        try:
+            route.harness.close()
+            logger.info("route closed for restart route=%s model=%s "
+                        "requests_served=%d",
+                        route.name, route.model, route.requests_served)
+        except Exception:  # noqa: BLE001
+            logger.warning("route close failed on restart route=%s", route.name)
+        finally:
+            route.harness = None
+            route.requests_served = 0
+            route.start_error = None
+
+    def restart_route(self, route_name: str) -> None:
+        """外部探针/看门狗调用：强制重建指定路由。"""
+        route = self.routes.get(route_name)
+        if route is None:
+            return
+        if route.lock.locked():
+            logger.info("route restart skipped (in-flight) route=%s", route_name)
+            return
+        with route.lock:
+            self._close_route(route)
+
+    def maybe_restart_stale_routes(self) -> None:
+        """看门狗调用：重启长时间无成功响应或请求数超限的路由。"""
+        now = time.time()
+        for route in self.routes.values():
+            if route.harness is None:
+                continue
+            if route.lock.locked():
+                continue
+            if route.requests_served >= self.RESTART_INTERVAL_REQUESTS:
+                with route.lock:
+                    self._close_route(route)
+                continue
+            if (route.last_success_at is not None
+                    and now - route.last_success_at >= self.RESTART_INTERVAL_SECONDS):
+                with route.lock:
+                    self._close_route(route)
 
     # --- 健康与生命周期 ---
     @staticmethod
@@ -224,23 +294,29 @@ class HarnessPool:
         except Exception:  # noqa: BLE001
             return False
 
+    def _route_snapshot(self, route: Route) -> dict:
+        return {
+            "model": route.model,
+            "started": route.harness is not None,
+            "alive": self._route_alive(route),
+            "last_start_error": route.start_error,
+            "requests_served": route.requests_served,
+            "last_success_at": route.last_success_at,
+            "last_activity_at": route.last_activity_at,
+        }
+
     def health(self) -> dict:
         s = self.settings
         return {
-            "primary": {"model": s.primary_model,
-                        "started": self.routes["primary"].harness is not None,
-                        "alive": self._route_alive(self.routes["primary"]),
-                        "last_start_error": self.routes["primary"].start_error},
-            "fallback": {"enabled": s.fallback_enabled and bool(s.kimi_api_key),
-                         "model": s.fallback_model,
-                         "started": self.routes["fallback"].harness is not None,
-                         "alive": self._route_alive(self.routes["fallback"]),
-                         "last_start_error": self.routes["fallback"].start_error},
-            "fallback2": {"enabled": s.fallback2_enabled and bool(s.kimi_code_api_key),
-                          "model": s.fallback2_model,
-                          "started": self.routes["fallback2"].harness is not None,
-                          "alive": self._route_alive(self.routes["fallback2"]),
-                          "last_start_error": self.routes["fallback2"].start_error},
+            "primary": self._route_snapshot(self.routes["primary"]),
+            "fallback": {
+                **self._route_snapshot(self.routes["fallback"]),
+                "enabled": s.fallback_enabled and bool(s.kimi_api_key),
+            },
+            "fallback2": {
+                **self._route_snapshot(self.routes["fallback2"]),
+                "enabled": s.fallback2_enabled and bool(s.kimi_code_api_key),
+            },
             "mcp": {"enabled": s.mcp_enabled and bool(s.mcp_command),
                     "server_name": s.mcp_server_name,
                     "command": s.mcp_command,

@@ -4,8 +4,10 @@ import hashlib
 import io
 import uuid
 import asyncio
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import quote
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Response
 from pydantic import BaseModel
 from sqlalchemy import delete, select, func, text
@@ -1087,6 +1089,115 @@ async def edit_image(asset_id: str, payload: ImageEditIn):
     _a.create_task(_do_image_edit(aid, prompt, ref_urls, instr, payload.actor))
     return {"ok": True, "page_index": old.page_index, "status": "regenerating",
             "note": "后台重新生产中（约 1 分钟），稍后刷新看新图"}
+
+
+@router.get("/api/assets/{asset_id}/page_package")
+async def asset_page_package(asset_id: str):
+    """下载单页「生图包」：当前配图原图 + 该页全部生图文字内容，
+    供人工本地修图或拿到外部生图工具复刻。
+    """
+    from src.models.assets import Asset
+    from src.models.drafts import PageCopy
+    from src.gateway.ocr import fetch_image_bytes
+    from src.pipeline.text_check import effective_texts
+    try:
+        aid = uuid.UUID(asset_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid asset_id")
+    async with SessionLocal() as session:
+        asset = (await session.execute(
+            select(Asset).where(Asset.id == aid))).scalars().first()
+        if not asset or not asset.image_url:
+            raise HTTPException(status_code=404, detail="asset not found")
+        if asset.source_type not in ("ai_generated", "manual"):
+            raise HTTPException(status_code=400, detail="仅交付配图可打包")
+        task = (await session.execute(
+            select(Task).where(Task.id == asset.task_id))).scalar_one()
+        page = (await session.execute(
+            select(PageCopy).where(PageCopy.task_id == asset.task_id,
+                                   PageCopy.page_index == asset.page_index)
+        )).scalars().first()
+        texts = effective_texts(task)
+        image_prompts = texts.get("image_prompts") or []
+        image_prompt = (image_prompts[asset.page_index - 1]
+                        if 1 <= asset.page_index <= len(image_prompts) else "")
+        meta = {
+            "asset_id": asset_id,
+            "task_id": str(task.id),
+            "page_index": asset.page_index,
+            "query": task.query,
+            "mode": task.mode,
+            "page_body": page.body if page else "",
+            "image_prompt": image_prompt,
+            "page_subjects": task.page_subjects,
+            "model_version": asset.model_version,
+            "prompt_used": asset.prompt_used or "",
+        }
+    try:
+        data, ctype = await fetch_image_bytes(asset.image_url)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"image fetch failed: {e}")
+    ext = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}.get(ctype, ".png")
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(f"P{asset.page_index}_meta.json", json.dumps(meta, ensure_ascii=False, indent=2))
+        zf.writestr(f"P{asset.page_index}_prompt.txt",
+                    f"Query: {task.query}\nMode: {task.mode}\n"
+                    f"Page: P{asset.page_index}\n"
+                    f"Page body:\n{page.body if page else ''}\n\n"
+                    f"Image prompt:\n{image_prompt}\n\n"
+                    f"Model: {asset.model_version or '-'}\n")
+        zf.writestr(f"P{asset.page_index}{ext}", data)
+    filename = f"{task.id}_P{asset.page_index}_生图包.zip"
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"})
+
+
+@router.post("/api/assets/{asset_id}/upload_manual")
+async def upload_manual_image(asset_id: str, file: UploadFile = File(...),
+                              actor: str = Form("anonymous")):
+    """人工图替换：用户用本页生图包在本地修图/生图后，上传新图替换当前 AI 图。
+    老图标记为历史，新图作为当前正式配图参与后续导出/发布。
+    """
+    from src.models.assets import Asset
+    from src.pipeline.nodes import _persist_image
+    import hashlib as _hash
+    try:
+        aid = uuid.UUID(asset_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid asset_id")
+    data = await file.read()
+    ctype = (file.content_type or "").split(";")[0].strip()
+    if not ctype.startswith("image/"):
+        raise HTTPException(status_code=422,
+                            detail=f"{file.filename} 不是图片（{ctype or '未知类型'}）")
+    if len(data) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=422, detail=f"{file.filename} 超过 10MB")
+    async with SessionLocal() as session:
+        old = (await session.execute(
+            select(Asset).where(Asset.id == aid))).scalars().first()
+        if not old or not old.image_url:
+            raise HTTPException(status_code=404, detail="asset not found")
+        if old.is_history:
+            raise HTTPException(status_code=400, detail="不能替换历史图")
+        tid, page_index, subject = old.task_id, old.page_index, old.subject
+        new_url = _persist_image(tid, page_index, "manual", data, ctype)
+        old.is_history = True
+        new_asset = Asset(
+            task_id=tid, page_index=page_index, subject=subject,
+            source_type="ai_generated", copyright_status="clear",
+            hash=_hash.md5(data).hexdigest(), image_url=new_url,
+            origin_url="", model_version="manual", is_illustration=False,
+            prompt_used="[人工图替换]",
+            edit_note=f"人工图替换 ({actor})")
+        session.add(new_asset)
+        await session.commit()
+        new_id = new_asset.id
+    await log_action(actor, "manual_image_upload",
+                     f"上传人工图替换 P{page_index} 原 AI 配图", task_id=tid)
+    return {"ok": True, "asset_id": str(new_id), "page_index": page_index}
 
 
 @router.get("/api/tasks/text/awaiting")

@@ -16,7 +16,7 @@ class Settings(BaseSettings):
 
     # --- 主路由（DeepSeek 官方，OpenAI 兼容）---
     primary_provider: str = "deepseek-official"
-    primary_model: str = "deepseek-flash"   # 2026-09-16 起使用官方 V4.1 Flash ID；可用环境变量 PRIMARY_MODEL 覆盖
+    primary_model: str = "deepseek-flash"   # DeepSeek 官方 V4.1 Flash ID（API 侧标识为 deepseek-flash）；可用环境变量 PRIMARY_MODEL 覆盖
     deepseek_base_url: str = "https://api.deepseek.com/v1"
 
     # --- 备1 路由（Kimi 开放平台，OpenAI 兼容；2026-09-10 从 Kimi Code 会员额度
@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     # 的 max_tokens 含 reasoning_tokens：8192（nanobot 旧值）在 reasoningEffort=high +
     # 长 prompt 下会被推理吃光（实证：turn/end=max-tokens 且正文 0 字符）
     dsh_reasoning_effort: str = ""                     # 空 = 模型默认
-    request_timeout_seconds: float = 3000.0            # 对齐 NANOBOT_REQUEST_TIMEOUT_SECONDS 服务器值
+    request_timeout_seconds: float = 240.0             # 单轮请求读超时；原 3000s 卡死恢复太慢，改为 4min 内快速失败/降级
     dsh_initialize_timeout_seconds: float = 120.0      # dsh 子进程首启（含 MCP server 冷启动）握手上限
 
     # --- 服务 ---

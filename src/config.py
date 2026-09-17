@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     # 文本模型（spec §1.1 已确定选型）
     deepseek_api_key: str = "sk-xxx"      # DeepSeek：正文生成 + 生图提示词
-    # 主模型（2026-09-16 起 deepseek-flash，即 DeepSeek V4.1 Flash 官方 ID；改这里全局生效）
+    # 主模型：deepseek-flash 是 DeepSeek V4.1 Flash 的官方 API 标识；改这里全局生效
     deepseek_model: str = "deepseek-flash"
     kimi_api_key: str = "sk-yyy"          # Kimi K3（备1：开放平台按量，api.moonshot.cn）
     # 备2：Kimi Code 会员兜底线（api.kimi.com/coding，anthropic 协议）；

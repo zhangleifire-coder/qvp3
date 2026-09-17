@@ -193,7 +193,7 @@ const TextCheckView = {
         </div>
       </div>
 
-      <div class="card" style="flex:1" v-if="detail && form">
+      <div class="card refs-main" style="flex:1" v-if="detail && form">
         <h2>{{ detail.task.query }}
           <span class="tag" :class="autoOk ? 'tag-green' : 'tag-yellow'">
             {{ autoOk ? '✓ 中文自查通过' : '⚠ 自查发现 ' + issues.length + ' 个问题' }}
@@ -287,7 +287,7 @@ const TextCheckView = {
           <span class="muted" style="font-size:13px">放行后进入「审图」环节（compare/single）或直接生产（general）</span>
         </div>
       </div>
-      <div class="card" style="flex:1" v-else>
+      <div class="card refs-main" style="flex:1" v-else>
         <div class="empty" style="padding:60px 0">
           {{ items.length ? '← 点左侧任务开始核查' : '等待任务进入文字核查…' }}
         </div>

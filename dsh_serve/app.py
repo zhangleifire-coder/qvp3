@@ -43,6 +43,21 @@ def create_app(settings: Settings | None = None,
                pool: HarnessPool | None = None) -> FastAPI:
     cfg = settings or get_settings()
 
+    WATCHDOG_INTERVAL_SECONDS: float = 60.0
+
+    async def _watchdog() -> None:
+        """后台看门狗：定期清理超请求数/长时间无成功的 harness 路由。"""
+        while True:
+            try:
+                await asyncio.sleep(WATCHDOG_INTERVAL_SECONDS)
+                p = _STATE.pool
+                if p is not None:
+                    p.maybe_restart_stale_routes()
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:  # noqa: BLE001
+                logger.warning("watchdog error: %s", e)
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         from .session_store import SessionStore
@@ -50,11 +65,18 @@ def create_app(settings: Settings | None = None,
         _STATE.pool = pool or HarnessPool(cfg)
         _STATE.store = SessionStore(cfg.dsh_home)
         _STATE.semaphore = asyncio.Semaphore(cfg.dsh_max_concurrent)
+        _STATE.started_at = time.time()
+        watchdog_task = asyncio.create_task(_watchdog())
         logger.info("dsh_serve up port=%d dsh_home=%s max_concurrent=%d",
                     cfg.dsh_serve_port, cfg.dsh_home, cfg.dsh_max_concurrent)
         try:
             yield
         finally:
+            watchdog_task.cancel()
+            try:
+                await watchdog_task
+            except asyncio.CancelledError:
+                pass
             _STATE.pool.close()
             logger.info("dsh_serve down: dsh 子进程已关闭")
 

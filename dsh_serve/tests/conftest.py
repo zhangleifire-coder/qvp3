@@ -57,6 +57,12 @@ class FakePool:
     def close(self):
         self.closed = True
 
+    def maybe_restart_stale_routes(self):
+        pass
+
+    def restart_route(self, route_name: str):
+        pass
+
 
 def emit_dsh_events(on_event, text="fake answer", reasoning="thinking..."):
     """模拟 dsh 一路流式事件：reasoning-delta → text-delta → usage。"""
