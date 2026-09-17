@@ -207,6 +207,7 @@ const ReviewView = {
         await api.post(`/api/assets/${e.asset.id}/edit_image`,
           { instruction: e.instruction.trim(), actor: this.user.name });
         this.imgEdit = null;
+        this.msg = '已提交重新生产，约 1 分钟生效，请稍后刷新查看新图';
         await this.select({ task_id: this.currentId });
       } catch (err) { this.error = '修改失败：' + err.message; e.busy = false; }
     },
@@ -352,6 +353,7 @@ const ReviewView = {
                   <img :src="thumbOf(a)" loading="lazy" alt="" @click="openZoom(a, false)">
                   <figcaption class="muted" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
                     <span>P{{ a.page_index }} · {{ a.model_version === 'manual' ? '人工图' : 'AI 生成' }}</span>
+                    <span v-if="a.edit_note && a.edit_note.startsWith('失败：')" class="tag tag-red" :title="a.edit_note">生产失败</span>
                     <button class="btn btn-sm btn-outline" @click.stop="imgEdit = { asset: a, instruction: '', busy: false }">✎ 修改</button>
                     <button class="btn btn-sm btn-outline" :disabled="uploadingManual[a.id]" @click.stop="$refs['manualFile_'+a.id][0].click()">
                       {{ uploadingManual[a.id] ? '上传中…' : '⬆ 人工图' }}

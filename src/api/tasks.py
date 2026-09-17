@@ -5,12 +5,14 @@ import io
 import uuid
 import asyncio
 import zipfile
+import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Response
 from pydantic import BaseModel
 from sqlalchemy import delete, select, func, text
+from src.config import settings
 from src.db.session import SessionLocal
 from src.models.tasks import Task
 from src.services.activity import log_action
@@ -991,12 +993,15 @@ class ImageEditIn(BaseModel):
 
 
 async def _do_image_edit(aid, prompt: str, ref_urls: list, instr: str, actor: str) -> None:
-    """后台执行定点生图：老图转历史 + 新图落库 + 驳回标记解决。"""
+    """后台执行定点生图：老图转历史 + 新图落库 + 驳回标记解决。
+
+    失败时把异常写入该 asset 的 edit_note 和活动日志，避免前端无感知。"""
     from src.gateway.image_gen import generate_image
     from src.gateway.ocr import fetch_image_bytes
     from src.pipeline.nodes import _persist_image
     from src.models.assets import Asset
     from src.models.review import RejectMark
+    tid = page_index = None
     try:
         async with SessionLocal() as session:
             old = (await session.execute(select(Asset).where(Asset.id == aid))).scalar_one()
@@ -1012,7 +1017,7 @@ async def _do_image_edit(aid, prompt: str, ref_urls: list, instr: str, actor: st
                 source_type="ai_generated", copyright_status="clear",
                 hash=hashlib.md5(data).hexdigest(), image_url=new_url,
                 origin_url=r["image_url"] if not str(r["image_url"]).startswith("data:") else None,
-                model_version=r.get("model_version", settings.image_model),
+                model_version=r.get("model_version") or settings.image_model,
                 is_illustration=False, prompt_used=prompt,
                 edit_note=instr or "定点重新生产"))
             for m in (await session.execute(
@@ -1024,8 +1029,22 @@ async def _do_image_edit(aid, prompt: str, ref_urls: list, instr: str, actor: st
             await session.commit()
         await log_action(actor, "image_edit",
                          f"定点修改 P{page_index} 配图（意见：{instr[:30] or '重新生产'}）", task_id=tid)
-    except Exception:  # noqa: BLE001
-        traceback.print_exc()
+    except Exception as exc:  # noqa: BLE001
+        tb = traceback.format_exc()
+        print(f"[image_edit] asset={aid} 定点重新生产失败\n{tb}", flush=True)
+        try:
+            async with SessionLocal() as session:
+                old = (await session.execute(select(Asset).where(Asset.id == aid))).scalars().first()
+                if old:
+                    tid = old.task_id
+                    page_index = old.page_index
+                    old.edit_note = f"失败：{type(exc).__name__}: {str(exc)[:120]}"
+                    await session.commit()
+        except Exception as rec_err:  # noqa: BLE001
+            print(f"[image_edit] asset={aid} 写入失败备注也异常: {rec_err}", flush=True)
+        await log_action(actor or "anonymous", "image_edit_failed",
+                         f"定点修改 P{page_index or '?'} 配图失败：{type(exc).__name__}: {str(exc)[:200]}",
+                         task_id=tid)
 
 
 @router.post("/api/assets/{asset_id}/edit_image")
