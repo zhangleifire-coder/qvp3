@@ -1269,6 +1269,40 @@ async def confirm_text(task_id: str, payload: TextConfirmIn):
     return {"ok": True, "queued": True, "overridden": sorted(ov.keys())}
 
 
+class TextBatchConfirmIn(BaseModel):
+    ids: list[str]
+    actor: str = "anonymous"
+
+
+@router.post("/api/tasks/text/batch_confirm")
+async def batch_confirm_text(payload: TextBatchConfirmIn):
+    """文字核查批量放行：逐条确认 awaiting_text 任务为 draft 并入队生产。
+    非 awaiting_text / 不存在 / ID 非法的条目计入 skipped 不阻断其他。"""
+    confirmed, skipped = 0, []
+    for task_id in payload.ids[:200]:
+        try:
+            tid = uuid.UUID(task_id)
+        except ValueError:
+            skipped.append({"id": task_id, "reason": "invalid task_id"})
+            continue
+        async with SessionLocal() as session:
+            task = (await session.execute(select(Task).where(Task.id == tid))).scalars().first()
+            if not task:
+                skipped.append({"id": task_id, "reason": "task not found"})
+                continue
+            if task.status != "awaiting_text":
+                skipped.append({"id": task_id, "reason": f"status {task.status}"})
+                continue
+            query = task.query
+            task.status = "draft"
+            await session.commit()
+        from src.stream.scheduler import scheduler
+        await scheduler.enqueue(tid, query)
+        await log_action(payload.actor, "text_confirm", "文字核查批量放行", task_id=tid)
+        confirmed += 1
+    return {"confirmed": confirmed, "skipped": skipped}
+
+
 @router.post("/api/tasks/{task_id}/text/redraft")
 async def redraft_text(task_id: str, actor: str = "ops"):
     """重新起草：AI 起草失败（输出截断/格式异常）或人工不满意草稿时，

@@ -11,6 +11,9 @@ const TextCheckView = {
       busyNote: '',        // 后台改写/起草中的提示（自动刷新结果）
       draftTimer: null,    // 后台处理完成检测轮询
       bodyPreview: true,   // 正文默认文档格式预览（md.js 渲染），点「编辑」才出纯文本框
+      sortOrder: 'desc',   // 左侧队列排序：desc=最新在前，asc=最早在前
+      selected: {},        // task_id -> bool（左侧队列批量选择）
+      showBatchMenu: false,// 批量操作菜单展开/收起
     };
   },
   computed: {
@@ -25,6 +28,16 @@ const TextCheckView = {
     marksList() { return Object.values(this.marks).filter(m => (m.note || '').trim()); },
     lastFeedback() { return this.review.last_feedback || []; },
     bodyChars() { return (this.form && this.form.body || '').replace(/\s/g, '').length; },
+    sortedItems() {
+      const dir = this.sortOrder === 'asc' ? 1 : -1;
+      return (this.items || []).slice().sort((a, b) => {
+        const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return (ta - tb) * dir;
+      });
+    },
+    selectedIds() { return Object.keys(this.selected).filter(k => this.selected[k]); },
+    allSelected() { return this.sortedItems.length > 0 && this.sortedItems.every(t => this.selected[t.id]); },
   },
   methods: {
     renderMd,           // md.js：正文预览按文档格式渲染
@@ -58,6 +71,10 @@ const TextCheckView = {
           const still = this.items.find(i => i.id === this.cur.id);
           if (!still) { this.cur = null; this.detail = null; }
         }
+        // 刷新后保留仍存在于队列中的选中项
+        const sel = {};
+        for (const t of this.items) if (this.selected[t.id]) sel[t.id] = true;
+        this.selected = sel;
       } catch (e) { this.error = e.message; }
       finally { this.loading = false; }
     },
@@ -165,6 +182,40 @@ const TextCheckView = {
       } catch (e) { alert('确认失败：' + e.message); }
       finally { this.confirming = false; }
     },
+    toggleSelectAll() {
+      const all = !this.allSelected;
+      const sel = { ...this.selected };
+      for (const t of this.sortedItems) sel[t.id] = all;
+      this.selected = sel;
+    },
+    async batchConfirm() {
+      const ids = this.selectedIds;
+      if (!ids.length) { alert('请先选择任务'); return; }
+      if (!confirm(`确定批量放行 ${ids.length} 条任务进入生产？`)) return;
+      this.confirming = true;
+      try {
+        const r = await api.post('/api/tasks/text/batch_confirm', { ids, actor: (getUser() || {}).name });
+        alert(`批量放行 ${r.confirmed} 条（跳过 ${r.skipped.length}）`);
+        this.selected = {}; this.showBatchMenu = false;
+        this.cur = null; this.detail = null; this.form = null;
+        await this.load();
+      } catch (e) { alert('批量放行失败：' + e.message); }
+      finally { this.confirming = false; }
+    },
+    async batchDelete() {
+      const ids = this.selectedIds;
+      if (!ids.length) { alert('请先选择任务'); return; }
+      if (!confirm(`确定删除选中的 ${ids.length} 条任务？\n\n任务及全部草稿将移入回收站（72 小时内管理员可恢复）。`)) return;
+      this.confirming = true;
+      try {
+        const r = await api.post('/api/tasks/batch_delete', { ids, actor: (getUser() || {}).name });
+        alert(`已删除 ${r.deleted} 条（跳过 ${r.skipped.length}）`);
+        this.selected = {}; this.showBatchMenu = false;
+        if (this.cur && ids.includes(this.cur.id)) { this.cur = null; this.detail = null; this.form = null; }
+        await this.load();
+      } catch (e) { alert('批量删除失败：' + e.message); }
+      finally { this.confirming = false; }
+    },
   },
   async mounted() {
     this.load();
@@ -176,20 +227,47 @@ const TextCheckView = {
     <div class="refs-layout">
       <div class="card refs-list">
         <h2>待核查任务 <span class="tag tag-yellow">{{ awaitingCount }}</span></h2>
-        <div v-if="!items.length" class="empty" style="padding:18px 0">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-size:14px;font-weight:600">待核查队列</span>
+          <div style="display:flex;align-items:center;gap:8px;margin-left:auto">
+            <select v-model="sortOrder" style="width:auto;padding:4px 8px;font-size:13px">
+              <option value="desc">最新在前</option>
+              <option value="asc">最早在前</option>
+            </select>
+            <button class="btn btn-outline btn-sm" @click="load">刷新</button>
+          </div>
+        </div>
+        <div style="margin:10px 0">
+          <button class="btn btn-outline btn-sm" @click="showBatchMenu = !showBatchMenu">
+            批量操作 {{ showBatchMenu ? '▲' : '▼' }}
+          </button>
+          <div v-if="showBatchMenu" style="margin-top:8px;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--card)">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;white-space:nowrap">
+                <input type="checkbox" :checked="allSelected" @change="toggleSelectAll" style="width:auto"> 全选
+              </label>
+              <button class="btn btn-success btn-sm" style="white-space:nowrap" :disabled="confirming || !selectedIds.length" @click="batchConfirm">✓ 通过选中（{{ selectedIds.length }}）</button>
+              <button class="btn btn-danger btn-sm" style="white-space:nowrap" :disabled="confirming || !selectedIds.length" @click="batchDelete">✗ 删除选中（{{ selectedIds.length }}）</button>
+            </div>
+          </div>
+        </div>
+        <div v-if="!sortedItems.length" class="empty" style="padding:18px 0">
           暂无待核查任务——导入的任务经「文字自查」后在这里等你最终审核
         </div>
-        <div v-for="t in items" :key="t.id" class="refs-item" :class="{on: cur && cur.id === t.id}"
+        <div v-for="t in sortedItems" :key="t.id" class="queue-item" :class="{on: cur && cur.id === t.id}"
              @click="pick(t)">
-          <b>{{ t.query }}</b>
-          <span style="display:flex;align-items:center;gap:6px">
-            <span v-if="t.source === 'manual'" class="tag tag-blue" title="手工内容导入">✍️ 手工</span>
-            <span class="tag" :class="t.auto_ok ? 'tag-green' : 'tag-yellow'">
-              {{ t.auto_ok ? '自查通过' : (t.issues || []).length + ' 个问题' }}
-            </span>
-            <button class="btn btn-sm btn-danger-ghost" title="删除该任务（入回收站，72h 可恢复）"
-                    @click.stop="removeTask(t)">🗑</button>
-          </span>
+          <div style="display:flex;align-items:flex-start;gap:8px">
+            <input type="checkbox" v-model="selected[t.id]" @click.stop style="margin-top:4px;flex-shrink:0;width:auto">
+            <div style="flex:1;min-width:0">
+              <div class="q">{{ t.query }}</div>
+              <div>
+                <span v-if="t.source === 'manual'" class="tag tag-blue" title="手工内容导入">✍️ 手工</span>
+                <span class="tag" :class="t.auto_ok ? 'tag-green' : 'tag-yellow'">
+                  {{ t.auto_ok ? '自查通过' : (t.issues || []).length + ' 个问题' }}
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
