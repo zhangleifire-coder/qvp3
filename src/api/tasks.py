@@ -1529,7 +1529,7 @@ async def batch_delete_tasks(payload: BatchDeleteIn):
 async def cancel_task(task_id: str, actor: str = "anonymous"):
     """手工中断任务：排队中→直接出队；生产中→取消执行协程（幂等可重试）。
 
-    注意：中断只停止本侧流水线与流式读取；Nanobot 侧 Agent 若已开始生成，
+    注意：中断只停止本侧流水线与流式读取；dsh_serve 侧 Agent 若已开始生成，
     其当轮推理会继续到自然结束（MCP 配额仍在兜底）。已产生的产物与已完成
     节点的 node_events 保留（被中断节点的 started 事件由 execute_node 显式
     清理），重试时已完成节点跳过、被中断节点重新执行。

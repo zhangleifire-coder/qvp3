@@ -1,7 +1,7 @@
 # dsh_serve —— DeepSeek Harness 创作网关薄层
 
-替换 Nanobot 的 OpenAI 兼容创作网关。协议与 Nanobot 1:1 对齐，后端
-`src/gateway/nanobot_client.py` 只需把 `NANOBOT_BASE_URL` 指到本服务即可切换
+OpenAI 兼容创作网关（dsh harness 薄层）。协议与原网关 1:1 对齐，后端
+`src/gateway/dsh_client.py` 以 `DSH_SERVE_BASE_URL` 指向本服务
 （`http://127.0.0.1:8901/v1`）。
 
 底座：DeepSeek Harness（`dsh`），经官方 Python SDK `deepseek-harness-sdk`
@@ -57,7 +57,7 @@ python -m dsh_serve
 | `DSH_WORKSPACE` | `dsh_serve/` | agent cwd / MCP 子进程 cwd |
 | `DSH_SERVE_HOST` / `DSH_SERVE_PORT` | `127.0.0.1` / `8901` | 监听地址 |
 | `DSH_MAX_CONCURRENT` | `4` | 全局并发上限（asyncio.Semaphore，对齐后端 MAX_CONCURRENCY） |
-| `REQUEST_TIMEOUT_SECONDS` | `3000` | 单轮请求超时（对齐 NANOBOT_REQUEST_TIMEOUT_SECONDS 服务器值） |
+| `REQUEST_TIMEOUT_SECONDS` | `3000` | 单轮请求超时（对齐 DSH_SERVE_REQUEST_TIMEOUT_SECONDS 值） |
 | `DSH_INITIALIZE_TIMEOUT_SECONDS` | `120` | dsh 子进程首启握手上限（含 MCP server 冷启动；qvp_mcp 在云盘目录 import 约需 52s，务必大于该值） |
 | `DSH_MAX_TOKENS` | `32768` | 单轮输出上限。**注意 deepseek 推理模型的 max_tokens 含 reasoning_tokens**：旧值 8192 在 reasoningEffort=high + 长 prompt 下会被推理吃光导致空响应（2026-09-05 联调实证，见验证记录补测 3） |
 | `DSH_REASONING_EFFORT` | 空（模型默认） | 推理强度（off/low/high/max） |
@@ -94,11 +94,11 @@ provider 等），只禁模型面 tool-* 行。
   （`llm-deepseek.defaultContextWindow` + kimi 模型条目），修正 dsh 默认 1M
   导致的 compaction/截断阈值失真（对比分析差距 4）。
 - **usage 累加**：`StreamAggregate` 按 step 逐条累加（deepseek 每个 step 一条
-  usage 事件），发给客户端的 usage chunk 为累计值（nanobot_client
+  usage 事件），发给客户端的 usage chunk 为累计值（dsh_client
   last-non-zero-wins 消费口径兼容）。修复长循环成本低估约 10 倍的问题
   （差距 6）。注意：node_events 成本会因此"变高"，属口径修正而非涨价。
 - **model 前缀**：返回的 model 字段带 `dsh:` 前缀（`dsh:deepseek-v4-pro` /
-  降级 `dsh:k3`），与 `nanobot:` 区分（差距 7）。后端
+  降级 `dsh:k3`）。后端
   `cost_tracker.estimate_cost` 是子串匹配，`dsh:deepseek-v4-pro` 命中
   deepseek 价、`dsh:k3` 命中 kimi 价——**实测兼容，src/ 无需改动**
   （`tests/test_failover.py::test_cost_tracker_parses_dsh_prefix` 固化）。
@@ -106,7 +106,7 @@ provider 等），只禁模型面 tool-* 行。
   provider/model/reasoningEffort/maxTokens（sdk-jsonrpc-server 源码核实），
   wire 层虽支持 temperature（LlmCallConfig），但 serve 链路无注入点；
   改 SDK client.py 是改 site-packages，不可持久。当前跑模型默认（1.0），
-  验收口径注明与 nanobot preset 0.7 的差异。
+  验收口径注明与预设基线的差异。
 
 ## 三级 failover（2026-09-10 起）
 
@@ -134,7 +134,7 @@ apiKeyEnv 引用，不落盘）。/health 暴露三路由各自状态。
 - 每个模型路由一个常驻 dsh 子进程，路由内串行、路由间并行；
 - SDK 为同步 API，每请求一个 daemon worker 线程，事件经 queue 桥回 SSE。
 
-## 容错语义（对齐 nanobot `failOnToolError:false`）
+## 容错语义（对齐 `failOnToolError:false`）
 
 MCP 挂不上不阻断启动：patch 里 `failOnStartupError:false`，工具调用失败由
 模型侧感知降级。`/health` 的 `mcp.command_exists` 可事前发现路径配置错误。

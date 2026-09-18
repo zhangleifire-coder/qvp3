@@ -179,10 +179,15 @@ async def run_text_check(task_id) -> dict:
 
     # 搜图①反哺（2026-09-07 两段式实景搜图）：ref_seed 自动搜集的创作参考图
     # （selection_status='text_ref'）在起草时注入——有图时三分支提示词末尾统一
-    # 追加参考图信息段；无图零差异
-    from src.pipeline.ref_collect import _text_refs
-    confirmed = await _text_refs(task_id)
-    refs_block = _refs_feedback_section(confirmed) if confirmed else ""
+    # 追加参考图信息段；无图零差异。
+    # 2026-09-18 用户决策：生成文案不依赖实景图（避免"不得编写参考图里没有
+    # 的内容"限制文案发挥）——默认关闭注入，开关可回滚。ref_seed 节点保留，
+    # 其图仍作为 ref_collect 候选池供生图环节使用。
+    refs_block = ""
+    if settings.text_check_use_refs:
+        from src.pipeline.ref_collect import _text_refs
+        confirmed = await _text_refs(task_id)
+        refs_block = _refs_feedback_section(confirmed) if confirmed else ""
 
     if feedback:
         # 驳回重写：只改人工标记的条目（意见注入），其余原样保留

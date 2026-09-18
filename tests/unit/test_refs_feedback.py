@@ -11,9 +11,11 @@ mock 手法同 test_polish_rounds.py：patch text_check.call_with_failover
 import json
 import uuid
 
+import pytest
 from sqlalchemy import select
 from unittest.mock import patch
 
+from src.config import settings
 from src.db.session import SessionLocal
 from src.gateway.prompt_versions import _DRAFT_SHARED
 from src.models.assets import Asset
@@ -55,6 +57,16 @@ async def _add_confirmed_ref(task_id, page_index=1, tag="r1") -> None:
                     model_version="bing", is_illustration=False,
                     selection_status="text_ref", ocr_hit=f"EC685,{tag}"))
         await s.commit()
+
+
+@pytest.fixture(autouse=True)
+def _enable_text_check_refs():
+    """2026-09-18 起 text_check_use_refs 默认关闭（文案不看图起草）；
+    本文件验证的是开关开启时的注入逻辑，故测试中显式打开。"""
+    old = settings.text_check_use_refs
+    settings.text_check_use_refs = True
+    yield
+    settings.text_check_use_refs = old
 
 
 def _capture(calls: list):

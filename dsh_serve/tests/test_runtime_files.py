@@ -73,7 +73,7 @@ def test_settings_yaml_registers_kimi_provider(tmp_path):
 
 
 def test_settings_yaml_context_window_fix(tmp_path):
-    """两条路由 contextWindow 都覆盖为 131072（对齐 nanobot preset）。"""
+    """两条路由 contextWindow 都覆盖为 131072（对齐预设基线）。"""
     s = make_settings(tmp_path)
     settings_path, _ = write_runtime_files(s)
     doc = yaml.safe_load(Path(settings_path).read_text(encoding="utf-8"))

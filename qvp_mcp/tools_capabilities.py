@@ -190,7 +190,7 @@ async def visual_write(pages: list[str], task_id: str, style_name: str = "",
     """6 页中文页文案 → 英文视觉描述扩写（gpt-image 生图前的 prompt 增强层）。
 
     何时用：拿到分页文案后想独立查看/调试英文视觉扩写结果，或单独复用该能力。
-    与 services/visual_writer 同一实现：nanobot 固定记忆会话优先（跨任务沉淀
+    与 services/visual_writer 同一实现：dsh 固定记忆会话优先（跨任务沉淀
     风格取向与审图反馈笔记），90s 超时/失败回退 DeepSeek/Kimi failover。
 
     参数：

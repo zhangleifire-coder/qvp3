@@ -23,7 +23,7 @@ from sqlalchemy import select
 
 from src.config import settings
 from src.db.session import SessionLocal
-from src.gateway import nanobot_client
+from src.gateway import dsh_client
 from src.gateway.cost_tracker import estimate_cost
 from src.gateway.prompt_versions import get_effective_prompt
 from src.gateway.tool_ledger import tool_ledger
@@ -296,10 +296,10 @@ async def _run_stage(task_id, stage: str, user_msg: str, validate_fn,
     → 失败带错误信息在同一 session 纠错重问一次（与 monolith 同语义）。"""
     from src.stream.bus import bus
     tid = str(task_id)
-    if not await nanobot_client.health():
+    if not await dsh_client.health():
         raise RuntimeError(
-            f"Nanobot 不可达（{settings.nanobot_base_url}），"
-            f"请启动 Nanobot 或设 AGENT_PIPELINE_ENABLED=false 回退直连路径")
+            f"dsh_serve 不可达（创作网关 :8901 未就绪），"
+            f"请启动 dsh_serve 或设 AGENT_PIPELINE_ENABLED=false 回退直连路径")
     session_id = f"qvp-task-{tid}-{stage}-{uuid.uuid4().hex[:8]}"
     await bus.publish("agent_progress", {"message": progress_msg,
                                          "session_id": session_id}, task_id=tid)
@@ -324,7 +324,7 @@ async def _run_stage(task_id, stage: str, user_msg: str, validate_fn,
                 pass
 
     usage = {"prompt_tokens": 0, "completion_tokens": 0}
-    result = await nanobot_client.call_agent(user_msg, session_id=session_id,
+    result = await dsh_client.call_agent(user_msg, session_id=session_id,
                                              on_delta=_on_delta)
     usage["prompt_tokens"] += result["prompt_tokens"]
     usage["completion_tokens"] += result["completion_tokens"]
@@ -336,7 +336,7 @@ async def _run_stage(task_id, stage: str, user_msg: str, validate_fn,
         correction_rounds = 1
         await bus.publish("agent_progress",
                           {"message": f"输出校验失败，纠错重问：{errors[:3]}"}, task_id=tid)
-        retry = await nanobot_client.call_agent(
+        retry = await dsh_client.call_agent(
             _CORRECTION_MESSAGE.format(errors="\n".join(f"- {e}" for e in errors)),
             session_id=session_id)
         usage["prompt_tokens"] += retry["prompt_tokens"]
@@ -411,7 +411,7 @@ async def node_agent_evidence(input_data: dict) -> dict:
         feedback_section=combo_section + feedback_section,
         output_contract=_EVIDENCE_CONTRACT)
     r = await _run_stage(task_id, "evidence", user_msg, _validate_evidence,
-                         "已连接 Nanobot，取证与风格判定…")
+                         "已连接 dsh_serve，取证与风格判定…")
     r["task_id"] = task_id
     out = r["out"]
     prompt_version = f"agent_evidence_v1{regen_suffix}"

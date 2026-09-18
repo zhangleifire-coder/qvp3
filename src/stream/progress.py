@@ -10,7 +10,7 @@ NODE_LABEL = {
     "asset_gen": "配图生成", "ocr_read": "OCR回读", "cross_check": "图文一致性",
     "risk_classify": "风险分流", "review_queue": "审核队列", "batch_signoff": "批次会签",
     "publish_snapshot": "发布快照",
-    # Nanobot 全链创作 Agent 路径（2026-08-22 改造）
+    # 创作 Agent 路径（2026-08-22 改造；网关为 dsh_serve）
     "agent_production": "创作Agent生产",
     # 定点重生成节点（仅用于成本/日志展示，不进流水线步骤条）
     "page_regen": "单页重写", "asset_regen": "定点重生图",
@@ -23,7 +23,7 @@ NODE_ORDER = [
     "review_queue", "batch_signoff", "publish_snapshot",
 ]
 
-# Nanobot 创作大节点路径（11 节点）：创作段六节点收敛为 agent_production；
+# 创作大节点路径（11 节点）：创作段六节点收敛为 agent_production；
 # 2026-09-07 两段式实景搜图：ref_seed（搜图①自动，反哺起草）在 text_check
 # 之前，ref_collect（搜图②叠加+人工确认关）在 text_check 之后
 NODE_ORDER_AGENT = [
@@ -243,7 +243,7 @@ class ProgressTracker:
                 "trace": data.get("traceback", ""),
             })
         elif etype == "agent_progress" and t:
-            # Nanobot 创作 Agent 流式输出：保留最新流状态（监控页流式框），
+            # 创作 Agent 流式输出：保留最新流状态（监控页流式框），
             # debug 只在开始/每千字记一条，避免刷屏。
             # 归属当前执行节点：monolith=agent_production，staged=各阶段节点
             cur = t.get("current_node") or "agent_production"

@@ -4,7 +4,7 @@
   provider，anthropic-messages 协议）；每个路由一个懒启动的 dsh 子进程，
   路由内以锁串行，路由间并行（dsh 会话状态落盘共享于 DSH_HOME）。
 - MCP 以 patch 层注入 dsh-mcp-client（stdio 拉起 qvp_mcp）；failOnStartupError
-  = false，挂不上不阻断启动（对齐 nanobot failOnToolError:false 的容错语义）。
+  = false，挂不上不阻断启动（对齐 failOnToolError:false 的容错语义）。
 """
 import json
 import logging

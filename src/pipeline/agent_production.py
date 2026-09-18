@@ -1,17 +1,17 @@
-"""agent_production：全链创作 Agent 大节点（Nanobot 路径）。
+"""agent_production：全链创作 Agent 大节点（网关：dsh_serve）。
 
-一次 Nanobot 调用完成原 entity_bind/evidence_build/draft_gen/page_split/
+一次创作 Agent 调用完成原 entity_bind/evidence_build/draft_gen/page_split/
 asset_gen/ocr_read 六个 AI 节点的全部工作（检索取证→正文→分页→生图→OCR），
 本节点负责：
 1. 组装上下文（query/mode/提示词库模板/驳回反馈）与输出 JSON 契约；
-2. 流式调用 Nanobot（过程文本实时上监控）；
+2. 流式调用创作 Agent（过程文本实时上监控）；
 3. 严格校验返回 JSON，失败带错误信息在同一 session 纠错重问一次；
 4. 确定性收尾：图片本地化/内容哈希/尺寸校验/落库（claims/evidence/
    drafts/page_copies/assets/ocr_results）；
 5. 成本合并：文本 usage + MCP 工具回调台账 → node_events 成本口径不变。
 
 可靠性兜底（软件工程层）：
-- Nanobot 不可达/超时/输出两次不合格 → 节点失败 → 任务 failed，
+- 网关不可达/超时/输出两次不合格 → 节点失败 → 任务 failed，
   重试幂等重跑；AGENT_PIPELINE_ENABLED=false 可整体切回 13 节点直连路径。
 
 共享段（2026-09-09 抽取，行为零变化）：提示词常量/契约校验/本地化/质检链/
@@ -25,7 +25,7 @@ from sqlalchemy import select
 
 from src.config import settings
 from src.db.session import SessionLocal
-from src.gateway import nanobot_client
+from src.gateway import dsh_client
 from src.gateway.cost_tracker import estimate_cost
 from src.gateway.prompt_versions import get_effective_prompt
 from src.gateway.tool_ledger import tool_ledger
@@ -89,10 +89,10 @@ async def node_agent_production(input_data: dict) -> dict:
     regen = input_data.get("regen") or {}
     feedbacks = regen.get("feedback") or []
 
-    if not await nanobot_client.health():
+    if not await dsh_client.health():
         raise RuntimeError(
-            f"Nanobot 不可达（{settings.nanobot_base_url}），"
-            f"请启动 Nanobot 或设 AGENT_PIPELINE_ENABLED=false 回退直连路径")
+            f"dsh_serve 不可达（创作网关 :8901 未就绪），"
+            f"请启动 dsh_serve 或设 AGENT_PIPELINE_ENABLED=false 回退直连路径")
 
     # 新一轮生产：重置该任务的 MCP 工具配额（中断/失败后续跑重新获得全额预算；
     # 配额权威在后端，MCP 进程重启/残留状态都不会把配额锁死）
@@ -125,7 +125,7 @@ async def node_agent_production(input_data: dict) -> dict:
                                 image_tpl, feedbacks,
                                 bench_section + body_section + combo_section + refs_section,
                                 fixed_style=fixed_style, style_kb_text=kb_text)
-    await bus.publish("agent_progress", {"message": "已连接 Nanobot，开始创作…",
+    await bus.publish("agent_progress", {"message": "已连接 dsh_serve，开始创作…",
                                          "session_id": session_id}, task_id=tid)
 
     last_emit_len = 0
@@ -133,7 +133,7 @@ async def node_agent_production(input_data: dict) -> dict:
     def _on_delta(piece: str, total: str):
         # 流式过程按 120 字符节流上报监控：字符数 + token 估算 + 输出尾部
         # （120 字符/帧 ≈ 每 1-2 秒一帧，兼顾实时感与事件量；
-        # token=字符/1.7 与 nanobot_client 的成本估算口径一致）
+        # token=字符/1.7 与 dsh_client 的成本估算口径一致）
         nonlocal last_emit_len
         if len(total) - last_emit_len >= 120:
             last_emit_len = len(total)
@@ -150,7 +150,7 @@ async def node_agent_production(input_data: dict) -> dict:
                 pass
 
     usage = {"prompt_tokens": 0, "completion_tokens": 0}
-    result = await nanobot_client.call_agent(user_msg, session_id=session_id,
+    result = await dsh_client.call_agent(user_msg, session_id=session_id,
                                              on_delta=_on_delta)
     usage["prompt_tokens"] += result["prompt_tokens"]
     usage["completion_tokens"] += result["completion_tokens"]
@@ -162,7 +162,7 @@ async def node_agent_production(input_data: dict) -> dict:
         correction_rounds = 1
         await bus.publish("agent_progress",
                           {"message": f"输出校验失败，纠错重问：{errors[:3]}"}, task_id=tid)
-        retry = await nanobot_client.call_agent(
+        retry = await dsh_client.call_agent(
             _CORRECTION_MESSAGE.format(errors="\n".join(f"- {e}" for e in errors)),
             session_id=session_id)
         usage["prompt_tokens"] += retry["prompt_tokens"]

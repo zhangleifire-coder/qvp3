@@ -20,7 +20,7 @@ NODE_FN = {
     "publish_snapshot": node_publish_snapshot,
 }
 
-# ── Nanobot 全链创作 Agent 路径（2026-08-22 改造）─────────────────────
+# ── 创作 Agent 路径（2026-08-22 改造；网关 2026-09-18 起为 dsh_serve）───
 # 创作段六节点（entity_bind/evidence_build/draft_gen/page_split/asset_gen/
 # ocr_read）收敛为一个 agent_production 大节点；确定性节点全部保留。
 # 两段式实景搜图（2026-09-07，吸收 8002 分叉栈）：
@@ -177,7 +177,7 @@ async def run_pipeline(task_id, node_inputs: dict | None = None) -> list:
         rounds, reasons = await get_rejection_feedback(session, task_id)
     if rounds:
         inputs["regen"] = {"round": rounds, "feedback": reasons}
-    # 双路径：AGENT_PIPELINE_ENABLED 决定走 Nanobot 创作大节点还是原 13 节点直连；
+    # 双路径：AGENT_PIPELINE_ENABLED 决定走创作大节点（dsh_serve 网关）还是原 13 节点直连；
     # Agent 路径内再由 AGENT_PIPELINE_VARIANT 分发：staged=4 个分阶段 Agent 节点，
     # monolith（默认）=agent_production 大节点（秒级回退）
     if settings.agent_pipeline_enabled:

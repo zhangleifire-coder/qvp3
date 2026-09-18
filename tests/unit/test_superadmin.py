@@ -35,10 +35,10 @@ def test_validate_channels():
 
 
 def test_validate_base_url_and_empty():
-    assert validate_field("nanobot_base_url", " http://127.0.0.1:8901/v1 ") == \
+    assert validate_field("dsh_serve_base_url", " http://127.0.0.1:8901/v1 ") == \
         "http://127.0.0.1:8901/v1"
     with pytest.raises(ValueError):
-        validate_field("nanobot_base_url", "127.0.0.1:8901")
+        validate_field("dsh_serve_base_url", "127.0.0.1:8901")
     with pytest.raises(ValueError):
         validate_field("deepseek_model", "")
 

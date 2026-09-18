@@ -57,6 +57,9 @@ class Settings(BaseSettings):
     # qwen-vl-max 复核「图中文字是否与文案逐字一致」——一致即放行（OCR 误判申诉
     # 成功），不一致才重生。放行口径仍是 100%，只给 OCR 误判一个复核出口。
     visual_text_appeal_enabled: bool = True
+    # 起草文案时是否注入 ref_seed 实景参考图（2026-09-18 默认关闭：文案不看图
+    # 起草，避免"不得编写参考图里没有的内容"限制发挥；设 true 可回滚旧行为）
+    text_check_use_refs: bool = False
     mock_image_gen: bool = False         # 开发阶段模拟生图（不调 API、不花钱）
     # 搜实景图 provider（openserp 免费默认 / doubao_ark / bing_api 预留）
     image_search_provider: str = "openserp"
@@ -98,19 +101,21 @@ class Settings(BaseSettings):
     sampling_rate: float = 0.20
     anomaly_min_seconds: int = 5
     anomaly_max_seconds: int = 3600
-    # ── Nanobot 全链创作 Agent（2026-08-22 改造）──────────────────────
-    # 双路径总开关：true=创作段(evidence/正文/分页/生图/OCR)整体交给 Nanobot Agent；
-    # false=原 13 节点直连路径（Nanobot 故障时秒级回退，软件工程层兜底）
+    # ── 创作 Agent 路径（2026-08-22 改造；网关 2026-09-18 起为 dsh_serve）──
+    # 双路径总开关：true=创作段(evidence/正文/分页/生图/OCR)整体交给创作 Agent；
+    # false=原 13 节点直连路径（网关故障时秒级回退，软件工程层兜底）
     agent_pipeline_enabled: bool = False
     # Agent 路径变体（2026-09-09）：monolith（默认，agent_production 大节点，
     # 发版安全默认）/ staged（创作段拆为 agent_evidence/draft/pages/assets
     # 4 个独立 Agent 节点，阶段失败只重跑该阶段、成本按节点拆分）。
     # 仅 .env 显式设 AGENT_PIPELINE_VARIANT=staged 才走新路径
     agent_pipeline_variant: str = "monolith"
-    nanobot_base_url: str = "http://127.0.0.1:8900/v1"  # OpenAI 兼容地址（含 /v1）
-    nanobot_api_key: str = ""            # 仅 bind 非 localhost 时需要（Bearer）
-    nanobot_model: str = ""              # 留空 = 用 nanobot 默认模型/主备预设
-    nanobot_request_timeout_seconds: float = 3000.0  # compare 模式（搜图+图生图）在慢网需 ~30-40 分钟，读超时给足
+    # ── 创作网关：dsh_serve 薄层（内嵌 dsh harness，OpenAI 兼容 :8901）──
+    dsh_serve_base_url: str = ""         # OpenAI 兼容地址（含 /v1），空=自动回退
+    dsh_serve_api_key: str = ""          # 仅 bind 非 localhost 时需要（Bearer）
+    dsh_serve_model: str = ""            # 留空 = 用 dsh 路由默认模型预设
+    dsh_serve_request_timeout_seconds: float = 0  # 0=用默认 3000s
+    # compare 模式（搜图+图生图）在慢网需 ~30-40 分钟，读超时给足
     # MCP 工具进程 → 后端的成本回调
     mcp_callback_base_url: str = "http://127.0.0.1:8003"
     internal_callback_token: str = "qvp-internal-dev"

@@ -4,7 +4,7 @@ dsh SDK 事件（session.event 通知 payload.event）中与本协议相关的�
 - assistant/chunk: data.chunk = block-start(reasoning|text) / reasoning-delta /
   text-delta / block-end / usage
 - assistant/message: 汇总（含 usage），不映射为增量，仅用于聚合兜底
-映射规则（对齐 nanobot_client.py 的消费口径）：
+映射规则（对齐 src/gateway/dsh_client.py 的消费口径）：
 - reasoning-delta → choices[0].delta.reasoning_content
 - text-delta      → choices[0].delta.content
 - usage           → chunk.usage {prompt_tokens, completion_tokens, total_tokens}
@@ -74,7 +74,7 @@ def final_chunk(cid: str, model: str, finish_reason: str = "stop") -> dict:
 
 
 class StreamAggregate:
-    """聚合一路流式输出：正文 / 推理 / usage（nanobot_client 聚合口径的镜像）。
+    """聚合一路流式输出：正文 / 推理 / usage（dsh_client 聚合口径的镜像）。
 
     usage 累加口径（2026-09-07 修复，对比分析差距 6）：dsh 每个 step 发一条
     usage 事件（该次模型调用的真实计费），长 agent 循环有多条——必须按条

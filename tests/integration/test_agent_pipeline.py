@@ -1,6 +1,6 @@
-"""Nanobot 全链创作 Agent 路径集成测试。
+"""创作 Agent 路径（dsh_serve 网关）集成测试。
 
-mock 掉 nanobot_client（health/call_agent），Agent 返回契约 JSON；
+mock 掉 dsh_client（health/call_agent），Agent 返回契约 JSON；
 验证：8 节点流水线跑通、产物完整落库（claims/evidence/drafts/page_copies/
 assets/ocr_results）、node_events 记账、工具成本台账合并。
 """
@@ -56,7 +56,7 @@ def _agent_json(mode: str = "general") -> str:
 
 FAKE_AGENT_CALL = {
     "text": _agent_json(),
-    "model_version": "nanobot:deepseek/deepseek-v4-pro",
+    "model_version": "dsh:deepseek/deepseek-v4-flash",
     "prompt_tokens": 100, "completion_tokens": 200,
     "elapsed_seconds": 1.2,
 }
@@ -76,9 +76,9 @@ async def _create_task(mode: str = "general"):
 @pytest.fixture
 def agent_path(monkeypatch):
     monkeypatch.setattr(settings, "agent_pipeline_enabled", True)
-    with patch("src.pipeline.agent_production.nanobot_client.health",
+    with patch("src.pipeline.agent_production.dsh_client.health",
                new=AsyncMock(return_value=True)), \
-         patch("src.pipeline.agent_production.nanobot_client.call_agent",
+         patch("src.pipeline.agent_production.dsh_client.call_agent",
                new=AsyncMock(return_value=dict(FAKE_AGENT_CALL))):
         yield
 
@@ -102,7 +102,7 @@ async def test_agent_pipeline_produces_full_artifacts(agent_path):
         draft = (await session.execute(
             select(Draft).where(Draft.task_id == task_id))).scalars().one()
         assert len(draft.body) > 150
-        assert draft.model_version.startswith("nanobot:")
+        assert draft.model_version.startswith("dsh:")
         assert draft.prompt_version == "agent_general_v1"
 
         pages = (await session.execute(
@@ -143,12 +143,12 @@ async def test_agent_pipeline_produces_full_artifacts(agent_path):
         ap = [e for e in events if e.node_name == "agent_production"][0]
         assert ap.error_class is None
         assert ap.cost_estimate_cny and ap.cost_estimate_cny > 1.2  # 文本 + 工具成本已合并
-        assert ap.model_version.startswith("nanobot:")
+        assert ap.model_version.startswith("dsh:")
 
 
 async def test_agent_pipeline_compare_mode_persists_references(agent_path):
     task_id = await _create_task("compare")
-    with patch("src.pipeline.agent_production.nanobot_client.call_agent",
+    with patch("src.pipeline.agent_production.dsh_client.call_agent",
                new=AsyncMock(return_value={
                    **FAKE_AGENT_CALL, "text": _agent_json("compare")})):
         await run_pipeline(task_id)
@@ -165,9 +165,9 @@ async def test_agent_pipeline_compare_mode_persists_references(agent_path):
 async def test_agent_output_correction_round(agent_path):
     """首轮输出不合格 → 同 session 纠错重问 → 第二轮通过。"""
     task_id = await _create_task("general")
-    bad = {"text": "抱歉我无法完成", "model_version": "nanobot:m",
+    bad = {"text": "抱歉我无法完成", "model_version": "dsh:m",
            "prompt_tokens": 5, "completion_tokens": 5, "elapsed_seconds": 0.1}
-    with patch("src.pipeline.agent_production.nanobot_client.call_agent",
+    with patch("src.pipeline.agent_production.dsh_client.call_agent",
                new=AsyncMock(side_effect=[bad, dict(FAKE_AGENT_CALL)])) as calls:
         results = await run_pipeline(task_id)
         assert calls.call_count == 2
@@ -180,9 +180,9 @@ async def test_agent_output_correction_round(agent_path):
 
 async def test_agent_two_bad_rounds_fails_node(agent_path):
     task_id = await _create_task("general")
-    bad = {"text": "还是不行", "model_version": "nanobot:m",
+    bad = {"text": "还是不行", "model_version": "dsh:m",
            "prompt_tokens": 5, "completion_tokens": 5, "elapsed_seconds": 0.1}
-    with patch("src.pipeline.agent_production.nanobot_client.call_agent",
+    with patch("src.pipeline.agent_production.dsh_client.call_agent",
                new=AsyncMock(side_effect=[bad, bad])):
         with pytest.raises(RuntimeError, match="两次未通过校验"):
             await run_pipeline(task_id)
@@ -224,7 +224,7 @@ async def test_detail_node_timeline(agent_path):
     assert all(e["status"] == "done" for e in tl)
     assert all(e["duration_s"] is not None and e["duration_s"] >= 0 for e in tl)
     ap = next(e for e in tl if e["node"] == "agent_production")
-    assert ap["model_version"].startswith("nanobot:")
+    assert ap["model_version"].startswith("dsh:")
     assert ap["cost_cny"] and ap["cost_cny"] > 0
 
 
@@ -254,7 +254,7 @@ async def test_agent_prompt_appends_draft_persona(agent_path):
         captured["msg"] = user_message
         return dict(FAKE_AGENT_CALL)
 
-    with patch("src.pipeline.agent_production.nanobot_client.call_agent",
+    with patch("src.pipeline.agent_production.dsh_client.call_agent",
                new=AsyncMock(side_effect=_spy)):
         task_id = await _create_task("general")
         await run_pipeline(task_id)
@@ -285,7 +285,7 @@ async def test_agent_refs_section_copy_alignment(agent_path):
             model_version="bing", is_illustration=False,
             selection_status="confirmed", ocr_hit="戴森"))
         await session.commit()
-    with patch("src.pipeline.agent_production.nanobot_client.call_agent",
+    with patch("src.pipeline.agent_production.dsh_client.call_agent",
                new=AsyncMock(side_effect=_spy)):
         await run_pipeline(task_id)
 

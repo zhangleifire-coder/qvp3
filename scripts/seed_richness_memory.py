@@ -34,7 +34,7 @@ NOTE = (
 
 
 async def main():
-    from src.gateway.nanobot_client import call_agent, NanobotUnavailableError
+    from src.gateway.dsh_client import call_agent, DshServeUnavailableError
     try:
         await asyncio.wait_for(note_to_memory(NOTE), timeout=70.0)
         # note_to_memory 吞掉异常，这里验证会话真的收到了
@@ -43,9 +43,9 @@ async def main():
             call_agent("Reply with exactly: TRAINING OK", session_id=VISUAL_SESSION),
             timeout=60.0)
         print("[seed] memory session replied:", (r.get("text") or "")[:80])
-    except (asyncio.TimeoutError, NanobotUnavailableError) as e:
-        print(f"[seed] nanobot 不可达，记忆未写入（{e}）。"
-              f"请在 nanobot 可用的环境重跑本脚本。")
+    except (asyncio.TimeoutError, DshServeUnavailableError) as e:
+        print(f"[seed] dsh_serve 不可达，记忆未写入（{e}）。"
+              f"请在 dsh_serve 可用的环境重跑本脚本。")
         sys.exit(1)
 
 

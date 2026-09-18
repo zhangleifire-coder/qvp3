@@ -1,6 +1,6 @@
 #!/bin/sh
 # qvp3 应用容器入口：等库建表 → 起 dsh_serve(:8901 仅容器内,守护重启) → 起 后端(:8005 对外)
-# 与 qvp2 entrypoint.sh 的差异：Nanobot(:8900) 替换为 dsh_serve(:8901)。
+# 与 qvp2 entrypoint.sh 的差异：创作网关为 dsh_serve(:8901)（dsh harness 薄层）。
 set -e
 cd /app
 mkdir -p static/generated exports /data/dsh

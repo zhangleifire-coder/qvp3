@@ -1,7 +1,7 @@
-"""MCP 工具服务器入口：FastMCP stdio 模式，由 Nanobot 作为子进程拉起。
+"""MCP 工具服务器入口：FastMCP stdio 模式，由 dsh_serve（dsh harness）作为子进程拉起。
 
 启动要求：PYTHONPATH 指向 code/ 根目录（复用 src.gateway 与 .env 配置）。
-Nanobot 端配置见 nanobot/config.json 的 tools.mcpServers."qvp-tools"。
+dsh_serve 端配置见 dsh_serve 的 MCP patch（dsh-home/dsh-serve.mcp.patch.yml）。
 """
 import asyncio
 import hashlib
@@ -268,7 +268,7 @@ async def generate_images(task_id: str, pages: list[str], mode: str = "general",
 
 
 def main() -> None:
-    mcp.run()  # stdio 传输（Nanobot 以子进程方式拉起）
+    mcp.run()  # stdio 传输（dsh_serve 以子进程方式拉起）
 
 
 # qvp_mcp v2（2026-09-03 功能项独立化）：注册 11 个能力工具到上面的 mcp 实例

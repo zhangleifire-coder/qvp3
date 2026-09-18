@@ -14,7 +14,7 @@ sha256 存 system_settings 表 `_super_admin_pwd_hash`，该键不属配置白�
 
 即时生效机制：字段全部落 system_settings 持久化（重启由 lifespan 的
 load_model_overrides 覆盖回内存）+ setattr(settings, ...) 即时生效——
-各网关（image_gen/_channels、nanobot_client、failover._api_key_for 等）
+各网关（image_gen/_channels、dsh_client、failover._api_key_for 等）
 均为调用时读 settings；failover 链已改每次调用解析（2026-09-10），
 主模型/备用链切换无需重启。
 
@@ -53,7 +53,7 @@ _SECRET_FIELDS = {
     "openox_api_key": "Openox Key（生图·openox）",
     "doubao_search_key": "豆包搜索 Key（证据包）",
     "doubao_ark_key": "豆包方舟 Key（搜实景图·预留）",
-    "nanobot_api_key": "创作网关 Bearer（仅非回环地址需要）",
+    "dsh_serve_api_key": "创作网关 Bearer（仅非回环地址需要）",
 }
 _PLAIN_FIELDS = {
     "deepseek_model": "文本主模型",
@@ -62,8 +62,8 @@ _PLAIN_FIELDS = {
     "ocr_model": "OCR 模型",
     "ocr_base_url": "OCR 网关地址",
     "visual_check_model": "视觉审核模型",
-    "nanobot_base_url": "创作网关地址（含 /v1）",
-    "nanobot_model": "网关模型覆盖（空=网关默认预设）",
+    "dsh_serve_base_url": "创作网关地址（含 /v1）",
+    "dsh_serve_model": "网关模型覆盖（空=网关默认预设）",
 }
 _BOOL_FIELDS = {
     "text_fallback1_enabled": "备1 Kimi-k3 启用",
@@ -72,7 +72,7 @@ _BOOL_FIELDS = {
 _KNOWN_FIELDS = set(_SECRET_FIELDS) | set(_PLAIN_FIELDS) | set(_BOOL_FIELDS)
 
 CHANNELS = ("fusion", "linkai", "moacode", "openox")
-_GATEWAY_URLS = {"nanobot": "http://127.0.0.1:8900/v1", "dsh": "http://127.0.0.1:8901/v1"}
+_GATEWAY_URLS = {"dsh": "http://127.0.0.1:8901/v1"}
 
 
 # ── 纯函数（tests/unit/test_superadmin.py 直测）──────────────────────────
@@ -260,8 +260,10 @@ async def get_model_config(actor: str = "",
     for k, label in _BOOL_FIELDS.items():
         fields.append({"key": k, "kind": "bool", "label": label,
                        "value": bool(getattr(settings, k, True))})
-    base = settings.nanobot_base_url
-    gateway = "dsh" if "8901" in base else ("nanobot" if "8900" in base else "custom")
+    # 创作网关恒为 dsh_serve；地址经 dsh_client 解析
+    from src.gateway.dsh_client import _base_url
+    base = _base_url()
+    gateway = "dsh"
     return {"fields": fields, "effective": {
         "channels": [c.strip() for c in settings.image_gen_channels.split(",") if c.strip()],
         "gateway": gateway,
@@ -371,21 +373,22 @@ async def switch_channel_primary(payload: ChannelIn,
 
 class GatewayIn(BaseModel):
     actor: str
-    target: str   # nanobot / dsh
+    target: str   # dsh（唯一网关目标）
 
 
 @router.post("/api/superadmin/switch/gateway")
 async def switch_gateway(payload: GatewayIn,
                          super_token: str = Header(default="", alias="X-Super-Token")):
     await _require(payload.actor, super_token)
-    if payload.target not in _GATEWAY_URLS:
-        raise HTTPException(status_code=422, detail="target 只能是 nanobot 或 dsh")
-    old = settings.nanobot_base_url
-    new_val = _GATEWAY_URLS[payload.target]
-    setattr(settings, "nanobot_base_url", new_val)
-    await _persist("nanobot_base_url", new_val, payload.actor)
+    if payload.target != "dsh":
+        raise HTTPException(status_code=422, detail="target 只能是 dsh")
+    from src.gateway.dsh_client import _base_url
+    old = _base_url()
+    new_val = _GATEWAY_URLS["dsh"]
+    setattr(settings, "dsh_serve_base_url", new_val)
+    await _persist("dsh_serve_base_url", new_val, payload.actor)
     await log_action(payload.actor, "super_admin",
-                     f"创作网关切换：{old} → {new_val}（{'Nanobot' if payload.target == 'nanobot' else 'dsh_serve'}）")
+                     f"创作网关切换：{old} → {new_val}（dsh_serve）")
     return {"ok": True, "old": old, "new": new_val}
 
 

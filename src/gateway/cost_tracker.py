@@ -106,7 +106,7 @@ def is_peak_time(at: datetime | None = None) -> bool:
 
 
 def resolve_model_key(model: str) -> str:
-    """把各路模型标识（deepseek/deepseek-chat、dsh:k3、nanobot:dsh:deepseek-v4-pro…）
+    """把各路模型标识（deepseek/deepseek-chat、dsh:k3、dsh:deepseek-v4-flash…）
     归一到 model_rates.model_key。"""
     m = (model or "").lower().split(":")[-1].split("/")[-1]
     if "ocr" in m:

@@ -64,7 +64,7 @@ def test_classify_category_by_model_fallback():
     assert classify_category("some_node", "qwen-vl-ocr") == "ocr"
     assert classify_category("some_node", "gpt-image-2@fusion") == "image_gen"
     assert classify_category("some_node", "gpt-image-2.5-flare@fusion") == "image_gen"
-    assert classify_category("some_node", "nanobot:dsh:k3") == "text_llm"
+    assert classify_category("some_node", "dsh:kimi/kimi-k2.6") == "text_llm"
     assert classify_category("some_node", None) == "text_llm"
 
 

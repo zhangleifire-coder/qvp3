@@ -6,7 +6,7 @@
 - 流式纪律：reasoning-delta 实时透传（监控进度主要来源）；content/usage
   chunk 缓冲到当轮质量检查通过后才 flush——这样拒答/空响应/中途崩溃都能
   干净地整体降级重发，客户端永远只看到一条完整正文（创作任务正文出现在
-  末尾，缓冲不影响时效；降级时推理重流与 nanobot 回调语义一致）；
+  末尾，缓冲不影响时效；降级时推理重流与后端回调语义一致）；
 - 降级按路由计划逐级的顺序试：三级全挂 → RuntimeError("All routes failed: ...")。
 """
 import asyncio
@@ -132,7 +132,7 @@ def run_with_failover(pool: HarnessPool, prompt: str, session_id: str,
             for chunk in map_dsh_event(ev, cid, _m):
                 _agg.feed_chunk(chunk)
                 if "usage" in chunk:
-                    # 发累计值（消费端 nanobot_client 是 last-non-zero-wins）
+                    # 发累计值（消费端 dsh_client 是 last-non-zero-wins）
                     chunk["usage"]["prompt_tokens"] = _agg.prompt_tokens
                     chunk["usage"]["completion_tokens"] = _agg.completion_tokens
                     chunk["usage"]["total_tokens"] = (

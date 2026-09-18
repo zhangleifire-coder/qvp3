@@ -1,4 +1,4 @@
-"""QVP MCP 工具服务器：供 Nanobot 创作 Agent 调用的外部能力工具集。
+"""QVP MCP 工具服务器：供创作 Agent（dsh_serve 网关）调用的外部能力工具集。
 
 设计原则（对应改造方案「软件工程层兜底」）：
 - 工具实现全部复用 src/gateway 现有网关（同一套 .env、同一套上游 API 行为）；

@@ -1,12 +1,12 @@
-"""Nanobot OpenAI 兼容客户端（全链创作 Agent 调用层）。
+"""dsh_serve 创作网关客户端。
 
-职责与边界：
-- 只负责「一次 Agent 会话调用」的传输层：流式 SSE、超时、鉴权、session 隔离、
-  usage 统计；不懂业务，不做 DB。
-- 返回结构与 litellm_adapter.call_provider 对齐（text/model_version/
-  prompt_tokens/completion_tokens/elapsed_seconds），方便成本口径复用。
-- 长任务（15-25 分钟）必须 stream=true：防中间层空闲断连，并把过程文本
-  经 on_delta 回调实时抛给业务层（转 SSE/监控页）。
+技术路径：创作网关统一走 dsh_serve 薄层（内嵌 dsh harness
+子进程，OpenAI 兼容协议 :8901）。本客户端只负责
+「一次创作 Agent 会话调用」的传输层：流式 SSE、超时、session 隔离、usage 统计；
+不懂业务，不做 DB。
+
+配置：环境变量 DSH_SERVE_BASE_URL（pydantic-settings 直读），
+默认 http://127.0.0.1:8901/v1。
 """
 import json
 import time
@@ -16,29 +16,46 @@ import httpx
 from src.config import settings
 
 
-class NanobotUnavailableError(RuntimeError):
-    """Nanobot 进程不可达（未启动/崩溃）——上层据此走告警/回退。"""
+class DshServeUnavailableError(RuntimeError):
+    """dsh_serve 进程不可达（未启动/崩溃）——上层据此走告警/回退。"""
+
+
+
+def _base_url() -> str:
+    return settings.dsh_serve_base_url or "http://127.0.0.1:8901/v1"
+
+
+def _api_key() -> str:
+    return settings.dsh_serve_api_key
+
+
+def _model() -> str:
+    return settings.dsh_serve_model
+
+
+def _timeout_seconds() -> float:
+    return settings.dsh_serve_request_timeout_seconds or 3000.0
 
 
 def _headers() -> dict:
     h = {"Content-Type": "application/json"}
-    if settings.nanobot_api_key:
-        h["Authorization"] = f"Bearer {settings.nanobot_api_key}"
+    if _api_key():
+        h["Authorization"] = f"Bearer {_api_key()}"
     return h
 
 
 def _health_url() -> str:
-    base = settings.nanobot_base_url.rstrip("/")
+    base = _base_url().rstrip("/")
     root = base[:-3] if base.endswith("/v1") else base
     return f"{root}/health"
 
 
 async def health(timeout: float = 5.0) -> bool:
-    """Nanobot 进程存活探测（agent_production 前置检查，失败快速报错）。"""
+    """dsh_serve 进程存活探测（agent 阶段前置检查，失败快速报错）。"""
     from src.gateway.http_client import get_client
     try:
         # 共享 client 承载连接池；timeout 按请求覆盖，保持签名语义
-        resp = await get_client("nanobot", timeout=10.0).get(
+        resp = await get_client("dsh_serve", timeout=10.0).get(
             _health_url(), headers=_headers(), timeout=timeout)
         return resp.status_code < 400
     except Exception:  # noqa: BLE001
@@ -51,6 +68,7 @@ async def call_agent(user_message: str, *, session_id: str,
 
     - session_id：调用方保证「每节点执行一次」唯一（任务间上下文隔离），
       同一次执行内的纠错追问复用同一 session（Agent 记得自己的输出）。
+      dsh 会话状态落盘 DSH_HOME，固定 session_id（如视觉记忆会话）可跨任务沉淀。
     - on_delta(chunk_text, total_text)：文本增量回调，按 120 字符节流 +
       流末尾部 flush（监控/调试用；消费方本就 120 字节流）。
     """
@@ -59,8 +77,8 @@ async def call_agent(user_message: str, *, session_id: str,
         "session_id": session_id,
         "stream": True,
     }
-    if settings.nanobot_model:
-        body["model"] = settings.nanobot_model
+    if _model():
+        body["model"] = _model()
 
     start = time.time()
     text_parts: list[str] = []      # 最终正文（只收 content，供 JSON 解析）
@@ -74,19 +92,19 @@ async def call_agent(user_message: str, *, session_id: str,
     last_report_len = 0
     last_piece = ""
 
-    timeout = httpx.Timeout(connect=10.0, read=settings.nanobot_request_timeout_seconds,
+    timeout = httpx.Timeout(connect=10.0, read=_timeout_seconds(),
                             write=30.0, pool=10.0)
     from src.gateway.http_client import get_client
     # 共享 client 承载连接池（P1-7）；流式超时按请求覆盖，保留动态配置语义
-    client = get_client("nanobot", timeout=timeout)
+    client = get_client("dsh_serve", timeout=timeout)
     try:
         async with client.stream("POST",
-                                 f"{settings.nanobot_base_url.rstrip('/')}/chat/completions",
+                                 f"{_base_url().rstrip('/')}/chat/completions",
                                  json=body, headers=_headers(), timeout=timeout) as resp:
             if resp.status_code >= 400:
                 detail = (await resp.aread()).decode("utf-8", "replace")[:400]
                 raise RuntimeError(
-                    f"nanobot chat failed ({resp.status_code}): {detail}")
+                    f"dsh_serve chat failed ({resp.status_code}): {detail}")
             async for line in resp.aiter_lines():
                 if not line.startswith("data:"):
                     continue
@@ -136,16 +154,16 @@ async def call_agent(user_message: str, *, session_id: str,
             except Exception:  # noqa: BLE001
                 pass  # 监控回调异常不影响主流程
     except httpx.ConnectError as e:
-        raise NanobotUnavailableError(
-            f"Nanobot 不可达（{settings.nanobot_base_url}）：{e}") from e
+        raise DshServeUnavailableError(
+            f"dsh_serve 不可达（{_base_url()}）：{e}") from e
     except httpx.ReadTimeout as e:
         raise RuntimeError(
-            f"Nanobot 响应超时（>{settings.nanobot_request_timeout_seconds}s），"
+            f"dsh_serve 响应超时（>{_timeout_seconds()}s），"
             f"session={session_id}") from e
 
     text = "".join(text_parts)
     if not text.strip():
-        raise RuntimeError(f"nanobot 返回空响应，session={session_id}")
+        raise RuntimeError(f"dsh_serve 返回空响应，session={session_id}")
     from src.gateway.cost_tracker import refresh_rates
     await refresh_rates()  # 费率 DB 动态化：TTL 60s，失败静默走缓存/兜底
     estimated = False
@@ -157,9 +175,9 @@ async def call_agent(user_message: str, *, session_id: str,
         estimated = True
     return {
         "text": text,
-        # 网关已带前缀（如 dsh:deepseek-v4-pro）时不再叠加，避免 nanobot:dsh: 双前缀
+        # 网关已带前缀（如 dsh:deepseek-v4-flash）时不再叠加，避免双前缀
         "model_version": (model_version if ":" in model_version
-                          else f"nanobot:{model_version}" if model_version else "nanobot"),
+                          else f"dsh:{model_version}" if model_version else "dsh_serve"),
         "prompt_tokens": usage["prompt_tokens"],
         "completion_tokens": usage["completion_tokens"],
         "cache_hit_tokens": usage["cache_hit_tokens"],

@@ -2,7 +2,7 @@
 
 > 本包 SKILL.md 正文即 LLM 提示词模板（src/gateway/skill_loader.skill_body 原样读取后直接喂模型），为避免文档混入提示词，独立调用说明单独放在本文件。
 
-对应 MCP 工具：`visual_write`（qvp_mcp v2 能力工具，实现见 `qvp_mcp/tools_capabilities.py`）。与 services/visual_writer 同一实现：nanobot 固定记忆会话优先（跨任务沉淀风格取向与审图反馈笔记），90s 超时/失败回退 DeepSeek/Kimi failover。
+对应 MCP 工具：`visual_write`（qvp_mcp v2 能力工具，实现见 `qvp_mcp/tools_capabilities.py`）。与 services/visual_writer 同一实现：dsh 固定记忆会话优先（跨任务沉淀风格取向与审图反馈笔记），90s 超时/失败回退 DeepSeek/Kimi failover。
 
 参数：
 

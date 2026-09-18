@@ -24,7 +24,7 @@ const SuperAdminView = {
     isAdmin() { return this.user && this.user.role === 'admin'; },
     gatewayLabel() {
       if (!this.effective) return '';
-      return { dsh: 'dsh_serve (:8901)', nanobot: 'Nanobot (:8900)' }[this.effective.gateway] || this.effective.gateway_url;
+      return { dsh: 'dsh_serve (:8901)' }[this.effective.gateway] || this.effective.gateway_url;
     },
     secretFields() { return this.fields.filter(f => f.kind === 'secret'); },
     plainFields() { return this.fields.filter(f => f.kind === 'plain'); },
@@ -191,8 +191,7 @@ const SuperAdminView = {
       </p>
       <p style="margin:6px 0 4px"><b>创作网关</b>
         <button class="btn btn-outline btn-sm" :class="{on: effective && effective.gateway==='dsh'}" @click="setGateway('dsh')">dsh_serve (:8901)</button>
-        <button class="btn btn-outline btn-sm" :class="{on: effective && effective.gateway==='nanobot'}" @click="setGateway('nanobot')">Nanobot (:8900)</button>
-        <span class="muted" style="font-size:12px">（协议 1:1，后端 NANOBOT_BASE_URL 即时指向）</span>
+        <span class="muted" style="font-size:12px">（创作网关 dsh_serve；DSH_SERVE_BASE_URL 即时指向）</span>
       </p>
       <p style="margin:6px 0 4px"><b>备用模型链</b>
         <button class="btn btn-outline btn-sm" @click="toggleFallback('fallback1', !(effective && effective.fallback1_enabled))">

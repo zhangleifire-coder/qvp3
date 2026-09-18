@@ -1,4 +1,4 @@
-# 场景化扩写器（2026-09-01）：nanobot 记忆会话优先 → DeepSeek 回退 → None；
+# 场景化扩写器（2026-09-01）：dsh 记忆会话优先 → DeepSeek 回退 → None；
 # 英文视觉骨架注入与中文回退骨架。
 import json
 from unittest.mock import AsyncMock, patch
@@ -25,8 +25,8 @@ def test_parse_visual_ok_and_rejects():
 
 
 @pytest.mark.asyncio
-async def test_nanobot_memory_session_first():
-    """一级 nanobot 记忆会话：成功即返回，不走文本回退。"""
+async def test_dsh_memory_session_first():
+    """一级 dsh 记忆会话：成功即返回，不走文本回退。"""
     captured = {}
 
     async def fake_call_agent(msg, session_id=None, on_delta=None):
@@ -36,7 +36,7 @@ async def test_nanobot_memory_session_first():
     async def no_failover(*a, **kw):  # 若被走到说明链路错
         raise AssertionError("should not reach fallback")
 
-    with patch("src.gateway.nanobot_client.call_agent",
+    with patch("src.gateway.dsh_client.call_agent",
                side_effect=fake_call_agent), \
          patch("src.gateway.failover.call_with_failover", new=no_failover):
         r = await write_page_visuals("自然写实暖调", "奶油米底写实摄影", ["文"] * 6)
@@ -50,7 +50,7 @@ async def test_fallback_to_failover_on_timeout():
     async def slow_agent(msg, session_id=None, on_delta=None):
         await __import__("asyncio").sleep(200)
 
-    with patch("src.gateway.nanobot_client.call_agent", side_effect=slow_agent), \
+    with patch("src.gateway.dsh_client.call_agent", side_effect=slow_agent), \
          patch("src.gateway.failover.call_with_failover",
                new=AsyncMock(return_value={"text": _GOOD})):
         r = await write_page_visuals("风格", "描述", ["文"] * 6)
@@ -62,7 +62,7 @@ async def test_all_failed_returns_none():
     async def bad_agent(msg, session_id=None, on_delta=None):
         return {"text": "garbage"}
 
-    with patch("src.gateway.nanobot_client.call_agent", side_effect=bad_agent), \
+    with patch("src.gateway.dsh_client.call_agent", side_effect=bad_agent), \
          patch("src.gateway.failover.call_with_failover",
                new=AsyncMock(side_effect=RuntimeError("both down"))):
         assert await write_page_visuals("s", "d", ["x"] * 6) is None
@@ -70,7 +70,7 @@ async def test_all_failed_returns_none():
 
 @pytest.mark.asyncio
 async def test_note_to_memory_swallow_errors():
-    with patch("src.gateway.nanobot_client.call_agent",
+    with patch("src.gateway.dsh_client.call_agent",
                new=AsyncMock(side_effect=RuntimeError("nanobot down"))):
         await note_ok()  # 不抛异常即通过
 

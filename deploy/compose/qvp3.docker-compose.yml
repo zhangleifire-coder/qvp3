@@ -2,7 +2,7 @@
 # 与 qvp2(8003 生产) / qvptest(8001) 完全隔离：独立 compose 项目、网络、数据卷。
 # ⚠️ 红线：8002(qvpdev) / 8000(qvp 旧栈) 绝对不碰；本文件只属于 qvp3。
 # 与 qvp2 的关键差异：
-#   1) dsh_serve（Python 薄层，内嵌 dsh 子进程）替代 Nanobot，监听容器内 8901；
+#   1) dsh_serve（Python 薄层，内嵌 dsh 子进程）作创作网关，监听容器内 8901；
 #   2) 新增 qvp3_dshhome 持久卷——Agent 会话/记忆不再随容器重建蒸发（qvp2 的历史缺陷）；
 #   3) openserp 收编进本栈（qvp2 时代是独立部署的 qvp2-openserp）。
 name: qvp3
@@ -42,8 +42,8 @@ services:
       DATABASE_URL: postgresql+asyncpg://qvp:qvp@qvp3-postgres:5432/qvp
       OPENSERP_BASE_URL: http://qvp3-openserp:7000
       MCP_CALLBACK_BASE_URL: http://127.0.0.1:8005
-      # 后端创作 Agent 调用指向 dsh_serve 薄层（协议与 Nanobot 1:1，无需改客户端）
-      NANOBOT_BASE_URL: http://127.0.0.1:8901/v1
+      # 后端创作 Agent 调用指向 dsh_serve 薄层（OpenAI 兼容 :8901）
+      DSH_SERVE_BASE_URL: http://127.0.0.1:8901/v1
       DSH_HOME: /data/dsh
       DSH_SERVE_PORT: "8901"
       # 并发对齐上游承载力：deepseek/kimi 文本 40 路、FusionAI 生图 12 路。

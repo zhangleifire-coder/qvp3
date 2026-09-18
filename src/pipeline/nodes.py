@@ -718,7 +718,7 @@ async def node_asset_gen(input_data: dict) -> dict:
     style_name, style_desc = await ensure_task_style(input_data["task_id"])
     style_uw, style_pf = await style_extras_for(style_name, owner_id)
     style_block = build_style_block(style_name, style_desc, style_uw, style_pf)
-    # 场景化扩写（2026-09-01 升级自 8-31 的主体提取）：nanobot 记忆会话优先把
+    # 场景化扩写（2026-09-01 升级自 8-31 的主体提取）：dsh 记忆会话优先把
     # 6 页中文文案扩写成英文视觉描述+风格英文版（复刻网页端 Agent 的 prompt
     # 增强层）；成功走英文骨架，失败回退中文骨架，不阻塞出图。
     # 快照存 tasks.page_subjects：{"style_en":…, "pages":[6]}（旧格式为中文主体数组）

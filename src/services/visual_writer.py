@@ -4,14 +4,14 @@
 prompt 改写成丰富视觉描述。我们复刻这一层，但只扩「画面视觉」，不动确定性
 约束骨架（字数/汉字正确性/六页统一由英文约束底座保底）。
 
-记忆机制（用户要求「利用 nanobot 的记忆技术持续迭代」）：
-- 固定 nanobot 会话 qvp-visual-memory-v1：历次扩写的风格取向自然沉淀在会话
+记忆机制（固定 dsh 会话，状态落盘 DSH_HOME，跨任务持续迭代）：
+- 固定会话 qvp-visual-memory-v1（dsh 会话落盘 DSH_HOME）：历次扩写的风格取向自然沉淀在会话
   上下文里，越用越贴合团队口味；
 - 每次调用注入「当前风格库描述」（曾经训练的要求）与「近期审图反馈笔记」
-  （驳回意见=未来训练），nanobot 会话记忆 + 显式注入双保险；
+  （驳回意见=未来训练），dsh 会话记忆 + 显式注入双保险；
 - note_to_memory()：审图驳回时向同一会话追加优化笔记（fire-and-forget）。
 
-链路：nanobot 记忆会话优先（90s 超时）→ DeepSeek/Kimi failover 回退（无跨任务
+链路：dsh 记忆会话优先（90s 超时）→ DeepSeek/Kimi failover 回退（无跨任务
 记忆，但单任务 6 页一次产出仍统一）。两级失败返回 None，调用方走中文回退骨架。
 """
 import asyncio
@@ -58,7 +58,7 @@ async def write_page_visuals(style_name: str, style_desc: str,
                              page_bodies: list, notes: list[str] = None) -> dict | None:
     """6 页中文文案 → {"style_en", "pages":[6 条英文视觉描述]}；失败 None。
 
-    优先 nanobot 固定记忆会话（跨任务持续迭代），90s 超时/失败回退
+    优先 dsh 固定记忆会话（跨任务持续迭代），90s 超时/失败回退
     call_with_failover（DeepSeek 主/Kimi 备）。任何一级成功即返回。
     """
     bodies = list(page_bodies or [])[:6]
@@ -66,17 +66,17 @@ async def write_page_visuals(style_name: str, style_desc: str,
         bodies.append("")
     msg = _build_message(style_name, style_desc, bodies, notes or [])
 
-    # ── 一级：nanobot 记忆会话（上下文沉淀历次扩写与优化笔记）──
+    # ── 一级：dsh 记忆会话（上下文沉淀历次扩写与优化笔记）──
     try:
-        from src.gateway.nanobot_client import call_agent, NanobotUnavailableError
+        from src.gateway.dsh_client import call_agent, DshServeUnavailableError
         try:
             r = await asyncio.wait_for(
                 call_agent(msg, session_id=VISUAL_SESSION), timeout=90.0)
             parsed = _parse_visual(r.get("text") or "")
             if parsed:
                 return parsed
-        except (asyncio.TimeoutError, NanobotUnavailableError):
-            pass  # nanobot 不可达/超时 → 直接走文本回退
+        except (asyncio.TimeoutError, DshServeUnavailableError):
+            pass  # dsh 不可达/超时 → 直接走文本回退
         except Exception:
             traceback.print_exc()  # 解析/其它异常也回退
     except Exception:
@@ -101,7 +101,7 @@ async def note_to_memory(note: str) -> None:
     if not note:
         return
     try:
-        from src.gateway.nanobot_client import call_agent
+        from src.gateway.dsh_client import call_agent
         await asyncio.wait_for(
             call_agent(
                 "Remember this reviewer feedback for future visual directions "

@@ -1,6 +1,6 @@
 """staged 分阶段 Agent 路径集成测试（AGENT_PIPELINE_VARIANT=staged）。
 
-mock 掉 nanobot_client（health/call_agent），call_agent 按 session_id 中的
+mock 掉 dsh_client（health/call_agent），call_agent 按 session_id 中的
 阶段名返回对应阶段契约 JSON；验证：14 节点流水线跑通、各阶段产物落库
 （claims/evidence → drafts → page_copies → assets/ocr_results）、阶段间只经
 DB 传数据、node_events 按阶段拆分记账、工具成本台账按阶段归属、
@@ -76,7 +76,7 @@ def _fake_call_agent(mode: str = "general", tool_costs: bool = True):
             elif stage == "assets":
                 await tool_ledger.record(tid, {"tool": "image_gen", "cost_cny": 1.2})
         return {"text": _stage_json(stage, mode),
-                "model_version": "nanobot:deepseek/deepseek-v4-pro",
+                "model_version": "dsh:deepseek/deepseek-v4-flash",
                 "prompt_tokens": 100, "completion_tokens": 200,
                 "elapsed_seconds": 1.2}
     return _call
@@ -100,14 +100,14 @@ async def _create_task(mode: str = "general", with_body: bool = False):
 def staged_path(monkeypatch):
     monkeypatch.setattr(settings, "agent_pipeline_enabled", True)
     monkeypatch.setattr(settings, "agent_pipeline_variant", "staged")
-    with patch("src.pipeline.agent_stages.nanobot_client.health",
+    with patch("src.pipeline.agent_stages.dsh_client.health",
                new=AsyncMock(return_value=True)):
         yield
 
 
 async def test_staged_pipeline_general_full_artifacts(staged_path):
     task_id = await _create_task("general")
-    with patch("src.pipeline.agent_stages.nanobot_client.call_agent",
+    with patch("src.pipeline.agent_stages.dsh_client.call_agent",
                new=AsyncMock(side_effect=_fake_call_agent("general"))):
         results = await run_pipeline(task_id)
     assert [r["node"] for r in results] == NODES_AGENT_STAGED
@@ -128,7 +128,7 @@ async def test_staged_pipeline_general_full_artifacts(staged_path):
         draft = (await session.execute(
             select(Draft).where(Draft.task_id == task_id))).scalars().one()
         assert len(draft.body) > 150
-        assert draft.model_version.startswith("nanobot:")
+        assert draft.model_version.startswith("dsh:")
         assert draft.prompt_version == "agent_draft_general_v1"
 
         pages = (await session.execute(
@@ -167,12 +167,12 @@ async def test_staged_pipeline_general_full_artifacts(staged_path):
         assert by_name["agent_pages"].cost_estimate_cny > 0
         for stage in ("agent_evidence", "agent_draft", "agent_pages", "agent_assets"):
             assert by_name[stage].error_class is None
-            assert by_name[stage].model_version.startswith("nanobot:")
+            assert by_name[stage].model_version.startswith("dsh:")
 
 
 async def test_staged_pipeline_compare_mode_persists_references(staged_path):
     task_id = await _create_task("compare")
-    with patch("src.pipeline.agent_stages.nanobot_client.call_agent",
+    with patch("src.pipeline.agent_stages.dsh_client.call_agent",
                new=AsyncMock(side_effect=_fake_call_agent("compare"))):
         await run_pipeline(task_id)
     async with SessionLocal() as session:
@@ -186,7 +186,7 @@ async def test_staged_pipeline_compare_mode_persists_references(staged_path):
 
 async def test_staged_pipeline_single_mode(staged_path):
     task_id = await _create_task("single")
-    with patch("src.pipeline.agent_stages.nanobot_client.call_agent",
+    with patch("src.pipeline.agent_stages.dsh_client.call_agent",
                new=AsyncMock(side_effect=_fake_call_agent("single"))):
         results = await run_pipeline(task_id)
     assert [r["node"] for r in results] == NODES_AGENT_STAGED
@@ -203,10 +203,10 @@ async def test_staged_pipeline_single_mode(staged_path):
 async def test_staged_correction_round_same_session(staged_path):
     """某阶段首轮输出不合格 → 同 stage session 纠错重问 → 第二轮通过。"""
     task_id = await _create_task("general")
-    bad = {"text": "抱歉我无法完成", "model_version": "nanobot:m",
+    bad = {"text": "抱歉我无法完成", "model_version": "dsh:m",
            "prompt_tokens": 5, "completion_tokens": 5, "elapsed_seconds": 0.1}
     good = {"text": _stage_json("pages"),
-            "model_version": "nanobot:deepseek/deepseek-v4-pro",
+            "model_version": "dsh:deepseek/deepseek-v4-flash",
             "prompt_tokens": 100, "completion_tokens": 200, "elapsed_seconds": 1.0}
     real = _fake_call_agent("general")
 
@@ -219,7 +219,7 @@ async def test_staged_correction_round_same_session(staged_path):
         return await real(user_message, session_id=session_id, on_delta=on_delta)
     _call.pages_calls = []
 
-    with patch("src.pipeline.agent_stages.nanobot_client.call_agent",
+    with patch("src.pipeline.agent_stages.dsh_client.call_agent",
                new=AsyncMock(side_effect=_call)):
         results = await run_pipeline(task_id)
     assert [r["node"] for r in results] == NODES_AGENT_STAGED
@@ -231,7 +231,7 @@ async def test_staged_correction_round_same_session(staged_path):
 async def test_staged_stage_failure_isolated(staged_path):
     """单阶段两次不合格 → 该阶段节点失败，已完成阶段（evidence/draft）事件不受影响。"""
     task_id = await _create_task("general")
-    bad = {"text": "还是不行", "model_version": "nanobot:m",
+    bad = {"text": "还是不行", "model_version": "dsh:m",
            "prompt_tokens": 5, "completion_tokens": 5, "elapsed_seconds": 0.1}
     real = _fake_call_agent("general")
 
@@ -240,7 +240,7 @@ async def test_staged_stage_failure_isolated(staged_path):
             return dict(bad)
         return await real(user_message, session_id=session_id, on_delta=on_delta)
 
-    with patch("src.pipeline.agent_stages.nanobot_client.call_agent",
+    with patch("src.pipeline.agent_stages.dsh_client.call_agent",
                new=AsyncMock(side_effect=_call)):
         with pytest.raises(RuntimeError, match="两次未通过校验"):
             await run_pipeline(task_id)
@@ -268,7 +268,7 @@ async def test_staged_text_override_passthrough(staged_path):
                                                  session_id=session_id,
                                                  on_delta=on_delta)
 
-    with patch("src.pipeline.agent_stages.nanobot_client.call_agent",
+    with patch("src.pipeline.agent_stages.dsh_client.call_agent",
                new=AsyncMock(side_effect=_spy)):
         results = await run_pipeline(task_id)
     assert [r["node"] for r in results] == NODES_AGENT_STAGED

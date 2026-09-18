@@ -133,7 +133,7 @@ def mock_external_calls():
                new=_fake_fetch_image_bytes()), \
          patch("src.services.visual_writer.write_page_visuals",
                new=AsyncMock(return_value=None)), \
-         patch("src.gateway.nanobot_client.call_agent",
+         patch("src.gateway.dsh_client.call_agent",
                new=AsyncMock(return_value={"text": "", "prompt_tokens": 0,
                                            "completion_tokens": 0})):
         yield

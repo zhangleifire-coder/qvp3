@@ -1,4 +1,4 @@
-"""提取 Nanobot 备份会话里的视觉记忆笔记（role=user 且以 Remember this reviewer feedback 开头）。"""
+"""提取旧网关备份会话里的视觉记忆笔记（历史一次性迁移，已完成；role=user 且以 Remember this reviewer feedback 开头）。"""
 import io
 import json
 import sys

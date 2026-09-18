@@ -2,9 +2,9 @@
 # ─────────────────────────────────────────────────────────────────────
 # 图文生产平台 · dsh 版一键启停（Git Bash on Windows）
 #
-# 与 start-all.sh 的差异：Nanobot(:8900) 替换为 dsh_serve(:8901)，
-# 后端以 NANOBOT_BASE_URL=http://127.0.0.1:8901/v1 启动（协议 1:1，后端零改动）。
-# Nanobot 可并存（回退用），本脚本不管它。
+# 与 start-all.sh 的差异：创作网关为 dsh_serve(:8901)（dsh harness 薄层），
+# 后端以 DSH_SERVE_BASE_URL=http://127.0.0.1:8901/v1 启动（OpenAI 兼容）。
+# 唯一编排入口（旧网关版脚本已移除）。
 #
 # 用法：
 #   bash scripts/start-all-dsh.sh          # 启动：PG → dsh_serve → 后端(:8003)
@@ -68,7 +68,6 @@ do_status() {
   fi
   echo "──────────────────────────────────────────"
   echo -e "  平台地址  ${DIM}http://127.0.0.1:${BACKEND_PORT}${OFF}"
-  echo -e "  回退方式  ${DIM}bash scripts/start-all.sh（Nanobot 版编排）${OFF}"
 }
 
 do_start() {
@@ -120,8 +119,8 @@ do_start() {
   else
     local stale_pid; stale_pid=$(port_pid "$BACKEND_PORT")
     [ -n "$stale_pid" ] && taskkill //F //PID "$stale_pid" >/dev/null 2>&1
-    info "启动后端 FastAPI（:${BACKEND_PORT}，NANOBOT_BASE_URL→dsh_serve）…"
-    NANOBOT_BASE_URL="http://127.0.0.1:${DSH_PORT}/v1" \
+    info "启动后端 FastAPI（:${BACKEND_PORT}，创作网关→dsh_serve）…"
+    DSH_SERVE_BASE_URL="http://127.0.0.1:${DSH_PORT}/v1" \
       nohup .venv/Scripts/python -m uvicorn src.api.main:app \
       --host 127.0.0.1 --port "$BACKEND_PORT" > backend.log 2>&1 &
     wait_http "http://127.0.0.1:${BACKEND_PORT}/healthz" 40 "后端" "backend.log" || exit 1

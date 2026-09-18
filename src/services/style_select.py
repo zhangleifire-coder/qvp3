@@ -14,7 +14,7 @@
 （强相关更可能、弱相关仍有机会 → 兼顾准确与多样）；全不命中 → 等权随机。
 选中后由调用方落库 task.gen_image_style（+描述词快照，幂等：已选沿用）；
 重生成/定点修改按快照回查同一描述，保证一篇 6 页及重生成版本风格一致。
-Agent 路径（nanobot）已有 LLM 风格判定，不走本模块。
+Agent 路径（dsh_serve）已有 LLM 风格判定，不走本模块。
 """
 import random
 import re

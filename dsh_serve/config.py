@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     dsh_home: str = str(_COMPONENT_DIR / "dsh-home")   # 会话落盘根目录，docker 挂卷此路径
     dsh_workspace: str = str(_COMPONENT_DIR)           # agent cwd（MCP 工作目录基准）
     dsh_max_tokens: int = 32768                        # 单轮输出上限。注意 deepseek 推理模型
-    # 的 max_tokens 含 reasoning_tokens：8192（nanobot 旧值）在 reasoningEffort=high +
+    # 的 max_tokens 含 reasoning_tokens：8192（旧网关值）在 reasoningEffort=high +
     # 长 prompt 下会被推理吃光（实证：turn/end=max-tokens 且正文 0 字符）
     dsh_reasoning_effort: str = ""                     # 空 = 模型默认
     request_timeout_seconds: float = 240.0             # 单轮请求读超时；原 3000s 卡死恢复太慢，改为 4min 内快速失败/降级
@@ -55,7 +55,7 @@ class Settings(BaseSettings):
     mcp_command: str = ""                              # 例：C:/.../code/.venv/Scripts/python.exe
     mcp_args: str = '["-m", "qvp_mcp"]'                # JSON 数组
     mcp_pythonpath: str = ""                           # 例：code/ 根目录
-    mcp_tool_timeout_ms: int = 1800000                 # 30 分钟，对齐 nanobot toolTimeout
+    mcp_tool_timeout_ms: int = 1800000                 # 30 分钟，工具调用超时可调
     mcp_extra_env: str = "{}"                          # JSON 对象，如成本回调变量
 
     # --- 内置工具冲突 ---
