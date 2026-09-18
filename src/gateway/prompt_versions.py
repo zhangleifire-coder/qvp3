@@ -96,6 +96,74 @@ def get_draft_prompt(mode: str) -> str:
     return DRAFT_PROMPTS.get(mode, DRAFT_PROMPTS["general"])
 
 
+# 生图铁律（2026-09-18）：所有生图提示词最末尾必须附带的
+# 图上文字范围约束 + 中文文字硬约束——先限制模型自由发挥的文字数量，
+# 再锁住给定文案逐字正确，双重杜绝伪字/错字/变形。
+_IMAGE_TEXT_HARD_RULE = (
+    "\n\n【图上文字范围铁律（最高优先级，违反即废图）】\n"
+    "图上文字仅限上述给定文案（ON-IMAGE TEXT / 本页文案），"
+    "必须一字不多、一字不少、逐字复制。\n"
+    "严格禁止生成任何给定文案以外的文字：标签、卖点、价格、条目、注释、"
+    "补充说明、图标内文字，一律禁止。\n"
+    "即使画面留白显得空旷，也绝对禁止用自由文字填充。\n"
+    "图中所有汉字必须与简体中文规范字形严格一致，使用标准印刷体。\n"
+    "严格禁止近形字混淆，例如：焙≠培、拔≠拨、未≠末、己≠已≠巳、"
+    "蓝≠篮、度≠渡、辩≠辨≠辫。\n"
+    "【渲染质量硬约束】\n"
+    "所有文字必须锐利清晰、笔画分明完整、边缘干净，禁止笔画粘连、"
+    "模糊、断笔、缺笔、溢墨、锯齿；达到印刷级渲染质量。\n"
+    "小字同样必须清晰可辨——每个字的偏旁部首能清楚分辨，"
+    "绝不能糊成一团或粘连成块。\n"
+    "\n【中文文字硬约束】\n"
+    "所有中文属于 LOCKED TEXT / IMMUTABLE TEXT。\n"
+    "严格对应GBK简体中文字库。\n"
+    "必须严格逐字符复制用户提供的文字。\n"
+    "禁止：\n"
+    "- 改写\n"
+    "- 同义替换\n"
+    "- 自动润色\n"
+    "- 增字\n"
+    "- 漏字\n"
+    "- 错别字\n"
+    "- 同音字替换\n"
+    "- 繁简体转换\n"
+    "- 生成不存在的汉字\n"
+    "- 生成类似汉字的伪字符\n"
+    "- 修改标点符号\n"
+    "每一个汉字必须具有：\n"
+    "- 正确笔画\n"
+    "- 正确偏旁部首\n"
+    "- 正确左右/上下结构\n"
+    "- 正确字符比例\n"
+    "- 标准现代简体中文字形\n"
+    "【字体】\n"
+    "使用标准现代简体中文无衬线字体。\n"
+    "Visual reference:\n"
+    "Source Han Sans SC / Noto Sans CJK SC / PingFang SC\n"
+    "禁止：\n"
+    "calligraphy\n"
+    "handwriting\n"
+    "decorative Chinese typography\n"
+    "distorted typography\n"
+    "3D text\n"
+    "perspective text\n"
+    "curved text\n"
+    "artistic glyph deformation\n"
+    "【排版】\n"
+    "所有中文：\n"
+    "- 水平排列\n"
+    "- 正对镜头\n"
+    "- 无透视\n"
+    "- 正文字号不小于边框的7%\n"
+    "- 同一张图内所有正文字号必须统一，禁止大小混排\n"
+    "- 高对比度\n"
+    "- 字间距正常\n"
+    "- 不与图标重叠\n"
+    "- 不与边框重叠\n"
+    "- 不被装饰元素遮挡"
+)
+
+
 def get_image_prompt(mode: str, page_body: str, page_index: int = None,
                      template: str = None, style_block: str = None,
                      page_subject: str = None, visual: str = None,
@@ -125,6 +193,7 @@ def get_image_prompt(mode: str, page_body: str, page_index: int = None,
         if page_index:
             parts.append("\n" + _PAGE_LAYOUTS_EN[(page_index - 1)
                                                 % len(_PAGE_LAYOUTS_EN)])
+        parts.append(_IMAGE_TEXT_HARD_RULE)
         return "\n".join(parts)
     # 中文回退模式
     template = template or IMAGE_PROMPTS.get(mode, IMAGE_PROMPTS["general"])
@@ -135,6 +204,7 @@ def get_image_prompt(mode: str, page_body: str, page_index: int = None,
     if page_index:
         # 追加本页专属排版指令，让 6 页构图错开（风格段不变，只变布局）
         prompt += _PAGE_LAYOUTS[(page_index - 1) % len(_PAGE_LAYOUTS)]
+    prompt += _IMAGE_TEXT_HARD_RULE
     return _apply_page_subject(prompt, page_subject)
 
 

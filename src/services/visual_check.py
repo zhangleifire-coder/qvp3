@@ -109,3 +109,85 @@ async def check_text_match(image_url: str, expected_text: str) -> dict | None:
         import traceback
         traceback.print_exc()   # VL 复核失败不阻塞（维持 OCR 判定，走重生）
         return None
+
+
+_GLYPH_VERIFY_PROMPT = """你是中文印刷质量检查员。图中是一张图文卡片。
+
+标准文案（必须逐字出现在图中）：「{text}」
+
+请逐项检查（图中**每一个汉字**都要过目，不是泛泛识别）：
+1. locked_ok：标准文案是否逐字完整出现在图中——不得改写、增字、漏字、
+   换字、换标点；繁体/异体写法视为不一致。
+2. locked_errors：差异明细：[{{"标准": "...", "图中": "..."}}]，无则为[]。
+3. glyph_errors：逐字核对图中**所有汉字**（含标准文案以外的标签、说明、
+   图标内文字）是否为规范简体字形。对每个字**必须看它的偏旁部首**：
+   火/土、扌/木、日/目、礻/衤、冫/氵、贝/见 等偏旁混淆是高频错字源，
+   逐字确认偏旁正确（例如「烘焙」是火字旁，写成土字旁「烘培」即错字）。
+   只列出**不规范**的字：["图中字: 问题描述"]——正确的字一律不要列出，
+   一条都不要；若全部规范，必须返回空数组 []。
+4. extra_text_gist：标准文案以外文字的概述（30字内），无则空串。
+5. render_ok：文字渲染质量——每个字（含小字）是否锐利清晰、笔画分明、
+   无粘连/模糊/断笔/缺笔/糊团。任何字糊成团、笔画粘连无法分辨即 false。
+
+只输出严格 JSON，不要任何其他文字：
+{{"locked_ok": true/false, "locked_errors": [...],
+  "glyph_errors": [...], "extra_text_gist": "...", "render_ok": true/false,
+  "render_issues": ["问题描述，如：小字粘连成块/标题笔画模糊"]}}"""
+
+
+async def verify_page_glyphs(image_url: str, expected_text: str) -> dict | None:
+    """逐字字形校验（2026-09-18）：不是开放识别"图上有什么字"，
+    而是拿标准文案逐字核对 + 全图每个汉字规范性检查——专抓相似度
+    对撞抓不到的错误：LOCKED 文案字形变形、自由文字错字（如 烘培/烘焙）。
+
+    返回 {"locked_ok": bool, "glyph_errors": [str], "extra_text_gist": str}
+    或 None（VL 不可用/解析失败——调用方按"未校验"处理，不阻塞）。
+    """
+    if not (expected_text or "").strip():
+        return None
+    try:
+        from src.gateway.ocr import _image_to_data_url
+        data_url = await _image_to_data_url(image_url)
+        prompt = _GLYPH_VERIFY_PROMPT.replace("{text}", expected_text.strip())
+        payload = {
+            "model": settings.visual_check_model,
+            "messages": [{"role": "user", "content": [
+                {"type": "image_url", "image_url": {"url": data_url}},
+                {"type": "text", "text": prompt},
+            ]}],
+            "max_tokens": 1500,
+        }
+        resp = await get_client("visual_check", timeout=90).post(
+            f"{settings.ocr_base_url}/chat/completions",
+            headers={"Authorization": f"Bearer {settings.dashscope_api_key}"},
+            json=payload)
+        if resp.status_code != 200:
+            return None
+        raw = (resp.json()["choices"][0]["message"]["content"] or "").strip()
+        if raw.startswith("```"):
+            raw = raw.strip("`").lstrip("json").strip()
+        # 截断防护：输出被 max_tokens 截断时 JSON 不完整，不硬解析（返 None 不误杀）
+        if not raw.rstrip().endswith("}"):
+            return None
+        obj = json.loads(raw[raw.index("{"):raw.rindex("}") + 1])
+        if isinstance(obj.get("locked_ok"), bool):
+            # 过滤防御：模型若把"字: 规范"类审计条目误塞进 glyph_errors，
+            # 只保留真正的问题条目（含"错/不规范/伪/异体/混淆"等判定词）
+            _BAD_WORDS = ("错", "不规范", "伪", "异体", "变形", "混淆", "误")
+            errors = [str(e) for e in (obj.get("glyph_errors") or [])
+                      if any(w in str(e) for w in _BAD_WORDS)]
+            render_ok = obj.get("render_ok", True)
+            if not isinstance(render_ok, bool):
+                render_ok = True   # 模型未输出该维度时不误判
+            render_issues = [str(i)[:60] for i in (obj.get("render_issues") or [])][:5]
+            return {"locked_ok": obj["locked_ok"],
+                    "glyph_errors": [e[:60] for e in errors][:20],
+                    "locked_errors": obj.get("locked_errors") or [],
+                    "extra_text_gist": str(obj.get("extra_text_gist", ""))[:60],
+                    "render_ok": render_ok,
+                    "render_issues": render_issues}
+        return None
+    except Exception:
+        import traceback
+        traceback.print_exc()   # 校验失败不阻塞（维持其他判定）
+        return None

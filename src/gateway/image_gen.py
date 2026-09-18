@@ -90,6 +90,12 @@ async def generate_image(prompt: str, size: str = None,
     """
     if settings.mock_image_gen:
         return _mock_result(prompt)
+    # 生图铁律兜底：所有生图路径（含 garble 重生/AI 审核重生等
+    # 不经 get_image_prompt 的调用）统一在 prompt 最末尾追加中文文字硬约束，
+    # 避免模型伪字/错字/变形。已包含则跳过，防止重复堆叠。
+    from src.gateway.prompt_versions import _IMAGE_TEXT_HARD_RULE
+    if "【中文文字硬约束】" not in prompt:
+        prompt += _IMAGE_TEXT_HARD_RULE
     size = size or IMAGE_SIZE
     use_model = model or IMAGE_MODEL
     channel = channel or _next_channel()

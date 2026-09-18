@@ -384,17 +384,35 @@ async def _garble_check_and_regen(task_id, pages: list[str], localized: list[dic
         except Exception:  # noqa: BLE001
             sim = 1.0        # OCR 本身失败不误杀（cross_check 兜底）
         img["first_sim"] = sim          # 024 首过率治理：首轮 sim 落库供统计
-        if sim >= _GARBLE_THRESHOLD:
+        # ── 逐字字形校验（2026-09-18）：VL 逐字核对「标准文案完整性 + 图中每个
+        # 汉字规范性」。抓相似度对撞的盲区：LOCKED 文案字形变形、自由文字
+        # 错字（实测 烘培/烘焙 类错字 sim 满分放行）。VL 不可用返回 None 不误杀。
+        from src.services.visual_check import check_text_match, verify_page_glyphs
+        gv = await verify_page_glyphs(img["image_url"], page_text)
+        glyph_bad = gv is not None and (
+            not gv["locked_ok"] or gv["glyph_errors"] or not gv.get("render_ok", True))
+        if glyph_bad:
+            # 留痕：glyphverify/lockerr/glypherr/rendererr 供审图与统计追溯
+            marks = ["glyphverify"]
+            if gv is not None and not gv["locked_ok"]:
+                marks.append("lockerr")
+            if gv is not None and gv["glyph_errors"]:
+                marks.append("glypherr")
+            if gv is not None and not gv.get("render_ok", True):
+                marks.append("rendererr")
+            img["prompt_used"] = (img.get("prompt_used", "") + "|" + "|".join(marks)).strip("|")
+        if sim >= _GARBLE_THRESHOLD and not glyph_bad:
             continue
         # ── VL 申诉通道（2026-09-14 P2）：OCR 判不合格的页先经 qwen-vl-max 复核
         # 「图中文字是否与文案逐字一致」——一致即放行（OCR 误判申诉成功，图中文字
         # 实际渲染正确，重生无意义只会再烧一张）；VL 说不一致或不可用才进重生。
         # 放行口径仍是 100%，只是给 OCR 误判一个复核出口。
-        from src.services.visual_check import check_text_match
-        appeal = await check_text_match(img["image_url"], page_text)
-        if appeal is not None and appeal["ok"]:
-            img["prompt_used"] = (img.get("prompt_used", "") + "|vlappeal").strip("|")
-            continue
+        # 注意：glyph_bad（字形校验已发现错字）时不走申诉，直接重生。
+        if not glyph_bad:
+            appeal = await check_text_match(img["image_url"], page_text)
+            if appeal is not None and appeal["ok"]:
+                img["prompt_used"] = (img.get("prompt_used", "") + "|vlappeal").strip("|")
+                continue
         # 换构图重生（最多 _GARBLE_MAX_REGEN 次）：9-14 P1 修正——重生图必须与
         # 整页文案逐字全等（100% 标准），所以提示词要求逐字复现原文案重排版，
         # 绝不能再让模型「只保留核心一句」（≤20 字对 80-130 字整页文案永远
@@ -438,7 +456,7 @@ async def _garble_check_and_regen(task_id, pages: list[str], localized: list[dic
 async def _subject_check_and_regen(task_id, pages: list[str], localized: list[dict],
                                    image_tpl: str, mode: str) -> list[dict]:
     """视觉主体审核（2026-09-02 补齐 Agent 路径——此前仅直连路径有，用户反馈
-    「生图与标题不匹配、实物照片牛头不对马嘴」的主要来源即 nanobot 生成的图）。
+    「生图与标题不匹配、实物照片牛头不对马嘴」的主要来源即创作 Agent 生成的图）。
 
     每页 VL 看图比对「图中主体 vs 该页文案主题」：不符→带主体强调重画一次→
     仍不符→img['subject_mismatch']=True + 打 RejectMark 进人工审核队列
