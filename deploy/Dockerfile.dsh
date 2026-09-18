@@ -16,8 +16,10 @@ COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules
 
 # dsh：版本钉死（开发者预览版有破坏性变更，升级需重跑 spike 验证清单）
 # 值 = spike/serve 薄层实测版本，见 docs/dsh-spike-验证记录.md 与 dsh_serve/README.md
+# npm 源可覆盖：--build-arg NPM_REGISTRY=https://registry.npmmirror.com（国内网络）
 ARG DSH_VERSION=0.1.2-rc.1
-RUN npm install -g @deepseek-ai/dsh@${DSH_VERSION} && npm cache clean --force
+ARG NPM_REGISTRY=https://registry.npmjs.org
+RUN npm install -g @deepseek-ai/dsh@${DSH_VERSION} --registry=${NPM_REGISTRY} && npm cache clean --force
 
 WORKDIR /app
 
