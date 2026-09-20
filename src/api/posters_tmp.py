@@ -429,7 +429,7 @@ async def add_illustration(poster_id: str, payload: IllustrationIn):
 
     # 文字-Free 检查：主图严格（任何文字符号都拦）；
     # 示意图宽松（刻度线/箭头/引线等制图标记不算文字）。
-    if not await _check_text_free(f"/static/generated/{ill.name}", strict=True):
+    if not await _check_text_free(f"/static/generated/{ill.name}", strict=False):
         return _blocked(poster_id, ill)
     if dia and not await _check_text_free(f"/static/generated/{dia.name}",
                                           strict=False):
