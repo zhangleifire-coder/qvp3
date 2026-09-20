@@ -191,3 +191,61 @@ async def verify_page_glyphs(image_url: str, expected_text: str) -> dict | None:
         import traceback
         traceback.print_exc()   # 校验失败不阻塞（维持其他判定）
         return None
+
+_COMPREHENSIVE_PROMPT = """你是配图综合质检员。图中是一张图文卡片，本页文案：「{text}」
+
+请逐项检查（每个汉字都要过目）：
+1. text_ok：文案是否逐字完整出现在图中——不得改写、增字、漏字、换字、
+   错别字、异体字；同时每个汉字须为规范简体字形、渲染清晰锐利
+   （笔画分明、无粘连、无糊团）。
+2. subject_ok：图中主要主体是否与文案主题一致（文案说 A、图画 B 即 false）。
+3. harmony_ok：图文是否协调——文字量不过载、文字不被装饰/主体遮挡、
+   实景元素与文案不冲突。
+
+注意：VS 对比字样、箭头、刻度线、引线等制图标记不算文字问题。
+只输出严格 JSON，不要任何其他文字：
+{{"text_ok": true/false, "subject_ok": true/false, "harmony_ok": true/false,
+  "issues": ["问题简述，如：第3字错/主体不符/文字被遮挡"]}}"""
+
+
+async def comprehensive_page_check(image_url: str, page_text: str,
+                                   ref_mode: bool = False) -> dict | None:
+    """配图综合质检（2026-09-21）：一次 VL 调用覆盖 文字逐字+字形+渲染 /
+    主体一致性 / 图文协调 三链（原 garble/subject/ai_review 三链合并）。
+
+    返回 {"ok": bool, "issues": [str]}；VL 不可用/解析失败返回 None
+    （调用方按放行处理，人工审核兜底）。
+    """
+    if not (page_text or "").strip():
+        return None
+    try:
+        from src.gateway.ocr import _image_to_data_url
+        data_url = await _image_to_data_url(image_url)
+        prompt = _COMPREHENSIVE_PROMPT.replace("{text}", page_text.strip())
+        payload = {
+            "model": settings.visual_check_model,
+            "messages": [{"role": "user", "content": [
+                {"type": "image_url", "image_url": {"url": data_url}},
+                {"type": "text", "text": prompt},
+            ]}],
+            "max_tokens": 600,
+        }
+        resp = await get_client("visual_check", timeout=90).post(
+            f"{settings.ocr_base_url}/chat/completions",
+            headers={"Authorization": f"Bearer {settings.dashscope_api_key}"},
+            json=payload)
+        if resp.status_code != 200:
+            return None
+        raw = (resp.json()["choices"][0]["message"]["content"] or "").strip()
+        if raw.startswith("```"):
+            raw = raw.strip("`").lstrip("json").strip()
+        obj = json.loads(raw[raw.index("{"):raw.rindex("}") + 1])
+        keys = ("text_ok", "subject_ok", "harmony_ok")
+        if not all(isinstance(obj.get(k), bool) for k in keys):
+            return None
+        issues = [str(i)[:60] for i in (obj.get("issues") or [])][:5]
+        return {"ok": all(obj[k] for k in keys), "issues": issues}
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        return None

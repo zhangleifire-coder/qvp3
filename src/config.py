@@ -62,6 +62,9 @@ class Settings(BaseSettings):
     text_check_use_refs: bool = False
     mock_image_gen: bool = False         # 开发阶段模拟生图（不调 API、不花钱）
     # 搜实景图 provider（openserp 免费默认 / doubao_ark / bing_api 预留）
+    # 单候选生图（2026-09-21 用户决策）：文字铁律+VL 质检已保障质量，
+    # 双候选 OCR 选优的收益不抵成本；true=恒单候选（可回滚）
+    image_single_candidate: bool = True
     image_search_provider: str = "openserp"
     openserp_base_url: str = "http://127.0.0.1:7001"
     # 旧 ChatGPT 生图字段（保留占位）

@@ -122,8 +122,13 @@ async def generate_images(task_id: str, pages: list[str], mode: str = "general",
     pages = [str(p or "").strip() for p in (pages or [])]
     if not pages:
         raise ValueError("pages 不能为空：请传入 6 页分页文案")
-    # 双候选门控：mock 模式保持单候选（占位图无需选优）；后端不可达回退 1
-    n_cand = 1 if settings.mock_image_gen else await fetch_image_gen_plan(task_id)
+    # 候选数：mock 恒 1；image_single_candidate（2026-09-21 默认 true）
+    # 恒 1（文字铁律+VL 质检已保障质量，双候选 OCR 选优不再参与）；
+    # 否则查后端按该任务风格近 7 天风险动态判定 1-2
+    if settings.mock_image_gen or settings.image_single_candidate:
+        n_cand = 1
+    else:
+        n_cand = await fetch_image_gen_plan(task_id)
     await check_and_consume(task_id, "image_total", n=len(pages) * n_cand)
 
     reference_urls = [u for u in (reference_urls or []) if u]

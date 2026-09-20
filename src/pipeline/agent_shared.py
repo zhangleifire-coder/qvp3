@@ -530,50 +530,58 @@ async def _localize_all(task_id, images: list[dict]) -> list[dict]:
 async def _image_quality_chain(task_id, pages: list[str], localized: list[dict],
                                image_tpl: str, mode: str,
                                confirmed_refs: list) -> tuple[list[dict], dict]:
-    """配图质检链：文字扭曲 OCR 对撞 → 视觉主体审核 → AI 双重审核。
+    """配图质检链（2026-09-21 三链合一版）：每页一次 VL 综合校验
+    （文字逐字+字形+渲染 / 主体一致性 / 图文协调，原 garble/subject/
+    ai_review 三链合并）——不合格带意见重生一次（Sunburst 精修），
+    仍不过打标记进人工审核。OCR 对撞环节已按用户决策移除
+    （文字铁律 + VL 逐字校验已覆盖，OCR 开源识别不再参与配图质检）。
 
     返回 (更新后的 localized, {page_index: 标记} 需进人工审核队列的页)。
     """
-    # ── P0-2：图上文字扭曲机器质检 + 有限重生成（OCR 字符级对撞）──
-    localized, garbled = await _garble_check_and_regen(
-        task_id, pages, localized, image_tpl, mode)
-    # 视觉主体审核（2026-09-02 补齐 Agent 路径）：图与文案牛头不对马嘴在此拦截
-    localized = await _subject_check_and_regen(
-        task_id, pages, localized, image_tpl, mode)
-
-    # ── 项4：AI 双重审核（文字正确性 + 实景协调性），不达标自动调提示词重生成 ──
-    # 对 OCR 判定有问题的页/需要实景嵌入的页做视觉二次审核（compare/single 全页，
-    # general 仅问题页）；两轮仍败打标记进人工审核。
-    ai_review_flags: dict[int, list[str]] = {k: [v] for k, v in garbled.items()}
-    ref_urls = [a.image_url for a in confirmed_refs]
-    ref_mode = mode in ("compare", "single")
-    try:
-        from src.pipeline.ai_review import _gen_one_with_review
-        from src.gateway.ocr import fetch_image_bytes as _fb2
-        from src.pipeline.nodes import _persist_image as _pi2  # noqa: F401
-        for img in localized:
-            idx = img["page_index"]
-            if idx not in ai_review_flags and not ref_mode:
-                continue   # general 未命中扭曲的页已由 OCR 把关，跳过视觉审核省成本
-            base_prompt = (img.get("prompt_used")
-                           or image_tpl.replace("{page_body}", pages[idx - 1]))
-            new_url, model, review = await _gen_one_with_review(
-                task_id, idx, pages[idx - 1], base_prompt, ref_urls, ref_mode,
-                mode=mode)
-            if new_url and new_url != img["image_url"]:
-                img["image_url"] = new_url
-                try:
-                    data, _ = await _fb2(new_url)
-                    img["hash"] = hashlib.md5(data).hexdigest()
-                except Exception:  # noqa: BLE001
-                    pass
-                img["prompt_used"] = (img.get("prompt_used", "") + "|ai_review").strip("|")
-            if not review["pass"]:
-                ai_review_flags[idx] = review.get("flagged") or ["AI 审核未通过"]
-    except Exception:  # noqa: BLE001
-        traceback.print_exc()   # AI 审核通道故障不误杀（人工审核兜底）
-    # 合并标记：AI 审核仍不通过的页一并进人工审核
-    return localized, ai_review_flags
+    flags: dict[int, list[str]] = {}
+    if settings.mock_image_gen:
+        return localized, flags
+    from src.services.visual_check import comprehensive_page_check
+    for img in localized:
+        idx = img.get("page_index")
+        if not isinstance(idx, int) or not (1 <= idx <= len(pages)):
+            continue
+        page_text = pages[idx - 1]
+        chk = await comprehensive_page_check(
+            img["image_url"], page_text, mode in ("compare", "single"))
+        if chk is None or chk["ok"]:
+            continue
+        # 不合格：换构图重生一次（沿用 Sunburst 文字精修通道）
+        regen_ok = False
+        try:
+            from src.gateway.image_gen import generate_image
+            from src.gateway.ocr import fetch_image_bytes as _fb
+            from src.pipeline.nodes import _persist_image as _pi
+            regen_prompt = (
+                image_tpl.replace("{page_body}", page_text)
+                + "（重新排版：换一个与之前不同的构图与配色，"
+                  "文字逐字复现上述文案，一字不得增删改；"
+                  "每个字笔画分明清晰可辨）")
+            r2 = await generate_image(regen_prompt, model=_SUNBURST_MODEL,
+                                      channel="fusion")
+            data, ctype = await _fb(r2["image_url"])
+            local_url = _pi(task_id, idx, "p", data, ctype)
+            img["image_url"] = local_url
+            img["hash"] = hashlib.md5(data).hexdigest()
+            img["prompt_used"] = (img.get("prompt_used", "") + "|regen").strip("|")
+            regen_ok = True
+        except Exception:  # noqa: BLE001
+            traceback.print_exc()
+        if not regen_ok:
+            flags[idx] = chk["issues"] or ["综合质检未通过"]
+        else:
+            # 重生后再查一次，仍不过则打标记
+            chk2 = await comprehensive_page_check(
+                img["image_url"], page_text, mode in ("compare", "single"))
+            if chk2 is not None and not chk2["ok"]:
+                flags[idx] = (chk2["issues"] or chk["issues"]
+                              or ["重生后仍未通过综合质检"])
+    return localized, flags
 
 
 async def _localize_refs(task_id, references: list[dict]) -> list[dict]:
@@ -709,6 +717,8 @@ async def _persist_ocr(session, task_id, ocr_map: dict[int, str]) -> float:
             key_fields={"page": str(page_index), "source": "agent"},
             confidence=0.9 if text else 0.0))
     if missing_rows:
-        rows, ocr_cost = await _fallback_ocr(missing_rows)
+        # 2026-09-21 用户决策：不再做生图后 OCR 兜底（cross_check 不依赖
+        # OCR 结果做重活，文字质检已由 VL 综合校验承担）——缺页直接置空。
+        rows, ocr_cost = [], 0.0
         session.add_all(rows)
     return ocr_cost

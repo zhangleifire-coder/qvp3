@@ -37,6 +37,31 @@ const TasksView = {
     };
   },
   computed: {
+    // 2026-09-21：6 个亚秒级收尾节点合并为一行展示（界面减负）；
+    // 正文创作空转节点标注「复用核查草稿」
+    mergedTimeline() {
+      const TAIL = ['rule_check', 'cross_check', 'risk_classify',
+                    'review_queue', 'batch_signoff', 'publish_snapshot'];
+      const tl = (this.detail && this.detail.node_timeline) || [];
+      const tails = tl.filter(e => TAIL.includes(e.node));
+      const heads = tl.filter(e => !TAIL.includes(e.node)).map(e =>
+        e.node === 'agent_draft'
+          ? { ...e, _label: '正文创作（复用核查草稿）' } : e);
+      if (tails.length) {
+        const anyFail = tails.some(e => e.status === 'failed');
+        const allDone = tails.every(e => e.status === 'done');
+        const dur = tails.reduce((a, e) => a + (e.duration_s || 0), 0);
+        const cost = tails.reduce((a, e) => a + (e.cost_cny || 0), 0);
+        heads.push({
+          node: '_tail',
+          _label: `收尾处理（${tails.length} 项：规则/一致性/风险/审核/会签/快照）`,
+          status: anyFail ? 'failed' : (allDone ? 'done' : 'running'),
+          duration_s: Math.round(dur * 10) / 10,
+          cost_cny: cost, model_version: '', prompt_version: '',
+        });
+      }
+      return heads;
+    },
     exportPct() {
       const j = this.exportJob;
       if (!j || !j.total) return 5;
@@ -722,8 +747,8 @@ const TasksView = {
             <table class="table tl-table">
               <thead><tr><th>节点</th><th>状态</th><th>耗时</th><th>成本(¥)</th><th>模型/提示词</th></tr></thead>
               <tbody>
-                <tr v-for="e in detail.node_timeline" :key="e.node">
-                  <td>{{ nodeLabels[e.node] || e.node }}</td>
+                <tr v-for="e in mergedTimeline()" :key="e.node">
+                  <td>{{ e._label || nodeLabels[e.node] || e.node }}</td>
                   <td>
                     <span class="tag" :class="{done:'tag-green', failed:'tag-red', running:'tag-blue'}[e.status] || ''">
                       {{ {done:'完成', failed:'失败', running:'进行中', pending:'待开始'}[e.status] || e.status }}
