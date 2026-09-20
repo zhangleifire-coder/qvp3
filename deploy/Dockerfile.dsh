@@ -38,5 +38,33 @@ RUN pip install -i ${PIP_INDEX_URL} -r dsh_serve/requirements.txt
 COPY . .
 RUN chmod +x deploy/entrypoint.dsh.sh && mkdir -p static/generated exports /data/dsh
 
+# 海报 API 字体（src/api/posters_tmp.py 用）：
+# - Noto Sans CJK（OFL，apt 官方源）：中文正文/标题，可分发
+# - Remix Icon（Apache 2.0，npmmirror）：要点图标字体
+# 本地开发可用 data/fonts/msyh*.ttc（微软雅黑，版权原因不入库/不分发，
+# 渲染层自动回退到 Noto Sans CJK）。
+RUN apt-get update && apt-get install -y --no-install-recommends fonts-noto-cjk \
+    && rm -rf /var/lib/apt/lists/*
+RUN python - <<'EOF'
+import httpx, tarfile, io, json, re
+from pathlib import Path
+r = httpx.get("https://registry.npmmirror.com/remixicon/-/remixicon-4.2.0.tgz",
+              timeout=120, follow_redirects=True)
+tf = tarfile.open(fileobj=io.BytesIO(r.content), mode="r:gz")
+out = Path("/app/data/fonts"); out.mkdir(parents=True, exist_ok=True)
+icon_map = {}
+for m in tf.getmembers():
+    if m.name.endswith("fonts/remixicon.ttf"):
+        (out / "remixicon.ttf").write_bytes(tf.extractfile(m).read())
+    if m.name.endswith("remixicon.css"):
+        css = tf.extractfile(m).read().decode("utf-8")
+        pat = re.compile(r'\.ri-([a-z0-9-]+):before\s*\{\s*content:\s*"\\([0-9a-f]{4})"')
+        for name, code in pat.findall(css):
+            icon_map[name] = int(code, 16)
+(out / "remixicon_map.json").write_text(json.dumps(icon_map), encoding="utf-8")
+assert (out / "remixicon.ttf").exists() and icon_map, "remixicon 字体下载失败"
+print("poster fonts ready:", len(icon_map), "icons")
+EOF
+
 EXPOSE 8005
 ENTRYPOINT ["deploy/entrypoint.dsh.sh"]
