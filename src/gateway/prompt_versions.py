@@ -166,6 +166,42 @@ _IMAGE_TEXT_HARD_RULE = (
 )
 
 
+
+import re as _re
+
+# 底色词表：风格库条目描述里的背景色措辞（分类分配背景约束的锚点）
+_BG_WORDS = ("深靛紫", "深炭", "炭灰", "深褐", "深咖", "深墨绿", "墨绿",
+             "深藏青", "藏青", "深海军蓝", "深灰蓝", "黛蓝", "黛青", "深棕",
+             "深紫", "深青", "深灰", "炭黑", "深豆绿", "深藕紫", "深暖灰",
+             "深米灰", "墨黑", "深灰黑", "深靛", "砖红", "深酒红")
+
+
+def _extract_bg_clause(text: str) -> str:
+    """从风格描述提取背景色句（第一个含底色词且语义指向背景/底的分句）。"""
+    for seg in _re.split(r"[，；。]", text or ""):
+        seg = seg.strip()
+        if not seg:
+            continue
+        if any(w in seg for w in _BG_WORDS) and ("背景" in seg or "底" in seg
+                                                 or "色" in seg):
+            return seg
+    return ""
+
+
+def _bg_lock_clause(mode: str, *texts: str) -> str:
+    """图生图（compare/single）背景保持铁律：从风格描述提取底色句，
+    要求背景保持该色、忽略参考图环境色——按风格库条目分类分配背景约束。"""
+    if mode not in ("compare", "single"):
+        return ""
+    for t in texts:
+        bg = _extract_bg_clause(t)
+        if bg:
+            return (f"\n\n【背景保持铁律】画面背景必须保持：{bg}。"
+                    "参考图仅用于产品/主体外观参考，严格忽略参考图的环境色、"
+                    "场景色与背景色，背景绝不出现米白/浅黄/白色。")
+    return ""
+
+
 def get_image_prompt(mode: str, page_body: str, page_index: int = None,
                      template: str = None, style_block: str = None,
                      page_subject: str = None, visual: str = None,
@@ -207,6 +243,7 @@ def get_image_prompt(mode: str, page_body: str, page_index: int = None,
         # 追加本页专属排版指令，让 6 页构图错开（风格段不变，只变布局）
         prompt += _PAGE_LAYOUTS[(page_index - 1) % len(_PAGE_LAYOUTS)]
     prompt += _IMAGE_TEXT_HARD_RULE
+    prompt += _bg_lock_clause(mode, prompt)
     return _apply_page_subject(prompt, page_subject)
 
 
