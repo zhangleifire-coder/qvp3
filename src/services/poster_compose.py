@@ -269,16 +269,95 @@ def _paste_cover(img, ill_path, box, radius=28):
     img.paste(ill, (x, y), mask)
 
 
+def _paste_full(img, ill_path):
+    """全幅垫底（cover 裁切、无圆角）。"""
+    _paste_cover(img, ill_path, (0, 0, W, H), radius=0)
+
+
+LAYOUTS = ("top", "overlay", "left", "right", "bottom")
+
+
+def pick_layout(task_id, page_index: int) -> str:
+    """确定性版式选择：task_id+页码 作随机种子——同一任务重跑/重生成
+    版式稳定不变；版式权重偏向杂志感最强的压图版。"""
+    import random as _r
+    rng = _r.Random(f"layout:{task_id}:{page_index}")
+    return rng.choices(["overlay", "top", "left", "right", "bottom"],
+                       weights=[30, 25, 15, 15, 15])[0]
+
+
+def ill_size_for(layout: str) -> str:
+    """分栏版式要竖构图，避免从横版图强裁损失主体。"""
+    return "1024x1536" if layout in ("left", "right") else "1536x1024"
+
+
+def _draw_title(dr, title, max_w, y, align, x_anchor, accent, fg):
+    """标题：子句边界折行 ≤2 行；align=center 时 x_anchor 为中线，否则为左边。"""
+    flat = title.replace("\n", "")
+    lines = [flat]
+    f_title = _font(80, True)
+    for size in range(80, 27, -4):
+        f_title = _font(size, True)
+        lines = _wrap_clauses_px(flat, f_title, max_w, dr)
+        if len(lines) <= 2:
+            break
+    for wrapped in lines[:2]:
+        w = dr.textlength(wrapped, font=f_title)
+        x = (x_anchor - w) / 2 if align == "center" else x_anchor
+        dr.text((x, y), wrapped, font=f_title, fill=fg["title"])
+        y += int(f_title.size * 1.32)
+    return y
+
+
+def _draw_dashes(dr, y, max_w, x_anchor, align, accent, fg):
+    seg, gap = 72, 16
+    if align == "center":
+        x0 = (x_anchor - (seg * 2 + gap)) / 2
+    else:
+        x0 = x_anchor
+    dr.rounded_rectangle([x0, y, x0 + seg, y + 8], radius=4, fill=accent)
+    dr.rounded_rectangle([x0 + seg + gap, y, x0 + seg * 2 + gap, y + 8],
+                         radius=4, fill=fg["dash2"])
+    return y + 46
+
+
+def _render_points_col(dr, points, x, y, max_w, accent, fg,
+                       pt_size=34, circle=48):
+    """分栏窄列要点：每条按子句折 ≤2 行，圆底图标在块顶。"""
+    f_pt = _font(pt_size, False)
+    for i, pt in enumerate(points[:4]):
+        if isinstance(pt, str):
+            icon, text = "", pt
+        else:
+            icon, text = pt.get("icon", ""), pt.get("text", "")
+        cy = y
+        dr.ellipse([x, cy, x + circle, cy + circle], fill=accent)
+        ch = _icon_char(icon)
+        if ch:
+            dr.text((x + circle / 2, cy + circle / 2), ch,
+                    font=_icon_font(26),
+                    fill=(30, 28, 26) if accent == GOLD else (255, 255, 255),
+                    anchor="mm")
+        lines = _wrap_clauses_px(text, f_pt, max_w - circle - 20, dr)[:3]
+        ty = cy + (circle - pt_size) / 2 - 2
+        for ln in lines:
+            dr.text((x + circle + 20, ty), ln, font=f_pt, fill=fg["point"])
+            ty += int(pt_size * 1.32)
+        y = max(ty, cy + circle) + 18
+    return y
+
+
 def compose_page(title: str, points: list | None = None,
                  illustration: Path | None = None,
                  footer: str = "", style_desc: str = "",
                  camps: tuple | None = None,
+                 layout: str = "top",
                  out_dir: Path = GENERATED) -> Path:
-    """渲染单页海报（v3 上图下文：程序文字 + 顶部全幅 AI 画面）。
+    """渲染单页海报（v4 多版式：程序文字 + AI 画面，构图/文字位置随机变化）。
 
-    插图顶部全幅（56% 高、窄边距），标题+图标要点在下——对齐
-    杂志卡参考图（版型合身/颜色控制）的图文配比；不再用中部小图框。
-    camps=(left, right) 时仍走双阵营版式（预留）。
+    layout：top=上图下文（默认）/ bottom=上文下图 / left|right=侧栏图文
+    / overlay=全幅压图（底部暗罩白字，杂志感最强）。缺插图时统一退回
+    top 纯文字版式；camps 为双阵营预留路径。
     返回输出 PNG 路径。
     """
     from PIL import Image, ImageDraw
@@ -295,54 +374,74 @@ def compose_page(title: str, points: list | None = None,
 
     margin = 48
     max_w = W - margin * 2
-
-    # 1) 顶部全幅插图
-    has_ill = bool(illustration) and illustration.exists()
-    if has_ill and not camps:
-        img_h = int(H * 0.54)
-        _paste_cover(img, illustration, (margin, margin, max_w, img_h),
-                     radius=32)
-        y = margin + img_h + 46
-    else:
-        y = 112
-
-    # 2) 标题（像素级换行，至多两行，居中）
     title = (title or "").strip()
     if not title:
         raise ValueError("title required")
-    flat = title.replace("\n", "")
-    size, f_title, lines = 80, None, [flat]
-    for size in range(80, 27, -4):
-        f_title = _font(size, True)
-        lines = _wrap_clauses_px(flat, f_title, max_w, dr)
-        if len(lines) <= 2:
-            break
-    for wrapped in lines[:2]:
-        w = dr.textlength(wrapped, font=f_title)
-        dr.text(((W - w) / 2, y), wrapped, font=f_title, fill=fg["title"])
-        y += int(size * 1.32)
-    y += 18
-    # 双色短横线装饰
-    seg, gap = 72, 16
-    x0 = (W - (seg * 2 + gap)) / 2
-    dr.rounded_rectangle([x0, y, x0 + seg, y + 8], radius=4, fill=accent)
-    dr.rounded_rectangle([x0 + seg + gap, y, x0 + seg * 2 + gap, y + 8],
-                         radius=4, fill=fg["dash2"])
-    y += 46
+    has_ill = bool(illustration) and illustration.exists() and not camps
+    layout = (layout or "top") if has_ill else "top"
+    pts = points or []
 
-    # 3) 要点
-    if camps:
-        y = _render_camps(dr, camps, margin, y, fg)
-    else:
-        y = _render_points(dr, points or [], margin, y, accent, fg)
+    if layout == "overlay":
+        _paste_full(img, illustration)
+        # 底部暗色渐变罩：42% 处起至底部，白字压罩保证可读性
+        scrim = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        sd = ImageDraw.Draw(scrim)
+        y0 = int(H * 0.40)
+        for yy in range(y0, H):
+            a = int(210 * (yy - y0) / (H - y0))
+            sd.line([(0, yy), (W, yy)], fill=(12, 10, 18, a))
+        img.paste(Image.alpha_composite(img.convert("RGBA"), scrim).convert("RGB"),
+                  (0, 0))
+        dr = ImageDraw.Draw(img)
+        fg = {"title": (252, 250, 254), "point": (238, 236, 245),
+              "violet": (200, 190, 220), "line": (160, 154, 172),
+              "dash2": (200, 190, 220)}
+        y = int(H * 0.50)
+        y = _draw_title(dr, title, max_w, y, "center", W, accent, fg)
+        y = _draw_dashes(dr, y + 14, max_w, W, "center", accent, fg)
+        _render_points(dr, pts, margin, y, accent, fg)
 
-    # 4) 无插图时中部补插图位（camps 预留路径）
-    if has_ill and camps:
-        gh = H - 150 - y
+    elif layout in ("left", "right"):
+        ill_w = int(W * 0.54)
+        ix = margin if layout == "left" else W - margin - ill_w
+        _paste_cover(img, illustration, (ix, margin, ill_w, H - margin * 2),
+                     radius=32)
+        tx = (margin + ill_w + 46) if layout == "left" else margin
+        tw = W - tx - margin if layout == "left" else ill_w - 46 - margin
+        y = int(H * 0.16)
+        y = _draw_title(dr, title, tw, y, "left", tx, accent, fg)
+        y = _draw_dashes(dr, y + 12, tw, tx, "left", accent, fg)
+        _render_points_col(dr, pts, tx, y, tw, accent, fg,
+                           pt_size=28, circle=42)
+
+    elif layout == "bottom":
+        y = 96
+        y = _draw_title(dr, title, max_w, y, "center", W, accent, fg)
+        y = _draw_dashes(dr, y + 14, max_w, W, "center", accent, fg)
+        y = _render_points(dr, pts, margin, y, accent, fg)
+        gh = H - margin - (y + 12)
         if gh > 200:
-            _paste_cover(img, illustration, (margin, y + 10, max_w, gh))
+            _paste_cover(img, illustration, (margin, y + 12, max_w, gh),
+                         radius=32)
 
-    if footer:
+    else:  # top（含无插图回退）
+        if has_ill:
+            img_h = int(H * 0.54)
+            _paste_cover(img, illustration, (margin, margin, max_w, img_h),
+                         radius=32)
+            y = margin + img_h + 46
+        else:
+            y = 112
+        y = _draw_title(dr, title, max_w, y, "center", W, accent, fg)
+        y = _draw_dashes(dr, y + 14, max_w, W, "center", accent, fg)
+        if camps:
+            _render_camps(dr, camps, margin, y, fg)
+        else:
+            _render_points(dr, pts, margin, y, accent, fg)
+        if has_ill and camps:
+            pass  # camps 预留：插图已由调用方按双阵营语义处理
+
+    if footer and layout in ("top", "bottom"):
         f_ft = _font(38, False)
         tw = dr.textlength(footer, font=f_ft)
         seg2 = 84
