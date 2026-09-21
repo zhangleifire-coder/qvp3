@@ -679,7 +679,8 @@ async def _compose_mode_assets(task_id, query, mode, pages, image_style,
 
         from src.services.poster_compose import (
             compose_page, gen_textfree_illustration, split_title_points,
-            with_default_icons, visual_brief, pick_layout, ill_size_for)
+            with_default_icons, visual_brief, pick_layout, pick_img_count,
+            sub_prompts, ill_size_for)
         from src.services.visual_check import comprehensive_page_check
         from src.pipeline.nodes import _persist_image
         from src.services.style_select import page_refs as _pref
@@ -710,17 +711,27 @@ async def _compose_mode_assets(task_id, query, mode, pages, image_style,
             points = with_default_icons(raw_points)
             ill_prompt = (ill_prompts[i - 1] if i - 1 < len(ill_prompts)
                           else f"{query} {title} 产品场景画面")
-            refs = _pref(ref_all, i) if ref_all else None
-            layout = pick_layout(task_id, i)
-            async with sem:
-                ill = await gen_textfree_illustration(
-                    ill_prompt, style_desc, refs, brief=brief,
-                    size=ill_size_for(layout))
-            out_path = compose_page(title, points, illustration=ill,
+            multi_hint = any(k in style_desc
+                             for k in ("拼贴", "宫格", "多张", "错落"))
+            n_img = pick_img_count(task_id, i, multi_hint)
+            layout = pick_layout(task_id, i, n_img)
+            subs = sub_prompts(ill_prompt, n_img, f"{task_id}:{i}")
+            size = ill_size_for(layout, n_img)
+
+            async def _one(j: int, sub: str):
+                # 参考图只给首张子画面，避免成组图片彼此雷同
+                refs = (_pref(ref_all, i) if ref_all else None) if j == 0 else None
+                async with sem:
+                    return await gen_textfree_illustration(
+                        sub, style_desc, refs, brief=brief, size=size)
+
+            ills = [p for p in await _asyncio.gather(
+                *[_one(j, s) for j, s in enumerate(subs)]) if p]
+            out_path = compose_page(title, points, illustration=ills,
                                     style_desc=style_desc, layout=layout)
             ctx[i] = {"title": title, "points": points,
                       "point_texts": raw_points, "ill_prompt": ill_prompt,
-                      "layout": layout}
+                      "layout": layout, "n_img": n_img, "subs": subs}
             return i, out_path
 
         built = dict(await _asyncio.gather(
@@ -750,12 +761,19 @@ async def _compose_mode_assets(task_id, query, mode, pages, image_style,
             if chk is None or chk["ok"]:
                 continue
             try:
-                ill = await gen_textfree_illustration(
-                    c["ill_prompt"] + "（换一个不同的构图角度）",
-                    style_desc, _pref(ref_all, idx) if ref_all else None,
-                    brief=brief, size=ill_size_for(c["layout"]))
+                async def _reone(j: int, sub: str):
+                    async with sem:
+                        return await gen_textfree_illustration(
+                            sub + "（换一个不同的构图角度）",
+                            style_desc,
+                            (_pref(ref_all, idx) if ref_all else None) if j == 0 else None,
+                            brief=brief,
+                            size=ill_size_for(c["layout"], c["n_img"]))
+
+                ills2 = [p for p in await _asyncio.gather(
+                    *[_reone(j, s) for j, s in enumerate(c["subs"])]) if p]
                 out_path = compose_page(c["title"], c["points"],
-                                        illustration=ill,
+                                        illustration=ills2,
                                         style_desc=style_desc,
                                         layout=c["layout"])
                 data = out_path.read_bytes()

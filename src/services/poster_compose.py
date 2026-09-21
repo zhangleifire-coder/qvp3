@@ -276,19 +276,107 @@ def _paste_full(img, ill_path):
 
 LAYOUTS = ("top", "overlay", "left", "right", "bottom")
 
+# 子画面 Variety 提示（画面感导向：特写/全景/俯视/人物/光影/材质）
+_SUBVIEW_HINTS = ("主体特写构图，浅景深虚化", "全景场景，交代完整环境",
+                  "俯视平铺构图", "使用中的人物与手部场景，生活感",
+                  "逆光氛围，强调光影层次", "材质纹理近景，细节质感")
 
-def pick_layout(task_id, page_index: int) -> str:
+
+def pick_img_count(task_id, page_index: int, multi_hint: bool = False) -> int:
+    """确定性每页图片张数（1/2/3/4/6 宫格拼贴）；拼贴/宫格类风格至少 2 张。"""
+    import random as _r
+    rng = _r.Random(f"imgn:{task_id}:{page_index}")
+    opts = ((2, 30), (3, 25), (4, 20), (5, 10), (6, 15)) if multi_hint \
+        else ((1, 25), (2, 25), (3, 20), (4, 12), (5, 8), (6, 10))
+    return rng.choices([o[0] for o in opts], weights=[o[1] for o in opts])[0]
+
+
+def sub_prompts(base: str, n: int, seed_key: str) -> list:
+    """一页 N 张时的子画面 prompt：同主题不同景别/构图，保证成组不重复。"""
+    import random as _r
+    rng = _r.Random(f"sub:{seed_key}")
+    hints = rng.sample(_SUBVIEW_HINTS, min(n, len(_SUBVIEW_HINTS)))
+    return [f"{base}（第{j + 1}/{n}张：{hints[j]}）" for j in range(n)]
+
+
+def pick_layout(task_id, page_index: int, n: int = 1) -> str:
     """确定性版式选择：task_id+页码 作随机种子——同一任务重跑/重生成
-    版式稳定不变；版式权重偏向杂志感最强的压图版。"""
+    版式稳定不变；压图版仅适合 ≤2 张（多图时自动排除），版式权重偏向
+    杂志感最强的压图版。"""
     import random as _r
     rng = _r.Random(f"layout:{task_id}:{page_index}")
-    return rng.choices(["overlay", "top", "left", "right", "bottom"],
-                       weights=[30, 25, 15, 15, 15])[0]
+    if n <= 2:
+        return rng.choices(["overlay", "top", "left", "right", "bottom"],
+                           weights=[30, 25, 15, 15, 15])[0]
+    return rng.choices(["top", "bottom", "left", "right"],
+                       weights=[40, 25, 20, 15])[0]
 
 
-def ill_size_for(layout: str) -> str:
-    """分栏版式要竖构图，避免从横版图强裁损失主体。"""
+def ill_size_for(layout: str, n: int = 1) -> str:
+    """分栏/竖宫格要竖构图，横排宫格要横构图，避免强裁损失主体。"""
+    if n >= 2:
+        return "1024x1536" if layout in ("left", "right") else "1536x1024"
     return "1024x1536" if layout in ("left", "right") else "1536x1024"
+
+
+def _grid_plan(n: int):
+    """N 张 → (列, 行)；5 张按 3+2 两行处理。"""
+    return {1: (1, 1), 2: (2, 1), 3: (3, 1), 4: (2, 2),
+            5: (3, 2), 6: (3, 2)}.get(n, (3, 2))
+
+
+def _paste_grid(img, ill_paths, box, radius=24, gap=18):
+    """圆角宫格拼贴：5 张时第二行两张居中。"""
+    x, y, bw, bh = box
+    n = len(ill_paths)
+    cols, rows = _grid_plan(n)
+    cw = int((bw - gap * (cols - 1)) / cols)
+    ch = int((bh - gap * (rows - 1)) / rows)
+    for idx, p in enumerate(ill_paths):
+        if n == 5 and idx >= 3:
+            off = int((bw - (cw * 2 + gap)) / 2)
+            bx = int(x + off + (idx - 3) * (cw + gap))
+            by = int(y + (ch + gap))
+        else:
+            r, c = divmod(idx, cols)
+            bx = int(x + c * (cw + gap))
+            by = int(y + r * (ch + gap))
+        _paste_cover(img, p, (bx, by, cw, ch), radius=radius)
+
+
+def _grid_captions(img, texts, box, n, gap=18):
+    """宫格角标：前 N 条要点作每格半透明深色小标签（宫格合集种草卡式）。"""
+    if n < 3 or not texts:
+        return
+    from PIL import Image, ImageDraw, ImageFont
+    x, y, bw, bh = box
+    cols, rows = _grid_plan(n)
+    cw = (bw - gap * (cols - 1)) / cols
+    ch = (bh - gap * (rows - 1)) / rows
+    cap = img.convert("RGBA")
+    cd = ImageDraw.Draw(cap)
+    f_cap = ImageFont.truetype(str(FONT_B if FONT_B.exists() else FONT_R), 24)
+    for idx, t in enumerate(texts[:n]):
+        if n == 5 and idx >= 3:
+            off = (bw - (cw * 2 + gap)) / 2
+            bx = x + off + (idx - 3) * (cw + gap)
+            by = y + (ch + gap)
+        else:
+            r, c = divmod(idx, cols)
+            bx = x + c * (cw + gap)
+            by = y + r * (ch + gap)
+        label = (t if isinstance(t, str) else t.get("text", ""))[:9]
+        if not label:
+            continue
+        tw = cd.textlength(label, font=f_cap)
+        pad = 14
+        lw, lh = tw + pad * 2, 40
+        lx, ly = bx + 12, by + ch - lh - 12
+        cd.rounded_rectangle([lx, ly, lx + lw, ly + lh], radius=20,
+                             fill=(16, 14, 22, 150))
+        cd.text((lx + pad, ly + 6), label, font=f_cap,
+                fill=(245, 243, 250))
+    img.paste(cap.convert("RGB"), (0, 0))
 
 
 def _draw_title(dr, title, max_w, y, align, x_anchor, accent, fg):
@@ -348,16 +436,17 @@ def _render_points_col(dr, points, x, y, max_w, accent, fg,
 
 
 def compose_page(title: str, points: list | None = None,
-                 illustration: Path | None = None,
+                 illustration=None,
                  footer: str = "", style_desc: str = "",
                  camps: tuple | None = None,
                  layout: str = "top",
                  out_dir: Path = GENERATED) -> Path:
-    """渲染单页海报（v4 多版式：程序文字 + AI 画面，构图/文字位置随机变化）。
+    """渲染单页海报（v5 宫格拼贴：每页 1-6 张 AI 画面 + 程序文字版式）。
 
-    layout：top=上图下文（默认）/ bottom=上文下图 / left|right=侧栏图文
-    / overlay=全幅压图（底部暗罩白字，杂志感最强）。缺插图时统一退回
-    top 纯文字版式；camps 为双阵营预留路径。
+    illustration 可为单张 Path 或多张 list[Path]（宫格拼贴）；
+    layout：top/bottom/left/right/overlay（压图仅 ≤2 张）；
+    N≥3 时要点自动转为宫格角标小标签（种草合集式），不再下方列要点。
+    缺插图时统一退回 top 纯文字版式；camps 为双阵营预留路径。
     返回输出 PNG 路径。
     """
     from PIL import Image, ImageDraw
@@ -377,18 +466,33 @@ def compose_page(title: str, points: list | None = None,
     title = (title or "").strip()
     if not title:
         raise ValueError("title required")
-    has_ill = bool(illustration) and illustration.exists() and not camps
+    if isinstance(illustration, (list, tuple)):
+        ills = [p for p in illustration if p and p.exists()]
+    elif illustration and illustration.exists():
+        ills = [illustration]
+    else:
+        ills = []
+    n = len(ills)
+    has_ill = bool(ills) and not camps
     layout = (layout or "top") if has_ill else "top"
+    if layout == "overlay" and n > 2:
+        layout = "top"
     pts = points or []
+    grid_caption = n >= 3  # 多图时要点转宫格角标
 
     if layout == "overlay":
-        _paste_full(img, illustration)
-        # 底部暗色渐变罩：42% 处起至底部，白字压罩保证可读性
+        if n == 2:  # 双图上下分屏全幅
+            half = (H - 18) // 2
+            _paste_cover(img, ills[0], (0, 0, W, half), radius=0)
+            _paste_cover(img, ills[1], (0, half + 18, W, half), radius=0)
+        else:
+            _paste_full(img, ills[0])
+        # 底部暗色渐变罩：40% 处起至底部，白字压罩保证可读性
         scrim = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         sd = ImageDraw.Draw(scrim)
         y0 = int(H * 0.40)
         for yy in range(y0, H):
-            a = int(210 * (yy - y0) / (H - y0))
+            a = int(215 * (yy - y0) / (H - y0))
             sd.line([(0, yy), (W, yy)], fill=(12, 10, 18, a))
         img.paste(Image.alpha_composite(img.convert("RGBA"), scrim).convert("RGB"),
                   (0, 0))
@@ -404,42 +508,54 @@ def compose_page(title: str, points: list | None = None,
     elif layout in ("left", "right"):
         ill_w = int(W * 0.54)
         ix = margin if layout == "left" else W - margin - ill_w
-        _paste_cover(img, illustration, (ix, margin, ill_w, H - margin * 2),
-                     radius=32)
+        gbox = (ix, margin, ill_w, H - margin * 2)
+        if n == 1:
+            _paste_cover(img, ills[0], gbox, radius=32)
+        else:
+            _paste_grid(img, ills, gbox, radius=26)
         tx = (margin + ill_w + 46) if layout == "left" else margin
         tw = W - tx - margin if layout == "left" else ill_w - 46 - margin
         y = int(H * 0.16)
         y = _draw_title(dr, title, tw, y, "left", tx, accent, fg)
         y = _draw_dashes(dr, y + 12, tw, tx, "left", accent, fg)
-        _render_points_col(dr, pts, tx, y, tw, accent, fg,
-                           pt_size=28, circle=42)
+        if not grid_caption:
+            _render_points_col(dr, pts, tx, y, tw, accent, fg,
+                               pt_size=28, circle=42)
 
     elif layout == "bottom":
         y = 96
         y = _draw_title(dr, title, max_w, y, "center", W, accent, fg)
         y = _draw_dashes(dr, y + 14, max_w, W, "center", accent, fg)
-        y = _render_points(dr, pts, margin, y, accent, fg)
-        gh = H - margin - (y + 12)
-        if gh > 200:
-            _paste_cover(img, illustration, (margin, y + 12, max_w, gh),
-                         radius=32)
+        if not grid_caption:
+            y = _render_points(dr, pts, margin, y, accent, fg)
+        gbox = (margin, y + 12, max_w, H - margin - (y + 12))
+        if n == 1:
+            if gbox[3] > 200:
+                _paste_cover(img, ills[0], gbox, radius=32)
+        elif gbox[3] > 200:
+            _paste_grid(img, ills, gbox, radius=26)
+        if grid_caption:
+            _grid_captions(img, pts, gbox, n)
 
     else:  # top（含无插图回退）
         if has_ill:
-            img_h = int(H * 0.54)
-            _paste_cover(img, illustration, (margin, margin, max_w, img_h),
-                         radius=32)
-            y = margin + img_h + 46
+            img_h = int(H * (0.62 if n >= 3 else 0.54))
+            gbox = (margin, margin, max_w, img_h)
+            if n == 1:
+                _paste_cover(img, ills[0], gbox, radius=32)
+            else:
+                _paste_grid(img, ills, gbox, radius=26)
+            y = margin + img_h + 42
         else:
             y = 112
         y = _draw_title(dr, title, max_w, y, "center", W, accent, fg)
         y = _draw_dashes(dr, y + 14, max_w, W, "center", accent, fg)
         if camps:
             _render_camps(dr, camps, margin, y, fg)
-        else:
+        elif not grid_caption:
             _render_points(dr, pts, margin, y, accent, fg)
-        if has_ill and camps:
-            pass  # camps 预留：插图已由调用方按双阵营语义处理
+        if has_ill and grid_caption:
+            _grid_captions(img, pts, gbox, n)
 
     if footer and layout in ("top", "bottom"):
         f_ft = _font(38, False)
