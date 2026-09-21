@@ -627,7 +627,8 @@ async def node_agent_assets(input_data: dict) -> dict:
         r = await _compose_mode_assets(task_id, query, mode, pages,
                                        image_style, image_style_desc,
                                        confirmed_refs, image_tpl,
-                                       prompt_version, regen_suffix)
+                                       prompt_version, regen_suffix,
+                                       style_pitfalls, bench_rule)
         if r is not None:
             return r
 
@@ -662,21 +663,23 @@ async def node_agent_assets(input_data: dict) -> dict:
 
 async def _compose_mode_assets(task_id, query, mode, pages, image_style,
                                image_style_desc, confirmed_refs, image_tpl,
-                               prompt_version, regen_suffix):
+                               prompt_version, regen_suffix,
+                               style_pitfalls="", bench_rule=""):
     """混合生图：程序文字版式 + AI 无文字画面（poster_compose 内核）。
 
-    v2（2026-09-21）：6 页插图并行生成；质检只对照「程序实际渲染的文字」
-    （标题+要点），不合格重走「新插图+重新合成」——绝不回退模型直出
-    （否则伪汉字/浅色底回潮）；仍不过打标记进人工审核。
-    返回与 node_agent_assets 相同结构的 dict；任何异常返回 None 回退
-    模型直出路径（可靠性优先）。
+    v3.1（2026-09-21）：旧直出流程的风格要求经 visual_brief 抽离层复用——
+    风格库忌讳条款 + 描述画面句 + 标杆规范配图句 → 纯画面 brief 注入插图
+    prompt（文字/排版类自动剔除，程序版式已承担）；重生同样带 brief。
+    其他同 v2：6 页插图并行；质检只对照程序实际渲染文字；不合格重合成
+    不回退模型直出。返回与 node_agent_assets 相同结构；异常返回 None
+    回退模型直出路径（可靠性优先）。
     """
     try:
         import asyncio as _asyncio
 
         from src.services.poster_compose import (
             compose_page, gen_textfree_illustration, split_title_points,
-            with_default_icons)
+            with_default_icons, visual_brief)
         from src.services.visual_check import comprehensive_page_check
         from src.pipeline.nodes import _persist_image
         from src.services.style_select import page_refs as _pref
@@ -689,6 +692,8 @@ async def _compose_mode_assets(task_id, query, mode, pages, image_style,
             tr = task_row.text_review or {}
             ill_prompts = [str(x) for x in (tr.get("image_prompt_draft") or [])][:6]
         style_desc = (image_style_desc or "").strip()
+        brief = visual_brief(style_desc, style_pitfalls or "",
+                             bench_rule or "")
 
         ref_all = [a.image_url for a in confirmed_refs]
         from src.stream.bus import bus
@@ -708,7 +713,7 @@ async def _compose_mode_assets(task_id, query, mode, pages, image_style,
             refs = _pref(ref_all, i) if ref_all else None
             async with sem:
                 ill = await gen_textfree_illustration(
-                    ill_prompt, style_desc, refs)
+                    ill_prompt, style_desc, refs, brief=brief)
             out_path = compose_page(title, points, illustration=ill,
                                     style_desc=style_desc)
             ctx[i] = {"title": title, "points": points,
@@ -744,7 +749,8 @@ async def _compose_mode_assets(task_id, query, mode, pages, image_style,
             try:
                 ill = await gen_textfree_illustration(
                     c["ill_prompt"] + "（换一个不同的构图角度）",
-                    style_desc, _pref(ref_all, idx) if ref_all else None)
+                    style_desc, _pref(ref_all, idx) if ref_all else None,
+                    brief=brief)
                 out_path = compose_page(c["title"], c["points"],
                                         illustration=ill,
                                         style_desc=style_desc)

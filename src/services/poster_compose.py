@@ -14,7 +14,6 @@
 import hashlib
 import json
 import re
-import textwrap
 import uuid
 from pathlib import Path
 
@@ -81,6 +80,57 @@ _TEXTFREE_PROMPT = (
     "图中是否有可读的汉字、单词或数字字符？"
     "注意：VS 对比字样、箭头、刻度线、虚线、引线、几何制图标记都不算文字。"
     "只回答 有 或 无，不要解释。")
+
+# 风格要求抽离过滤器：旧直出流程（风格库描述/忌讳条款/标杆规范）里
+# 与文字、排版、文案策略相关的条目——混合模式下这些由程序版式承担，
+# 注入插图 prompt 只会诱导模型出字，必须剔除
+_BRIEF_WORD_DROP = ("标题", "文字", "字体", "字号", "留白", "排版", "分栏",
+                    "标签", "结论", "胶囊", "逐字", "文案", "黑体", "口吻",
+                    "结构", "信息密度", "用词", "表述", "错开", "对称呈现",
+                    "事实有据", "绝对化")
+_BRIEF_LINE_DROP = ("标题", "口吻", "结构", "必须避免", "必须做", "图上文案")
+
+
+def _brief_clauses(text: str) -> list:
+    """单来源 → 画面条款列表：行级剔文案策略行，子句级剔文字/排版词。"""
+    out = []
+    for line in re.split(r"[。；;\n]", text or ""):
+        line = line.strip().strip("-• ")
+        if not line:
+            continue
+        # 仅对「前缀：正文」式行（标杆规范条目）做行级剔除；
+        # 无冒号的整句只在含文字/排版词时走子句过滤，避免误杀
+        hm = re.match(r"^([^：:]{1,12})[：:]", line)
+        if hm and any(k in hm.group(1) for k in _BRIEF_LINE_DROP):
+            continue
+        if line.startswith("【") and "】" in line[:20]:
+            continue
+        line = re.sub(r"^(配图|配图要求|画面|风格|要求|忌讳|pitfalls)\s*[:：]",
+                      "", line).strip()
+        if any(k in line for k in _BRIEF_WORD_DROP):
+            # 只过滤含文字/排版词的子句，保护完整行（含括号插入语）
+            keep = [c.strip() for c in re.split(r"[，,]", line)
+                    if c.strip() and not any(k in c for k in _BRIEF_WORD_DROP)]
+            if keep:
+                out.append("，".join(keep))
+        else:
+            out.append(line)
+    return out
+
+
+def visual_brief(style_desc: str = "", pitfalls: str = "",
+                 bench_rule: str = "") -> str:
+    """旧直出流程风格要求 → 混合模式插图 brief（可复用抽取层）。
+
+    来源（优先级）：风格库忌讳条款 → 风格库描述画面句 → 标杆规范配图句；
+    文字/排版/文案策略条目自动剔除。返回 ≤220 字 brief 注入插图 prompt。
+    """
+    clauses: list[str] = []
+    for src in (pitfalls, style_desc, bench_rule):
+        for c in _brief_clauses(src):
+            if c not in clauses:
+                clauses.append(c)
+    return "；".join(clauses[:8])[:220]
 
 
 def extract_palette(style_desc: str) -> tuple:
@@ -173,6 +223,38 @@ def _wrap_px(text, font, max_w, draw):
     return lines or [""]
 
 
+def _wrap_clauses_px(text, font, max_w, draw):
+    """子句边界优先折行：以 ，、；：空格 为断点整组搬行，
+    只有单子句超宽时才退化为字符级硬折（如"七百/多"不再出现）。"""
+    tokens, buf = [], ""
+    for tk in re.split(r"([，、,；;：: ])", text):
+        if re.fullmatch(r"[，、,；;：: ]", tk or ""):
+            buf += tk
+            tokens.append(buf)
+            buf = ""
+        else:
+            buf += tk
+    if buf:
+        tokens.append(buf)
+    lines, cur = [], ""
+    for tk in tokens:
+        cand = cur + tk
+        if not cur or draw.textlength(cand, font=font) <= max_w:
+            cur = cand
+        else:
+            lines.append(cur.rstrip())
+            cur = tk.lstrip()
+    if cur.strip() or not lines:
+        lines.append(cur.rstrip())
+    out: list[str] = []
+    for ln in lines:
+        if draw.textlength(ln, font=font) <= max_w:
+            out.append(ln)
+        else:
+            out.extend(_wrap_px(ln, font, max_w, draw))
+    return [l for l in out if l] or [""]
+
+
 def _paste_cover(img, ill_path, box, radius=28):
     from PIL import Image, ImageDraw
     x, y, bw, bh = box
@@ -192,10 +274,11 @@ def compose_page(title: str, points: list | None = None,
                  footer: str = "", style_desc: str = "",
                  camps: tuple | None = None,
                  out_dir: Path = GENERATED) -> Path:
-    """渲染单页海报（程序文字 + 中部 AI 画面空区）。
+    """渲染单页海报（v3 上图下文：程序文字 + 顶部全幅 AI 画面）。
 
-    - camps=None → 单栏版式：页标题 + 图标要点列表；
-    - camps=(left, right) → 双阵营版式（left/right 各 {"name","color","points"}）。
+    插图顶部全幅（56% 高、窄边距），标题+图标要点在下——对齐
+    杂志卡参考图（版型合身/颜色控制）的图文配比；不再用中部小图框。
+    camps=(left, right) 时仍走双阵营版式（预留）。
     返回输出 PNG 路径。
     """
     from PIL import Image, ImageDraw
@@ -210,47 +293,54 @@ def compose_page(title: str, points: list | None = None,
         c = tuple(int(a + (b - a) * t) for a, b in zip(bg_top, bg_bot))
         dr.line([(0, yy), (W, yy)], fill=c)
 
-    margin = 76
+    margin = 48
     max_w = W - margin * 2
 
+    # 1) 顶部全幅插图
+    has_ill = bool(illustration) and illustration.exists()
+    if has_ill and not camps:
+        img_h = int(H * 0.54)
+        _paste_cover(img, illustration, (margin, margin, max_w, img_h),
+                     radius=32)
+        y = margin + img_h + 46
+    else:
+        y = 112
+
+    # 2) 标题（像素级换行，至多两行，居中）
     title = (title or "").strip()
     if not title:
         raise ValueError("title required")
-    y = 96
     flat = title.replace("\n", "")
-    size = 82
-    lines = []
-    while size > 28:                      # 像素级换行 + 至多两行，缩号直至放下
+    size, f_title, lines = 80, None, [flat]
+    for size in range(80, 27, -4):
         f_title = _font(size, True)
-        lines = _wrap_px(flat, f_title, max_w, dr)[:2]
-        if len(_wrap_px(flat, f_title, max_w, dr)) <= 2:
+        lines = _wrap_clauses_px(flat, f_title, max_w, dr)
+        if len(lines) <= 2:
             break
-        size -= 4
-    f_title = _font(size, True)
-    for wrapped in lines:
+    for wrapped in lines[:2]:
         w = dr.textlength(wrapped, font=f_title)
         dr.text(((W - w) / 2, y), wrapped, font=f_title, fill=fg["title"])
-        y += int(size * 1.35)
-    y += 16
+        y += int(size * 1.32)
+    y += 18
     # 双色短横线装饰
     seg, gap = 72, 16
     x0 = (W - (seg * 2 + gap)) / 2
     dr.rounded_rectangle([x0, y, x0 + seg, y + 8], radius=4, fill=accent)
     dr.rounded_rectangle([x0 + seg + gap, y, x0 + seg * 2 + gap, y + 8],
                          radius=4, fill=fg["dash2"])
-    y += 44
+    y += 46
 
+    # 3) 要点
     if camps:
         y = _render_camps(dr, camps, margin, y, fg)
     else:
         y = _render_points(dr, points or [], margin, y, accent, fg)
 
-    gap_top = y + 10
-    gap_bot = H - 150
-    if illustration and illustration.exists():
-        gh = gap_bot - gap_top
+    # 4) 无插图时中部补插图位（camps 预留路径）
+    if has_ill and camps:
+        gh = H - 150 - y
         if gh > 200:
-            _paste_cover(img, illustration, (margin, gap_top, max_w, gh))
+            _paste_cover(img, illustration, (margin, y + 10, max_w, gh))
 
     if footer:
         f_ft = _font(38, False)
@@ -329,23 +419,17 @@ def _render_camps(dr, camps, margin, y, fg):
 
 async def gen_textfree_illustration(prompt: str, style_desc: str = "",
                                     ref_urls: list | None = None,
-                                    size: str = "1536x1024") -> Path | None:
+                                    size: str = "1536x1024",
+                                    brief: str = "") -> Path | None:
     """生成无文字 AI 画面：生图 → 宽松文字-Free 检查（VS/刻度豁免）
     → 不过则重生一次；仍不过返回 None（调用方决定占位或重试）。
-    风格画面句（文字类句子过滤后）与背景保持自动注入。
+    风格要求经 visual_brief 抽离层（风格描述/忌讳/标杆规范的纯画面句）
+    以 brief 注入；no_text 兜底防出字。
     """
     from src.gateway.image_gen import generate_image
     from src.gateway.ocr import fetch_image_bytes
 
-    # 风格画面句注入（剔除标题/排版类文字句，防出字）
-    tail = ""
-    if style_desc:
-        drop = ("标题", "文字", "字体", "黑体", "字号", "留白", "排版",
-                "分栏", "标签", "结论", "胶囊", "逐字")
-        segs = [s for s in style_desc.replace("；", "，").split("，")
-                if s.strip() and not any(k in s for k in drop)]
-        if segs:
-            tail = "。画面风格：" + "，".join(segs[:6])
+    tail = ("；画面要求：" + brief) if brief else ""
     no_text = ("，纯画面、无排版、无标题、无文字、无字母、无数字、"
                "无符号、无水印、无界面元素")
 
@@ -410,8 +494,10 @@ def _clean_ill_prompt(prompt: str) -> str:
 
 
 def split_title_points(body: str) -> tuple[str, list[str]]:
-    """分页文案 → (标题, 要点)：首句=标题（>22 字按子句断点截断），
-    其余句子按 20 字折行成要点（最多 5 条）。整段无换行也能正确拆分。"""
+    """分页文案 → (标题, 要点) v3：
+    - 首句=标题（>18 字按子句断点截断，去尾标点）；
+    - 其余按子句（，、；：）打包成 ≤18 字短要点，最多 4 条——
+      对齐参考图版式：要点是短句不是碎段落，不再硬折拦腰截断。"""
     body = (body or "").strip()
     if not body:
         return "", []
@@ -419,28 +505,38 @@ def split_title_points(body: str) -> tuple[str, list[str]]:
     sents = [s for s in sents if s]
     if not sents:
         return "", []
-    title = sents[0]
+    title = sents[0].rstrip("。！？!?；;")
     rest = "".join(sents[1:])
-    if len(title) > 22:
-        cut = max(title.rfind(c, 0, 22) for c in "，、,：: ")
-        if cut >= 8:
+    if len(title) > 18:
+        cut = max(title.rfind(c, 0, 18) for c in "，、,：: ")
+        if cut >= 6:
             rest = title[cut + 1:] + rest
-            title = title[:cut + 1]
+            title = title[:cut]
         else:
-            rest = title[22:] + rest
-            title = title[:22]
-    points: list[str] = []
+            rest = title[18:] + rest
+            title = title[:18]
+    clauses: list[str] = []
     for m in _SENT_RE.finditer(rest):
-        s = m.group(0).strip()
-        if not s:
-            continue
-        for seg in textwrap.wrap(s, width=20) or [s]:
-            seg = seg.strip().rstrip("。；;，,")
-            if seg:
-                points.append(seg[:24])
-        if len(points) >= 5:
+        for c in re.split(r"[，、,；;：:]", m.group(0)):
+            c = c.strip().rstrip("。！？!?，,、；;：:")
+            if c:
+                clauses.append(c)
+    points: list[str] = []
+    cur = ""
+    for c in clauses:
+        cand = c if not cur else cur + "，" + c
+        if len(cand) <= 18:
+            cur = cand
+        else:
+            if cur:
+                points.append(cur)
+            cur = c[:18]
+        if len(points) >= 4:
+            cur = ""
             break
-    return title, points[:5]
+    if cur and len(points) < 4:
+        points.append(cur)
+    return title, points[:4]
 
 
 def with_default_icons(points: list) -> list:
