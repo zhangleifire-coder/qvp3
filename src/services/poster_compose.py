@@ -13,6 +13,7 @@
 """
 import hashlib
 import json
+import re
 import textwrap
 import uuid
 from pathlib import Path
@@ -59,8 +60,21 @@ PALETTES = {
     "深暖灰": ((58, 52, 54), (76, 66, 68), GOLD),
     "深灰": ((48, 48, 54), (64, 62, 72), GOLD),
     "砖红": ((88, 48, 40), (110, 62, 48), (240, 220, 190)),
+    # 浅色系（风格库中米白/浅黄类条目；亮度判定自动切深字）
+    "米白": ((247, 242, 232), (238, 231, 217), (206, 112, 54)),
+    "奶白": ((250, 247, 241), (241, 236, 227), (206, 112, 54)),
+    "月白": ((244, 244, 246), (232, 232, 236), (206, 112, 54)),
+    "浅黄": ((248, 241, 218), (239, 228, 196), (206, 112, 54)),
+    "米黄": ((245, 236, 205), (235, 222, 186), (206, 112, 54)),
+    "浅杏": ((248, 238, 225), (240, 226, 208), (206, 112, 54)),
+    "浅灰": ((236, 236, 239), (224, 224, 229), (206, 112, 54)),
+    "白色": ((250, 249, 246), (242, 240, 235), (206, 112, 54)),
 }
 DEFAULT_PALETTE = ((47, 42, 79), (66, 51, 94), GOLD)
+
+# 底色句定位：「X底」或「X背景」前向窗口，先只在底色句内匹配色词，
+# 避免命中描述里描述阵营/点缀色的词（如「墨绿对藏蓝」）
+_BG_RE = re.compile(r"[一-鿿]{1,8}?底|[一-鿿]{1,10}?背景")
 
 # 文字-Free 检查宽松版提示（VS/箭头/刻度豁免）
 _TEXTFREE_PROMPT = (
@@ -70,11 +84,32 @@ _TEXTFREE_PROMPT = (
 
 
 def extract_palette(style_desc: str) -> tuple:
-    """底色句 → 程序色板（第一个命中词）。"""
+    """底色句 → 程序色板：优先在「X底/X背景」底色句内匹配色词，
+    未命中再全描述匹配，最后回退 DEFAULT。浅色词命中后 compose_page
+    按底色亮度自动切深色文字。"""
+    desc = style_desc or ""
+    seg = ""
+    m = _BG_RE.search(desc)
+    if m:
+        seg = desc[max(0, m.start() - 8):m.end() + 2]
     for word, pal in PALETTES.items():
-        if word in (style_desc or ""):
+        if word in seg:
+            return pal
+    for word, pal in PALETTES.items():
+        if word in desc:
             return pal
     return DEFAULT_PALETTE
+
+
+def _fg_set(bg_top):
+    """按底色亮度选文字色：浅底深字 / 深底浅字。"""
+    lum = 0.299 * bg_top[0] + 0.587 * bg_top[1] + 0.114 * bg_top[2]
+    if lum > 140:
+        return {"title": (34, 31, 40), "point": (54, 50, 62),
+                "violet": (146, 118, 158), "line": (172, 164, 152),
+                "dash2": (120, 110, 140)}
+    return {"title": FG_TITLE, "point": FG_POINT, "violet": VIOLET,
+            "line": (150, 142, 168), "dash2": VIOLET}
 
 
 _ICON_CACHE: dict | None = None
@@ -124,6 +159,20 @@ def _fit_size(text, base, bold, max_w, draw):
     return size
 
 
+def _wrap_px(text, font, max_w, draw):
+    """按像素宽度贪心换行（CJK/标点混排精确测宽，杜绝出框）。"""
+    lines, cur = [], ""
+    for ch in text:
+        if cur and draw.textlength(cur + ch, font=font) > max_w:
+            lines.append(cur)
+            cur = ch
+        else:
+            cur += ch
+    if cur:
+        lines.append(cur)
+    return lines or [""]
+
+
 def _paste_cover(img, ill_path, box, radius=28):
     from PIL import Image, ImageDraw
     x, y, bw, bh = box
@@ -153,6 +202,7 @@ def compose_page(title: str, points: list | None = None,
 
     out_dir.mkdir(parents=True, exist_ok=True)
     bg_top, bg_bot, accent = extract_palette(style_desc)
+    fg = _fg_set(bg_top)
     img = Image.new("RGB", (W, H))
     dr = ImageDraw.Draw(img)
     for yy in range(H):
@@ -162,32 +212,38 @@ def compose_page(title: str, points: list | None = None,
 
     margin = 76
     max_w = W - margin * 2
-    card = tuple(min(255, c + 34) for c in bg_top)
 
     title = (title or "").strip()
     if not title:
         raise ValueError("title required")
     y = 96
-    size = _fit_size(title.replace("\n", ""), 82, True, max_w, dr)
+    flat = title.replace("\n", "")
+    size = 82
+    lines = []
+    while size > 28:                      # 像素级换行 + 至多两行，缩号直至放下
+        f_title = _font(size, True)
+        lines = _wrap_px(flat, f_title, max_w, dr)[:2]
+        if len(_wrap_px(flat, f_title, max_w, dr)) <= 2:
+            break
+        size -= 4
     f_title = _font(size, True)
-    for line in title.split("\n"):
-        for wrapped in textwrap.wrap(line, width=max(6, int(max_w / size * 1.7))) or [""]:
-            w = dr.textlength(wrapped, font=f_title)
-            dr.text(((W - w) / 2, y), wrapped, font=f_title, fill=FG_TITLE)
-            y += int(size * 1.35)
+    for wrapped in lines:
+        w = dr.textlength(wrapped, font=f_title)
+        dr.text(((W - w) / 2, y), wrapped, font=f_title, fill=fg["title"])
+        y += int(size * 1.35)
     y += 16
     # 双色短横线装饰
     seg, gap = 72, 16
     x0 = (W - (seg * 2 + gap)) / 2
     dr.rounded_rectangle([x0, y, x0 + seg, y + 8], radius=4, fill=accent)
     dr.rounded_rectangle([x0 + seg + gap, y, x0 + seg * 2 + gap, y + 8],
-                         radius=4, fill=VIOLET)
+                         radius=4, fill=fg["dash2"])
     y += 44
 
     if camps:
-        y = _render_camps(dr, camps, margin, y)
+        y = _render_camps(dr, camps, margin, y, fg)
     else:
-        y = _render_points(dr, points or [], margin, y, accent)
+        y = _render_points(dr, points or [], margin, y, accent, fg)
 
     gap_top = y + 10
     gap_bot = H - 150
@@ -204,17 +260,17 @@ def compose_page(title: str, points: list | None = None,
         x0 = (W - total) / 2
         fy = H - 108
         ly = fy + 21
-        dr.line([x0, ly, x0 + seg2, ly], fill=(150, 142, 168), width=2)
+        dr.line([x0, ly, x0 + seg2, ly], fill=fg["line"], width=2)
         dr.text((x0 + seg2 + 40, fy), footer, font=f_ft, fill=accent)
         dr.line([x0 + seg2 + 40 + tw + 40, ly, x0 + total, ly],
-                fill=(150, 142, 168), width=2)
+                fill=fg["line"], width=2)
 
     out = out_dir / f"compose_{uuid.uuid4().hex[:10]}.png"
     img.save(out, "PNG")
     return out
 
 
-def _render_points(dr, points, margin, y, accent):
+def _render_points(dr, points, margin, y, accent, fg):
     """单栏要点：竖线 accent 条 + Remix Icon 圆底图标 + 短词。"""
     f_pt = _font(34, False)
     row_h = 68
@@ -233,18 +289,17 @@ def _render_points(dr, points, margin, y, accent):
             dr.text((margin + 22 + d / 2, cy + d / 2), ch,
                     font=_icon_font(26), fill=(30, 28, 26) if accent == GOLD
                     else (255, 255, 255), anchor="mm")
-        dr.text((margin + 22 + d + 18, cy + 6), text, font=f_pt, fill=FG_POINT)
+        dr.text((margin + 22 + d + 18, cy + 6), text, font=f_pt, fill=fg["point"])
     return y + min(len(points), 5) * row_h + 12
 
 
-def _render_camps(dr, camps, margin, y):
+def _render_camps(dr, camps, margin, y, fg):
     """双阵营：竖线色条+阵营名 + 双栏圆底图标要点。"""
-    col_w = (W - margin * 2 - 48) / 2
     for camp, color, x in camps:
         name = (camp.get("name") or "").strip()
         f_cap = _font(42, True)
         dr.rounded_rectangle([x, y + 4, x + 10, y + 50], radius=5, fill=color)
-        dr.text((x + 28, y), name, font=f_cap, fill=FG_TITLE)
+        dr.text((x + 28, y), name, font=f_cap, fill=fg["title"])
     y += 74
     f_pt = _font(32, False)
     row_h = 66
@@ -267,7 +322,8 @@ def _render_camps(dr, camps, margin, y):
             if ch:
                 dr.text((x + d / 2, cy + d / 2), ch, font=_icon_font(24),
                         fill=(255, 255, 255), anchor="mm")
-            dr.text((x + d + 16, cy + 6), pts[i]["text"], font=f_pt, fill=FG_POINT)
+            dr.text((x + d + 16, cy + 6), pts[i]["text"], font=f_pt,
+                    fill=fg["point"])
     return y + max_pts * row_h + 10
 
 
@@ -327,7 +383,7 @@ async def gen_textfree_illustration(prompt: str, style_desc: str = "",
         except Exception:
             return True
 
-    full = prompt + tail + no_text
+    full = _clean_ill_prompt(prompt) + tail + no_text
     fp = await _once(full)
     if fp and await _text_free(fp):
         return fp
@@ -337,14 +393,64 @@ async def gen_textfree_illustration(prompt: str, style_desc: str = "",
     return fp2 or fp          # 两次都不过：返回最后产物由调用方决定
 
 
+_SENT_RE = re.compile(r"[^。！？!?；;\n]+[。！？!?；;]?")
+_ILL_DROP = ("竖版", "横版", "留白", "主标题", "标题", "排版", "图文卡片",
+             "卡片", "分栏")
+# 要点默认图标（Remix Icon，按要点序号循环；文案不带图标时兜底）
+_DEFAULT_POINT_ICONS = ("checkbox-circle-line", "fire-line", "heart-line",
+                        "lightbulb-line", "thumb-up-line")
+
+
+def _clean_ill_prompt(prompt: str) -> str:
+    """插图 prompt 清洗：去掉整卡版式指令（这些 draft 为整图直出所写，
+    会诱导模型渲染完整图文卡/文字面板），只留场景画面描述。"""
+    segs = [s.strip() for s in re.split(r"[，,]", prompt or "") if s.strip()]
+    keep = [s for s in segs if not any(k in s for k in _ILL_DROP)]
+    return "，".join(keep) if keep else (prompt or "")
+
+
 def split_title_points(body: str) -> tuple[str, list[str]]:
-    """分页文案 → (标题, 要点列表)：首行=标题，其余行=要点（长行截断）。"""
-    lines = [ln.strip() for ln in (body or "").splitlines() if ln.strip()]
-    if not lines:
+    """分页文案 → (标题, 要点)：首句=标题（>22 字按子句断点截断），
+    其余句子按 20 字折行成要点（最多 5 条）。整段无换行也能正确拆分。"""
+    body = (body or "").strip()
+    if not body:
         return "", []
-    title = lines[0]
-    points = []
-    for ln in lines[1:]:
-        for seg in textwrap.wrap(ln, width=20) or [ln]:
-            points.append(seg[:24])
+    sents = [m.group(0).strip() for m in _SENT_RE.finditer(body)]
+    sents = [s for s in sents if s]
+    if not sents:
+        return "", []
+    title = sents[0]
+    rest = "".join(sents[1:])
+    if len(title) > 22:
+        cut = max(title.rfind(c, 0, 22) for c in "，、,：: ")
+        if cut >= 8:
+            rest = title[cut + 1:] + rest
+            title = title[:cut + 1]
+        else:
+            rest = title[22:] + rest
+            title = title[:22]
+    points: list[str] = []
+    for m in _SENT_RE.finditer(rest):
+        s = m.group(0).strip()
+        if not s:
+            continue
+        for seg in textwrap.wrap(s, width=20) or [s]:
+            seg = seg.strip().rstrip("。；;，,")
+            if seg:
+                points.append(seg[:24])
+        if len(points) >= 5:
+            break
     return title, points[:5]
+
+
+def with_default_icons(points: list) -> list:
+    """纯文字要点 → 带默认 Remix Icon 的要点（按序号循环）。"""
+    out = []
+    for i, p in enumerate(points):
+        if isinstance(p, dict) and p.get("icon"):
+            out.append(p)
+        else:
+            text = p.get("text", "") if isinstance(p, dict) else str(p)
+            out.append({"icon": _DEFAULT_POINT_ICONS[i % len(_DEFAULT_POINT_ICONS)],
+                        "text": text})
+    return out

@@ -7,6 +7,7 @@ COPY pyproject.toml requirements.txt ./
 COPY src/ ./src/
 COPY static/ ./static/
 COPY migrations/ ./migrations/
+COPY data/ ./data/
 COPY init_db.py ./
 COPY docker-entrypoint.sh ./
 

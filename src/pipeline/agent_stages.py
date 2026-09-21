@@ -665,12 +665,19 @@ async def _compose_mode_assets(task_id, query, mode, pages, image_style,
                                prompt_version, regen_suffix):
     """混合生图：程序文字版式 + AI 无文字画面（poster_compose 内核）。
 
+    v2（2026-09-21）：6 页插图并行生成；质检只对照「程序实际渲染的文字」
+    （标题+要点），不合格重走「新插图+重新合成」——绝不回退模型直出
+    （否则伪汉字/浅色底回潮）；仍不过打标记进人工审核。
     返回与 node_agent_assets 相同结构的 dict；任何异常返回 None 回退
     模型直出路径（可靠性优先）。
     """
     try:
+        import asyncio as _asyncio
+
         from src.services.poster_compose import (
-            compose_page, gen_textfree_illustration, split_title_points)
+            compose_page, gen_textfree_illustration, split_title_points,
+            with_default_icons)
+        from src.services.visual_check import comprehensive_page_check
         from src.pipeline.nodes import _persist_image
         from src.services.style_select import page_refs as _pref
 
@@ -684,33 +691,81 @@ async def _compose_mode_assets(task_id, query, mode, pages, image_style,
         style_desc = (image_style_desc or "").strip()
 
         ref_all = [a.image_url for a in confirmed_refs]
-        localized = []
         from src.stream.bus import bus
         await bus.publish("agent_progress",
                           {"message": "配图生成中（程序文字 + AI 画面）…"},
                           task_id=str(task_id))
-        for i, body in enumerate(pages, 1):
-            title, points = split_title_points(body)
+
+        sem = _asyncio.Semaphore(
+            max(2, min(6, int(getattr(settings, "image_gen_parallel", 2) or 2))))
+        ctx: dict[int, dict] = {}
+
+        async def _build_page(i: int, body: str):
+            title, raw_points = split_title_points(body)
+            points = with_default_icons(raw_points)
             ill_prompt = (ill_prompts[i - 1] if i - 1 < len(ill_prompts)
                           else f"{query} {title} 产品场景画面")
             refs = _pref(ref_all, i) if ref_all else None
-            ill = await gen_textfree_illustration(
-                ill_prompt, style_desc, refs)
+            async with sem:
+                ill = await gen_textfree_illustration(
+                    ill_prompt, style_desc, refs)
             out_path = compose_page(title, points, illustration=ill,
                                     style_desc=style_desc)
-            data = out_path.read_bytes()
+            ctx[i] = {"title": title, "points": points,
+                      "point_texts": raw_points, "ill_prompt": ill_prompt}
+            return i, out_path
+
+        built = dict(await _asyncio.gather(
+            *[_build_page(i, b) for i, b in enumerate(pages, 1)]))
+
+        localized = []
+        for i in range(1, len(pages) + 1):
+            data = built[i].read_bytes()
             local_url = _persist_image(task_id, i, "p", data, "image/png")
             localized.append({
                 "page_index": i, "image_url": local_url,
                 "hash": hashlib.md5(data).hexdigest(),
                 "origin_url": "", "size_ok": True,
-                "prompt_used": f"compose:{ill_prompt[:180]}",
+                "prompt_used": f"compose:{ctx[i]['ill_prompt'][:180]}",
             })
-        # 质检链照常：VL 查主体/协调（文字程序渲染免检）
-        localized, garbled = await _image_quality_chain(
-            task_id, pages, localized, image_tpl, mode, confirmed_refs)
+
+        # 质检：只对「程序渲染的文字」（标题+要点）做 VL 综合校验；
+        # 不合格重合成一次（新插图），仍不过打标记进人工审核
+        flags: dict[int, list[str]] = {}
+        ref_mode = mode in ("compare", "single")
+        for img in localized:
+            idx = img["page_index"]
+            c = ctx[idx]
+            rendered = c["title"] + "\n" + "\n".join(c["point_texts"])
+            chk = await comprehensive_page_check(
+                img["image_url"], rendered, ref_mode)
+            if chk is None or chk["ok"]:
+                continue
+            try:
+                ill = await gen_textfree_illustration(
+                    c["ill_prompt"] + "（换一个不同的构图角度）",
+                    style_desc, _pref(ref_all, idx) if ref_all else None)
+                out_path = compose_page(c["title"], c["points"],
+                                        illustration=ill,
+                                        style_desc=style_desc)
+                data = out_path.read_bytes()
+                img["image_url"] = _persist_image(task_id, idx, "p", data,
+                                                  "image/png")
+                img["hash"] = hashlib.md5(data).hexdigest()
+                img["prompt_used"] = (img.get("prompt_used", "")
+                                      + "|recompose").strip("|")
+                chk2 = await comprehensive_page_check(
+                    img["image_url"], rendered, ref_mode)
+                if chk2 is not None and not chk2["ok"]:
+                    flags[idx] = (chk2["issues"] or chk["issues"]
+                                  or ["重生后仍未通过综合质检"])
+            except Exception:  # noqa: BLE001
+                import traceback
+                traceback.print_exc()
+                flags[idx] = chk["issues"] or ["综合质检未通过"]
+
         async with SessionLocal() as session:
-            await _persist_review_marks(session, task_id, localized, garbled)
+            await _persist_review_marks(session, task_id, localized, flags)
             await _persist_assets(session, task_id, query, localized,
                                   "compose:v1")
             await session.commit()
