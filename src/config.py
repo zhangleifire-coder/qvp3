@@ -62,6 +62,10 @@ class Settings(BaseSettings):
     text_check_use_refs: bool = False
     mock_image_gen: bool = False         # 开发阶段模拟生图（不调 API、不花钱）
     # 搜实景图 provider（openserp 免费默认 / doubao_ark / bing_api 预留）
+    # 混合生图（2026-09-21 并入主链路）：程序渲染文字版式 + 每页一次
+    # AI 无文字画面（消灭模型伪汉字；成本与整图直出持平）；false 回退
+    # 模型直出图文
+    image_compose_mode: bool = True
     # 单候选生图（2026-09-21 用户决策）：文字铁律+VL 质检已保障质量，
     # 双候选 OCR 选优的收益不抵成本；true=恒单候选（可回滚）
     image_single_candidate: bool = True

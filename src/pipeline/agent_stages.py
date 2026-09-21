@@ -17,6 +17,7 @@
 - 配额 reset 点上移：task 级 MCP 配额在 agent_evidence 入口 reset
   （monolith 路径仍在 agent_production 入口，互不干扰）。
 """
+import hashlib
 import uuid
 
 from sqlalchemy import select
@@ -616,11 +617,24 @@ async def node_agent_assets(input_data: dict) -> dict:
         bench_section=bench_section, refs_section=refs_section,
         image_template=image_tpl, feedback_section=feedback_section,
         output_contract=_ASSETS_CONTRACT)
+    prompt_version = f"agent_assets_{mode}_v1{regen_suffix}"
+
+    # ── 混合生图模式（2026-09-21 并入，开关 image_compose_mode 默认开）──
+    # 程序渲染文字版式（消灭模型伪汉字）+ 每页一次 AI 无文字画面（VS/刻度豁免
+    # 文字-Free 检查）；画面 prompt 复用 text_check 的 image_prompt_draft。
+    # 成本与生图直出持平（6 张画面 1:1 替换 6 张整图），重生率反而更低。
+    if settings.image_compose_mode and not settings.mock_image_gen:
+        r = await _compose_mode_assets(task_id, query, mode, pages,
+                                       image_style, image_style_desc,
+                                       confirmed_refs, image_tpl,
+                                       prompt_version, regen_suffix)
+        if r is not None:
+            return r
+
     r = await _run_stage(task_id, "assets", user_msg, _validate_assets,
                          "配图生成中（generate_images）…")
     r["task_id"] = task_id
     out = r["out"]
-    prompt_version = f"agent_assets_{mode}_v1{regen_suffix}"
 
     # ── 确定性收尾：本地化 → 质检链（扭曲/主体/AI 双重审核）→ 参考图本地化 ──
     localized = await _localize_all(task_id, out["images"])
@@ -645,3 +659,75 @@ async def node_agent_assets(input_data: dict) -> dict:
             "tool_calls": tool_calls, "tool_cost_cny": tool_cost,
             "correction_rounds": r["correction_rounds"],
             "session_id": r["session_id"], "degraded": False}
+
+async def _compose_mode_assets(task_id, query, mode, pages, image_style,
+                               image_style_desc, confirmed_refs, image_tpl,
+                               prompt_version, regen_suffix):
+    """混合生图：程序文字版式 + AI 无文字画面（poster_compose 内核）。
+
+    返回与 node_agent_assets 相同结构的 dict；任何异常返回 None 回退
+    模型直出路径（可靠性优先）。
+    """
+    try:
+        from src.services.poster_compose import (
+            compose_page, gen_textfree_illustration, split_title_points)
+        from src.pipeline.nodes import _persist_image
+        from src.gateway.style_select import page_refs as _pref
+
+        # 画面 prompt：text_check 的 image_prompt_draft（6 条）优先
+        ill_prompts: list[str] = []
+        async with SessionLocal() as session:
+            task_row = (await session.execute(
+                select(Task).where(Task.id == task_id))).scalar_one()
+            tr = task_row.text_review or {}
+            ill_prompts = [str(x) for x in (tr.get("image_prompt_draft") or [])][:6]
+        style_desc = (image_style_desc or "").strip()
+
+        ref_all = [a.image_url for a in confirmed_refs]
+        localized = []
+        from src.stream.bus import bus
+        await bus.publish("agent_progress",
+                          {"message": "配图生成中（程序文字 + AI 画面）…"},
+                          task_id=str(task_id))
+        for i, body in enumerate(pages, 1):
+            title, points = split_title_points(body)
+            ill_prompt = (ill_prompts[i - 1] if i - 1 < len(ill_prompts)
+                          else f"{query} {title} 产品场景画面")
+            refs = _pref(ref_all, i) if ref_all else None
+            ill = await gen_textfree_illustration(
+                ill_prompt, style_desc, refs)
+            out_path = compose_page(title, points, illustration=ill,
+                                    style_desc=style_desc)
+            data = out_path.read_bytes()
+            local_url = _persist_image(task_id, i, "p", data, "image/png")
+            localized.append({
+                "page_index": i, "image_url": local_url,
+                "hash": hashlib.md5(data).hexdigest(),
+                "origin_url": "", "size_ok": True,
+                "prompt_used": f"compose:{ill_prompt[:180]}",
+            })
+        # 质检链照常：VL 查主体/协调（文字程序渲染免检）
+        localized, garbled = await _image_quality_chain(
+            task_id, pages, localized, image_tpl, mode, confirmed_refs)
+        async with SessionLocal() as session:
+            await _persist_review_marks(session, task_id, localized, garbled)
+            await _persist_assets(session, task_id, query, localized,
+                                  "compose:v1")
+            await session.commit()
+        # 成本估算：每页一张画面（费率表基准价）
+        from src.gateway.cost_tracker import per_call_cost
+        from src.config import settings as _st
+        unit = per_call_cost(_st.image_model,
+                             fallback=_st.image_cost_per_image_cny)
+        return {"asset_count": len(localized), "references_count": 0,
+                "image_urls": [im["image_url"] for im in localized],
+                "model": "compose:v1", "model_version": "compose:v1",
+                "prompt_version": prompt_version + "_compose" + regen_suffix,
+                "cost_cny": round(unit * len(localized), 4),
+                "tool_calls": 0, "tool_cost_cny": 0.0,
+                "correction_rounds": 0, "session_id": "compose-mode",
+                "degraded": False}
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        return None
