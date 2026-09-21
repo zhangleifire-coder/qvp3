@@ -672,7 +672,7 @@ async def _compose_mode_assets(task_id, query, mode, pages, image_style,
         from src.services.poster_compose import (
             compose_page, gen_textfree_illustration, split_title_points)
         from src.pipeline.nodes import _persist_image
-        from src.gateway.style_select import page_refs as _pref
+        from src.services.style_select import page_refs as _pref
 
         # 画面 prompt：text_check 的 image_prompt_draft（6 条）优先
         ill_prompts: list[str] = []
