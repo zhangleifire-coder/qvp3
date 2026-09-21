@@ -366,6 +366,7 @@ def _grid_captions(img, texts, box, n, gap=18):
             bx = x + c * (cw + gap)
             by = y + r * (ch + gap)
         label = (t if isinstance(t, str) else t.get("text", ""))[:9]
+        label = label.rstrip("，,、。；;：:") or label[:8]
         if not label:
             continue
         tw = cd.textlength(label, font=f_cap)
@@ -521,6 +522,8 @@ def compose_page(title: str, points: list | None = None,
         if not grid_caption:
             _render_points_col(dr, pts, tx, y, tw, accent, fg,
                                pt_size=28, circle=42)
+        else:
+            _grid_captions(img, pts, gbox, n)
 
     elif layout == "bottom":
         y = 96
