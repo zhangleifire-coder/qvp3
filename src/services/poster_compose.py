@@ -322,29 +322,46 @@ def ill_size_for(layout: str, n: int = 1) -> str:
     return "1024x1536" if layout in ("left", "right") else "1536x1024"
 
 
-def _grid_plan(n: int):
-    """N 张 → (列, 行)；5 张按 3+2 两行处理。"""
-    return {1: (1, 1), 2: (2, 1), 3: (3, 1), 4: (2, 2),
-            5: (3, 2), 6: (3, 2)}.get(n, (3, 2))
+def _grid_plan(n: int, portrait: bool = False):
+    """N 张 → (列, 行)；竖向 box 按行堆叠；5 张按 3+2 / 2+3 两行处理。"""
+    if n == 1:
+        return (1, 1)
+    if n == 2:
+        return (1, 2) if portrait else (2, 1)
+    if n == 3:
+        return (1, 3) if portrait else (3, 1)
+    if n == 4:
+        return (2, 2)
+    return (2, 3) if portrait else (3, 2)
+
+
+def _cell_box(idx: int, n: int, cols: int, rows: int, bw: int, bh: int,
+              x: int, y: int, gap: int, portrait: bool):
+    """第 idx 张的格位：5 张时短行（2 张）居中。"""
+    cw = int((bw - gap * (cols - 1)) / cols)
+    ch = int((bh - gap * (rows - 1)) / rows)
+    short_first = (n == 5 and not portrait)   # 横：上行3下行2
+    short_second = (n == 5 and portrait)      # 竖：上行2下行3
+    if short_first and idx >= 3:
+        off = int((bw - (cw * 2 + gap)) / 2)
+        return (int(x + off + (idx - 3) * (cw + gap)), int(y + ch + gap), cw, ch)
+    if short_second and idx >= 2:
+        off = int((bw - (cw * 3 + gap * 2)) / 2)
+        return (int(x + off + (idx - 2) * (cw + gap)), int(y + ch + gap), cw, ch)
+    r, c = divmod(idx, cols)
+    return (int(x + c * (cw + gap)), int(y + r * (ch + gap)), cw, ch)
 
 
 def _paste_grid(img, ill_paths, box, radius=24, gap=18):
-    """圆角宫格拼贴：5 张时第二行两张居中。"""
+    """圆角宫格拼贴：按 box 纵横比选行列，5 张短行居中。"""
     x, y, bw, bh = box
     n = len(ill_paths)
-    cols, rows = _grid_plan(n)
-    cw = int((bw - gap * (cols - 1)) / cols)
-    ch = int((bh - gap * (rows - 1)) / rows)
+    portrait = bh > bw
+    cols, rows = _grid_plan(n, portrait)
     for idx, p in enumerate(ill_paths):
-        if n == 5 and idx >= 3:
-            off = int((bw - (cw * 2 + gap)) / 2)
-            bx = int(x + off + (idx - 3) * (cw + gap))
-            by = int(y + (ch + gap))
-        else:
-            r, c = divmod(idx, cols)
-            bx = int(x + c * (cw + gap))
-            by = int(y + r * (ch + gap))
-        _paste_cover(img, p, (bx, by, cw, ch), radius=radius)
+        _paste_cover(img, p,
+                     _cell_box(idx, n, cols, rows, bw, bh, x, y, gap, portrait),
+                     radius=radius)
 
 
 def _grid_captions(img, texts, box, n, gap=18):
@@ -353,21 +370,14 @@ def _grid_captions(img, texts, box, n, gap=18):
         return
     from PIL import Image, ImageDraw, ImageFont
     x, y, bw, bh = box
-    cols, rows = _grid_plan(n)
-    cw = (bw - gap * (cols - 1)) / cols
-    ch = (bh - gap * (rows - 1)) / rows
+    portrait = bh > bw
+    cols, rows = _grid_plan(n, portrait)
     cap = img.convert("RGBA")
     cd = ImageDraw.Draw(cap)
     f_cap = ImageFont.truetype(str(FONT_B if FONT_B.exists() else FONT_R), 24)
     for idx, t in enumerate(texts[:n]):
-        if n == 5 and idx >= 3:
-            off = (bw - (cw * 2 + gap)) / 2
-            bx = x + off + (idx - 3) * (cw + gap)
-            by = y + (ch + gap)
-        else:
-            r, c = divmod(idx, cols)
-            bx = x + c * (cw + gap)
-            by = y + r * (ch + gap)
+        bx, by, cw, ch = _cell_box(idx, n, cols, rows, bw, bh, x, y, gap,
+                                   portrait)
         label = (t if isinstance(t, str) else t.get("text", ""))[:9]
         label = label.rstrip("，,、。；;：:") or label[:8]
         if not label:
