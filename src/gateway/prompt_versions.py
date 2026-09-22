@@ -209,18 +209,22 @@ def _bg_lock_clause(mode: str, *texts: str) -> str:
 
 
 def _layout_for_page(page_index: int, layouts: list) -> str:
-    """页角色轮换（v0.1.4 P2 页数可配）：6 页走全套角色
-    （封面/要点/特写/清单/场景/总结）；5 页按模板 §3.2 去掉清单页
-    （index 3），保证首尾仍是封面与总结。其余页数退回取模轮换。"""
-    n = 6
+    """页型变体轮换（2026-09-23 案例风格库扩充版，11 页型）：
+    首页=封面型，末页=总结结尾型，中间页在 场景/拼贴/特写/对比/步骤 等
+    变体间轮换——同套相邻页型不同，避免每页一个样（案例丰富度来源）。
+    """
+    n = 5
     try:
         from src.config import settings
         n = settings.page_count
     except Exception:
         pass
-    if n == 5 and len(layouts) >= 6:
-        seq = (0, 1, 2, 4, 5)
-        return layouts[seq[(page_index - 1) % 5]]
+    if len(layouts) >= 11:
+        if n == 5:
+            seq = (0, 1, 4, 2, 10)      # 封面/场景/拼贴/特写/总结结尾
+        else:
+            seq = (0, 1, 4, 2, 5, 10)   # 6页：+步骤页
+        return layouts[seq[(page_index - 1) % len(seq)]]
     return layouts[(page_index - 1) % len(layouts)]
 
 
