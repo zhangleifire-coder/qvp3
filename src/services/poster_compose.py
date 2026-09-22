@@ -152,14 +152,16 @@ def extract_palette(style_desc: str) -> tuple:
 
 
 def _fg_set(bg_top):
-    """按底色亮度选文字色：浅底深字 / 深底浅字。"""
+    """按底色亮度选文字色：浅底深字 / 深底浅字；hl=混色标题高亮。"""
     lum = 0.299 * bg_top[0] + 0.587 * bg_top[1] + 0.114 * bg_top[2]
     if lum > 140:
         return {"title": (34, 31, 40), "point": (54, 50, 62),
-                "violet": (146, 118, 158), "line": (172, 164, 152),
-                "dash2": (120, 110, 140)}
+                "violet": (146, 118, 158), "line": (205, 199, 189),
+                "dash2": (120, 110, 140), "hl": (206, 112, 54),
+                "bullet": (108, 124, 112)}
     return {"title": FG_TITLE, "point": FG_POINT, "violet": VIOLET,
-            "line": (150, 142, 168), "dash2": VIOLET}
+            "line": (150, 142, 168), "dash2": VIOLET, "hl": GOLD,
+            "bullet": (176, 160, 205)}
 
 
 _ICON_CACHE: dict | None = None
@@ -306,8 +308,9 @@ def pick_layout(task_id, page_index: int, n: int = 1) -> str:
     import random as _r
     rng = _r.Random(f"layout:{task_id}:{page_index}")
     if n <= 2:
-        return rng.choices(["overlay", "top", "left", "right", "bottom"],
-                           weights=[30, 25, 15, 15, 15])[0]
+        return rng.choices(
+            ["overlay", "top", "vs_split", "left", "right", "bottom"],
+            weights=[28, 22, 22, 10, 10, 8])[0]
     return rng.choices(["top", "bottom", "left", "right"],
                        weights=[40, 25, 20, 15])[0]
 
@@ -381,8 +384,24 @@ def _grid_captions(img, texts, box, n, gap=18):
 
 
 def _draw_title(dr, title, max_w, y, align, x_anchor, accent, fg):
-    """标题：子句边界折行 ≤2 行；align=center 时 x_anchor 为中线，否则为左边。"""
+    """标题：杂志混色双行（主句标题色+尾句 accent 高亮，参考图①④⑤式），
+    子句边界折行 ≤2 行；align=center 时 x_anchor 为中线，否则为左边。"""
     flat = title.replace("\n", "")
+    parts = flat.split("，", 1)
+    if len(parts) == 2 and 2 <= len(parts[1]) <= 14 \
+            and len(parts[0]) <= 18 and "。" not in parts[1]:
+        f1 = _font(80, True)
+        for size in range(80, 27, -4):
+            f1 = _font(size, True)
+            if dr.textlength(parts[0], font=f1) <= max_w \
+                    and dr.textlength(parts[1], font=f1) <= max_w:
+                break
+        for txt, color in ((parts[0], fg["title"]), (parts[1], accent)):
+            w = dr.textlength(txt, font=f1)
+            x = (x_anchor - w) / 2 if align == "center" else x_anchor
+            dr.text((x, y), txt, font=f1, fill=color)
+            y += int(f1.size * 1.32)
+        return y
     lines = [flat]
     f_title = _font(80, True)
     for size in range(80, 27, -4):
@@ -396,6 +415,47 @@ def _draw_title(dr, title, max_w, y, align, x_anchor, accent, fg):
         dr.text((x, y), wrapped, font=f_title, fill=fg["title"])
         y += int(f_title.size * 1.32)
     return y
+
+
+def _draw_capsule(dr, text, y, cx, max_w):
+    """深绿圆角胶囊副标题（参考图①④⑤式），白字居中；无文字则跳过。"""
+    t = (text or "").strip()
+    if not t:
+        return y
+    f = _font(30, False)
+    while f.size > 22 and dr.textlength(t, font=f) > max_w - 120:
+        f = _font(f.size - 2, False)
+    tw = dr.textlength(t, font=f)
+    pad_x, h = 40, 58
+    x0 = cx - (tw + pad_x * 2) / 2
+    dr.rounded_rectangle([x0, y, x0 + tw + pad_x * 2, y + h], radius=h / 2,
+                         fill=(45, 78, 62))
+    dr.text((x0 + pad_x, y + (h - f.size) / 2 - 2), t, font=f,
+            fill=(246, 244, 238))
+    return y + h
+
+
+def _render_points_rules(dr, points, margin, y, max_w, accent, fg):
+    """规则式要点（参考图①式）：灰绿圆底图标 + 粗体文字 + 行间细线。"""
+    f_pt = _font(34, True)
+    d = 52
+    row_h = 100
+    for i, pt in enumerate(points[:4]):
+        if isinstance(pt, str):
+            icon, text = "", pt
+        else:
+            icon, text = pt.get("icon", ""), pt.get("text", "")
+        cy = y + i * row_h
+        dr.ellipse([margin, cy, margin + d, cy + d], fill=fg["bullet"])
+        ch = _icon_char(icon)
+        if ch:
+            dr.text((margin + d / 2, cy + d / 2), ch, font=_icon_font(28),
+                    fill=(252, 250, 246), anchor="mm")
+        dr.text((margin + d + 24, cy + 8), text, font=f_pt, fill=fg["title"])
+        if i < min(len(points), 4) - 1:
+            dr.line([margin, cy + d + 24, margin + max_w, cy + d + 24],
+                    fill=fg["line"], width=2)
+    return y + min(len(points), 4) * row_h + 6
 
 
 def _draw_dashes(dr, y, max_w, x_anchor, align, accent, fg):
@@ -439,6 +499,7 @@ def _render_points_col(dr, points, x, y, max_w, accent, fg,
 def compose_page(title: str, points: list | None = None,
                  illustration=None,
                  footer: str = "", style_desc: str = "",
+                 subtitle: str = "",
                  camps: tuple | None = None,
                  layout: str = "top",
                  out_dir: Path = GENERATED) -> Path:
@@ -478,10 +539,41 @@ def compose_page(title: str, points: list | None = None,
     layout = (layout or "top") if has_ill else "top"
     if layout == "overlay" and n > 2:
         layout = "top"
+    if layout == "vs_split" and n != 2:
+        layout = "top"
     pts = points or []
     grid_caption = n >= 3  # 多图时要点转宫格角标
 
-    if layout == "overlay":
+    if layout == "vs_split":
+        # 参考图①⑤式：双图对峙 + 中央圆形 VS 徽章压缝 + 双栏要点
+        y = 92
+        y = _draw_title(dr, title, max_w, y, "center", W, accent, fg)
+        if subtitle:
+            y = _draw_capsule(dr, subtitle, y + 14, W / 2, max_w) + 26
+        else:
+            y = _draw_dashes(dr, y + 12, max_w, W, "center", accent, fg)
+        gy = y + 4
+        gh2 = min(int(H * 0.50), H - 330 - gy)
+        iw = int((max_w - 96) / 2)
+        _paste_cover(img, ills[0], (margin, gy, iw, gh2), radius=28)
+        _paste_cover(img, ills[1], (margin + iw + 96, gy, iw, gh2), radius=28)
+        cxs, cys, r = W // 2, gy + gh2 // 2, 56
+        dr.ellipse([cxs - r - 7, cys - r - 7, cxs + r + 7, cys + r + 7],
+                   fill=(252, 250, 246))
+        dr.ellipse([cxs - r, cys - r, cxs + r, cys + r], fill=(206, 112, 54))
+        fvs = _font(54, True)
+        tw2 = dr.textlength("VS", font=fvs)
+        dr.text((cxs - tw2 / 2, cys - fvs.size * 0.62), "VS", font=fvs,
+                fill=(255, 255, 255))
+        py = gy + gh2 + 36
+        half = (len(pts) + 1) // 2
+        colw = int((max_w - 72) / 2)
+        _render_points_col(dr, pts[:half], margin, py, colw, accent, fg,
+                           pt_size=30, circle=44)
+        _render_points_col(dr, pts[half:], margin + colw + 72, py, colw,
+                           accent, fg, pt_size=30, circle=44)
+
+    elif layout == "overlay":
         if n == 2:  # 双图上下分屏全幅
             half = (H - 18) // 2
             _paste_cover(img, ills[0], (0, 0, W, half), radius=0)
@@ -528,9 +620,12 @@ def compose_page(title: str, points: list | None = None,
     elif layout == "bottom":
         y = 96
         y = _draw_title(dr, title, max_w, y, "center", W, accent, fg)
-        y = _draw_dashes(dr, y + 14, max_w, W, "center", accent, fg)
+        if subtitle:
+            y = _draw_capsule(dr, subtitle, y + 16, W / 2, max_w) + 30
+        else:
+            y = _draw_dashes(dr, y + 14, max_w, W, "center", accent, fg)
         if not grid_caption:
-            y = _render_points(dr, pts, margin, y, accent, fg)
+            y = _render_points_rules(dr, pts, margin, y, max_w, accent, fg)
         gbox = (margin, y + 12, max_w, H - margin - (y + 12))
         if n == 1:
             if gbox[3] > 200:
@@ -552,11 +647,14 @@ def compose_page(title: str, points: list | None = None,
         else:
             y = 112
         y = _draw_title(dr, title, max_w, y, "center", W, accent, fg)
-        y = _draw_dashes(dr, y + 14, max_w, W, "center", accent, fg)
+        if subtitle:
+            y = _draw_capsule(dr, subtitle, y + 16, W / 2, max_w) + 30
+        else:
+            y = _draw_dashes(dr, y + 14, max_w, W, "center", accent, fg)
         if camps:
             _render_camps(dr, camps, margin, y, fg)
         elif not grid_caption:
-            _render_points(dr, pts, margin, y, accent, fg)
+            _render_points_rules(dr, pts, margin, y, max_w, accent, fg)
         if has_ill and grid_caption:
             _grid_captions(img, pts, gbox, n)
 
@@ -711,50 +809,61 @@ def _clean_ill_prompt(prompt: str) -> str:
     return "，".join(keep) if keep else (prompt or "")
 
 
-def split_title_points(body: str) -> tuple[str, list[str]]:
-    """分页文案 → (标题, 要点) v3：
+def split_title_points(body: str) -> tuple[str, str, list[str]]:
+    """分页文案 → (标题, 副标题, 要点)：
     - 首句=标题（>18 字按子句断点截断，去尾标点）；
-    - 其余按子句（，、；：）打包成 ≤18 字短要点，最多 4 条——
-      对齐参考图版式：要点是短句不是碎段落，不再硬折拦腰截断。"""
+    - 第二句 6-28 字时作胶囊副标题（杂志式副题），要点从第三句起；
+    - 其余按子句（，、；：）打包成 ≤18 字短要点，最多 4 条。"""
     body = (body or "").strip()
     if not body:
-        return "", []
+        return "", "", []
     sents = [m.group(0).strip() for m in _SENT_RE.finditer(body)]
     sents = [s for s in sents if s]
     if not sents:
-        return "", []
+        return "", "", []
     title = sents[0].rstrip("。！？!?；;")
-    rest = "".join(sents[1:])
+    rest_sents = sents[1:]
+    subtitle = ""
+    if len(rest_sents) == 1 and len(rest_sents[0].rstrip("。！？!?；;")) > 28:
+        # 只有一句且很长：不做副标题，全部进要点
+        pass
+    elif rest_sents:
+        cand = rest_sents[0].rstrip("。！？!?；;")
+        if 6 <= len(cand) <= 28:
+            subtitle = cand
+            rest_sents = rest_sents[1:]
+    rest = "".join(rest_sents)
     if len(title) > 18:
         cut = max(title.rfind(c, 0, 18) for c in "，、,：: ")
         if cut >= 6:
-            rest = title[cut + 1:] + rest
+            tail = title[cut + 1:]
+            rest = (tail if tail.endswith(("。", "；", ";")) else tail + "。") + rest
             title = title[:cut]
         else:
             rest = title[18:] + rest
             title = title[:18]
-    clauses: list[str] = []
+    points: list[str] = []
     for m in _SENT_RE.finditer(rest):
+        cur = ""
         for c in re.split(r"[，、,；;：:]", m.group(0)):
             c = c.strip().rstrip("。！？!?，,、；;：:")
-            if c:
-                clauses.append(c)
-    points: list[str] = []
-    cur = ""
-    for c in clauses:
-        cand = c if not cur else cur + "，" + c
-        if len(cand) <= 18:
-            cur = cand
-        else:
-            if cur:
-                points.append(cur)
-            cur = c[:18]
+            if not c:
+                continue
+            cand = c if not cur else cur + "，" + c
+            if len(cand) <= 18:
+                cur = cand
+            else:
+                if cur:
+                    points.append(cur)
+                cur = c[:18]
+            if len(points) >= 4:
+                cur = ""
+                break
+        if cur and len(points) < 4:
+            points.append(cur)
         if len(points) >= 4:
-            cur = ""
             break
-    if cur and len(points) < 4:
-        points.append(cur)
-    return title, points[:4]
+    return title, subtitle, points[:4]
 
 
 def with_default_icons(points: list) -> list:

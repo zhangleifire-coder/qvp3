@@ -707,7 +707,7 @@ async def _compose_mode_assets(task_id, query, mode, pages, image_style,
         ctx: dict[int, dict] = {}
 
         async def _build_page(i: int, body: str):
-            title, raw_points = split_title_points(body)
+            title, subtitle, raw_points = split_title_points(body)
             points = with_default_icons(raw_points)
             ill_prompt = (ill_prompts[i - 1] if i - 1 < len(ill_prompts)
                           else f"{query} {title} 产品场景画面")
@@ -728,10 +728,12 @@ async def _compose_mode_assets(task_id, query, mode, pages, image_style,
             ills = [p for p in await _asyncio.gather(
                 *[_one(j, s) for j, s in enumerate(subs)]) if p]
             out_path = compose_page(title, points, illustration=ills,
-                                    style_desc=style_desc, layout=layout)
+                                    style_desc=style_desc, subtitle=subtitle,
+                                    layout=layout)
             ctx[i] = {"title": title, "points": points,
                       "point_texts": raw_points, "ill_prompt": ill_prompt,
-                      "layout": layout, "n_img": n_img, "subs": subs}
+                      "layout": layout, "n_img": n_img, "subs": subs,
+                      "subtitle": subtitle}
             return i, out_path
 
         built = dict(await _asyncio.gather(
@@ -775,6 +777,7 @@ async def _compose_mode_assets(task_id, query, mode, pages, image_style,
                 out_path = compose_page(c["title"], c["points"],
                                         illustration=ills2,
                                         style_desc=style_desc,
+                                        subtitle=c.get("subtitle", ""),
                                         layout=c["layout"])
                 data = out_path.read_bytes()
                 img["image_url"] = _persist_image(task_id, idx, "p", data,
