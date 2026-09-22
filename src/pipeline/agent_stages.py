@@ -55,7 +55,7 @@ _DRAFT_CONTRACT = """{
 }"""
 
 _PAGES_CONTRACT = """{
-  "pages":     [{"title": "≤18字页标题", "subtitle": "6-28字副题或空串", "points": ["≤18字要点", "...", "...", "..."], "subject": "≤20字本页画面主体（具体可画名词短语）", "info_task": "本页信息任务一句话"}],
+  "pages":     [{"title": "≤18字页标题（query 直接回答式）", "section_title": "≤14字小节标题（封面/结尾可空串）", "paragraph": "80-100字整段正文（3-4句实操干货）", "subject": "≤20字本页画面主体（具体可画的生活场景名词短语）", "info_task": "本页信息任务一句话"}],
   "notes":     "分页过程备注（字数自查情况）"
 }
 （pages 为恰好 {page_count} 个上述结构页对象的数组）"""
@@ -755,15 +755,22 @@ async def _compose_mode_assets(task_id, query, mode, pages, image_style,
             title, subtitle = spec["title"], spec.get("subtitle", "")
             raw_points = spec.get("points") or []
             points = with_default_icons(raw_points)
+            paragraph = spec.get("paragraph") or ""
+            # 0922 参考样式：段落式文案 → ref 版式（上图下文）+ 恒单张生活实拍图
+            is_ref = bool(paragraph)
             ill_prompt = (ill_prompts[i - 1] if i - 1 < len(ill_prompts)
                           else f"{query} {title} 产品场景画面")
-            multi_hint = any(k in style_desc
-                             for k in ("拼贴", "宫格", "多张", "错落"))
-            n_img = pick_img_count(task_id, i, multi_hint)
-            layout = pick_layout(task_id, i, n_img)
+            if is_ref:
+                ill_prompt += "，生活实拍感，自然光，真实生活场景"
+            multi_hint = (not is_ref) and any(
+                k in style_desc for k in ("拼贴", "宫格", "多张", "错落"))
+            n_img = 1 if is_ref else pick_img_count(task_id, i, multi_hint)
+            layout = ("ref" if is_ref
+                      else pick_layout(task_id, i, n_img))
             subs = sub_prompts(ill_prompt, n_img, f"{task_id}:{i}",
                                subject=spec.get("subject") or "")
-            size = ill_size_for(layout, n_img)
+            size = ("1536x1024" if is_ref
+                    else ill_size_for(layout, n_img))
 
             async def _one(j: int, sub: str):
                 # 参考图只给首张子画面，避免成组图片彼此雷同
@@ -775,13 +782,18 @@ async def _compose_mode_assets(task_id, query, mode, pages, image_style,
 
             ills = [p for p in await _asyncio.gather(
                 *[_one(j, s) for j, s in enumerate(subs)]) if p]
-            out_path = compose_page(title, points, illustration=ills,
-                                    style_desc=style_desc, subtitle=subtitle,
-                                    layout=layout)
+            out_path = compose_page(
+                title, points, illustration=ills,
+                style_desc=style_desc, subtitle=subtitle, layout=layout,
+                section_title=spec.get("section_title") or "",
+                paragraph=paragraph,
+                section_no=max(1, i - 1))
             ctx[i] = {"title": title, "points": points,
                       "point_texts": raw_points, "ill_prompt": ill_prompt,
                       "layout": layout, "n_img": n_img, "subs": subs,
                       "subtitle": subtitle,
+                      "section_title": spec.get("section_title") or "",
+                      "paragraph": paragraph,
                       "rendered": render_page_text(spec)}
             return i, out_path
 
@@ -829,7 +841,10 @@ async def _compose_mode_assets(task_id, query, mode, pages, image_style,
                                         illustration=ills2,
                                         style_desc=style_desc,
                                         subtitle=c.get("subtitle", ""),
-                                        layout=c["layout"])
+                                        layout=c["layout"],
+                                        section_title=c.get("section_title", ""),
+                                        paragraph=c.get("paragraph", ""),
+                                        section_no=max(1, idx - 1))
                 data = out_path.read_bytes()
                 img["image_url"] = _persist_image(task_id, idx, "p", data,
                                                   "image/png")

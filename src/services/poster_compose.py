@@ -518,12 +518,15 @@ def compose_page(title: str, points: list | None = None,
                  subtitle: str = "",
                  camps: tuple | None = None,
                  layout: str = "top",
+                 section_title: str = "", paragraph: str = "",
+                 section_no: int = 0,
                  out_dir: Path = GENERATED) -> Path:
-    """渲染单页海报（v5 宫格拼贴：每页 1-6 张 AI 画面 + 程序文字版式）。
+    """渲染单页海报（v5 宫格拼贴 + 0922 参考版式 layout="ref"）。
 
     illustration 可为单张 Path 或多张 list[Path]（宫格拼贴）；
-    layout：top/bottom/left/right/overlay（压图仅 ≤2 张）；
-    N≥3 时要点自动转为宫格角标小标签（种草合集式），不再下方列要点。
+    layout：top/bottom/left/right/overlay/vs_split/ref——ref 为 0922 参考
+    样式（上图下文：上部单张实景图全幅 + 下部浅米底文字区=橙竖条标题+
+    序号徽章小节标题+整段段落正文），paragraph 为空时勿用 ref；
     缺插图时统一退回 top 纯文字版式；camps 为双阵营预留路径。
     返回输出 PNG 路径。
     """
@@ -560,7 +563,45 @@ def compose_page(title: str, points: list | None = None,
     pts = points or []
     grid_caption = n >= 3  # 多图时要点转宫格角标
 
-    if layout == "vs_split":
+    if layout == "ref":
+        # 0922 参考样式：上部 ~57% 单张实景图全幅 + 下部浅米底文字区
+        # （橙竖条+黑字标题 → 序号徽章+小节标题 → 段落正文）。
+        # 底色固定浅米系（不随风格库深色走，规避深底压字），点缀色用色板 accent。
+        split_y = int(H * 0.57)
+        if ills:
+            _paste_cover(img, ills[0], (0, 0, W, split_y), radius=0)
+        dr.rectangle([0, split_y, W, H], fill=(247, 243, 234))
+        ink = (34, 31, 40)
+        ty = split_y + 44
+        # 标题：左侧点缀色竖条 + 黑字加粗（≤18字单行为主，超宽像素折行）
+        f_ti = _font(54, True)
+        t_lines = _wrap_px(title, f_ti, max_w, dr)
+        for ln in t_lines[:2]:
+            dr.rectangle([margin, ty + 6, margin + 12, ty + 52],
+                         fill=accent)
+            dr.text((margin + 34, ty), ln, font=f_ti, fill=ink)
+            ty += int(54 * 1.3)
+        ty += 14
+        # 小节标题：序号徽章（点缀色圆角方块+白字）+ 黑字小节标题
+        if section_title:
+            badge = 44
+            dr.rounded_rectangle([margin, ty, margin + badge, ty + badge],
+                                 radius=12, fill=accent)
+            f_no = _font(28, True)
+            nw = dr.textlength(str(section_no or 1), font=f_no)
+            dr.text((margin + (badge - nw) / 2, ty + (badge - 28) / 2 - 2),
+                    str(section_no or 1), font=f_no, fill=(255, 255, 255))
+            f_se = _font(34, True)
+            dr.text((margin + badge + 18, ty + 5), section_title,
+                    font=f_se, fill=ink)
+            ty += badge + 26
+        # 段落正文：像素折行，行距 1.53
+        f_pa = _font(30, False)
+        for ln in _wrap_px(paragraph, f_pa, max_w, dr)[:8]:
+            dr.text((margin, ty), ln, font=f_pa, fill=(54, 50, 62))
+            ty += 46
+
+    elif layout == "vs_split":
         # 参考图①⑤式：双图对峙 + 中央圆形 VS 徽章压缝 + 双栏要点
         y = 92
         y = _draw_title(dr, title, max_w, y, "center", W, accent, fg)

@@ -25,6 +25,9 @@ os.environ["AGENT_PIPELINE_ENABLED"] = "false"  # 测试默认直连路径；Age
 # 钉 monolith：test_agent_pipeline 专测 monolith 节点序列，staged 由
 # test_agent_stages_pipeline 专测（其用例内 monkeypatch 显式设 staged）
 os.environ["AGENT_PIPELINE_VARIANT"] = "monolith"
+# 页数（v0.1.4 0922 改造）：生产默认 5（参考样式段落式）；测试进程钉 6——
+# 既有守卫与集成夹具按 6 页契约编写（与 monolith 钉法同理）
+os.environ["PAGE_COUNT"] = "6"
 # VL 主体审核默认关：fetch_image_bytes 被 mock 后 _dedupe_and_validate 会走到
 # check_subject_match，不能让它对 dashscope 发起真实 VL 调用（服务本身的解析
 # 逻辑由 test_visual_check 在启用开关后专测）。
