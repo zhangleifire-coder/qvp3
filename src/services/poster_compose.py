@@ -611,7 +611,13 @@ def compose_page(title: str, points: list | None = None,
               "dash2": (200, 190, 220)}
         y = int(H * 0.50)
         y = _draw_title(dr, title, max_w, y, "center", W, accent, fg)
-        y = _draw_dashes(dr, y + 14, max_w, W, "center", accent, fg)
+        # v0.1.4 P4 修复：overlay 版式此前漏渲染 subtitle 胶囊——质检对照
+        # render_page_text（含副标题）必失败（基准批 0922 实证）。胶囊深绿底
+        # 白字在暗色渐变罩上对比度足够
+        if subtitle:
+            y = _draw_capsule(dr, subtitle, y + 14, W / 2, max_w) + 24
+        else:
+            y = _draw_dashes(dr, y + 14, max_w, W, "center", accent, fg)
         _render_points(dr, pts, margin, y, accent, fg)
 
     elif layout in ("left", "right"):
@@ -626,7 +632,11 @@ def compose_page(title: str, points: list | None = None,
         tw = W - tx - margin if layout == "left" else ill_w - 46 - margin
         y = int(H * 0.16)
         y = _draw_title(dr, title, tw, y, "left", tx, accent, fg)
-        y = _draw_dashes(dr, y + 12, tw, tx, "left", accent, fg)
+        # v0.1.4 P4 修复：left/right 版式此前漏渲染 subtitle 胶囊（同 overlay）
+        if subtitle:
+            y = _draw_capsule(dr, subtitle, y + 12, tx + tw / 2, tw) + 24
+        else:
+            y = _draw_dashes(dr, y + 12, tw, tx, "left", accent, fg)
         if not grid_caption:
             _render_points_col(dr, pts, tx, y, tw, accent, fg,
                                pt_size=28, circle=42)

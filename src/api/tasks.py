@@ -461,6 +461,9 @@ async def task_detail(task_id: str):
                 "gen_image_style": task.gen_image_style,
                 # 016：每页画面主体快照（排查图文对应用）
                 "page_subjects": task.page_subjects,
+                # 027（v0.1.4 P2）：结构化分页文案快照（title/subtitle/points/
+                # subject/info_task）——compose 直连消费与基准指标读数用
+                "page_specs": task.page_specs,
                 "template_id": str(task.template_id) if task.template_id else None,
                 "created_at": task.created_at.isoformat() if task.created_at else None,
                 "created_by": str(task.created_by) if task.created_by else None,
