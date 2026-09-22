@@ -53,7 +53,7 @@ class TestFusionChannel:
              patch.object(settings, "moacode_api_key", "cr_x"):
             avail = _channels()
             assert avail[0] == "fusion" and set(avail) == {"fusion", "moacode"}
-        assert settings.fusionai_base_url == "https://api.fusionaix.net/v1"
+        assert settings.fusionai_base_url == "https://www.fusionaix.net/v1"
 
     def test_fusion_filtered_without_key(self):
         with patch.object(settings, "image_gen_channels", "fusion,moacode"), \
