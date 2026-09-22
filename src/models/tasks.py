@@ -31,6 +31,10 @@ class Task(Base):
     # 016：asset_gen 前 LLM 从 6 页文案提取的每页画面主体（JSON 数组 6 字符串），
     # 注入生图提示词替换通用主体锚定条款；NULL=未提取/提取失败
     page_subjects = Column(JSONB)
+    # 027（v0.1.4 P2）：结构化分页文案快照（page_schema.PageSpec 数组：
+    # title/subtitle/points/subject/info_task）——compose 直连消费；
+    # NULL=旧任务/机械切割回退，compose 走 spec_from_plain 兼容层
+    page_specs = Column(JSONB)
     # 文字自查+人工核查（012）：自动自查草稿 / 人工修改后的最终版
     text_review = Column(JSONB)
     text_override = Column(JSONB)

@@ -69,6 +69,10 @@ class Settings(BaseSettings):
     # 单候选生图（2026-09-21 用户决策）：文字铁律+VL 质检已保障质量，
     # 双候选 OCR 选优的收益不抵成本；true=恒单候选（可回滚）
     image_single_candidate: bool = True
+    # 交付页数（v0.1.4 P2，模板 §3.2）：5|6 可配——5 页去掉清单页角色，
+    # 版式轮换/交付契约/分页提示词全链跟随；其余值一律回落 6。
+    # 注意：deprecated 的 monolith 路径仍固定 6 页（不再演进）。
+    page_count: int = 6
     image_search_provider: str = "openserp"
     openserp_base_url: str = "http://127.0.0.1:7001"
     # 旧 ChatGPT 生图字段（保留占位）

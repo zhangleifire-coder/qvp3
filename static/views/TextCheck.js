@@ -18,6 +18,7 @@ const TextCheckView = {
   },
   computed: {
     awaitingCount() { return this.total; },
+    pageCount() { return (this.form.pages && this.form.pages.length) || 6; },
     review() { return (this.detail && this.detail.task.text_review) || {}; },
     issues() { return (this.review.query_clean || {}).issues || []; },
     bodyIssues() { return this.review.body_issues || []; },
@@ -89,8 +90,8 @@ const TextCheckView = {
           query: ov.query || (rv.query_clean && rv.query_clean.suggested && this.issues.length
                               ? rv.query_clean.suggested : (rv.query || t.query)),
           body: ov.body || rv.body_draft || '',
-          pages: ov.pages || (rv.pages_draft || []).slice(0, 6),
-          image_prompts: ov.image_prompts || (rv.image_prompt_draft || []).slice(0, 6),
+          pages: ov.pages || (rv.pages_draft || []),
+          image_prompts: ov.image_prompts || (rv.image_prompt_draft || []),
         };
       } catch (e) { this.error = e.message; }
       const rvNow = this.review;
@@ -331,9 +332,9 @@ const TextCheckView = {
                     class="tc-note-field" placeholder="修改意见：正文哪里要改（必填）"></textarea>
         </div>
 
-        <h3 class="tc-h3">③ 图上文案（6 页，最终生效）<span class="muted" style="font-weight:normal;font-size:12.5px">点每页 📌 可单独标记驳回</span></h3>
+        <h3 class="tc-h3">③ 图上文案（最终生效）<span class="muted" style="font-weight:normal;font-size:12.5px">点每页 📌 可单独标记驳回</span></h3>
         <div class="tc-grid">
-          <div v-for="(_, i) in 6" :key="i" :class="{ 'tc-marked': marks['page:' + (i + 1)] }">
+          <div v-for="(_, i) in pageCount" :key="i" :class="{ 'tc-marked': marks['page:' + (i + 1)] }">
             <label class="muted tc-h3" style="display:flex;justify-content:space-between;align-items:center">P{{ i + 1 }}{{ i === 0 ? ' 封面' : (i === 5 ? ' 结尾' : ' 要点') }}
               <button class="btn btn-sm" :class="marks['page:' + (i + 1)] ? 'btn-danger' : 'btn-outline'"
                       @click="toggleMark('page:' + (i + 1))">📌</button></label>
@@ -343,9 +344,9 @@ const TextCheckView = {
           </div>
         </div>
 
-        <h3 class="tc-h3">④ 生图描述（6 页，最终生效）<span class="muted" style="font-weight:normal;font-size:12.5px">点每页 📌 可单独标记驳回</span></h3>
+        <h3 class="tc-h3">④ 生图描述（最终生效）<span class="muted" style="font-weight:normal;font-size:12.5px">点每页 📌 可单独标记驳回</span></h3>
         <div class="tc-grid">
-          <div v-for="(_, i) in 6" :key="'ip' + i" :class="{ 'tc-marked': marks['ip:' + (i + 1)] }">
+          <div v-for="(_, i) in pageCount" :key="'ip' + i" :class="{ 'tc-marked': marks['ip:' + (i + 1)] }">
             <label class="muted tc-h3" style="display:flex;justify-content:space-between;align-items:center">P{{ i + 1 }} 生图描述
               <button class="btn btn-sm" :class="marks['ip:' + (i + 1)] ? 'btn-danger' : 'btn-outline'"
                       @click="toggleMark('ip:' + (i + 1))">📌</button></label>

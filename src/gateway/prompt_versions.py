@@ -208,6 +208,22 @@ def _bg_lock_clause(mode: str, *texts: str) -> str:
     return ""
 
 
+def _layout_for_page(page_index: int, layouts: list) -> str:
+    """页角色轮换（v0.1.4 P2 页数可配）：6 页走全套角色
+    （封面/要点/特写/清单/场景/总结）；5 页按模板 §3.2 去掉清单页
+    （index 3），保证首尾仍是封面与总结。其余页数退回取模轮换。"""
+    n = 6
+    try:
+        from src.config import settings
+        n = settings.page_count
+    except Exception:
+        pass
+    if n == 5 and len(layouts) >= 6:
+        seq = (0, 1, 2, 4, 5)
+        return layouts[seq[(page_index - 1) % 5]]
+    return layouts[(page_index - 1) % len(layouts)]
+
+
 def get_image_prompt(mode: str, page_body: str, page_index: int = None,
                      template: str = None, style_block: str = None,
                      page_subject: str = None, visual: str = None,
@@ -227,7 +243,7 @@ def get_image_prompt(mode: str, page_body: str, page_index: int = None,
             f"\nVISUAL DIRECTION for this page (follow closely):\n{visual}",
         ]
         if style_en:
-            parts.append("\nUNIFIED STYLE for ALL 6 pages of this set "
+            parts.append("\nUNIFIED STYLE for ALL pages of this set "
                          "(lighting/palette/typography/decor must stay "
                          f"identical across pages, only layout varies):\n{style_en}")
         parts.append(
@@ -235,8 +251,7 @@ def get_image_prompt(mode: str, page_body: str, page_index: int = None,
             "see HANZI RULE below):\n" + (page_body or ""))
         parts.append("\nCONSTRAINTS:\n" + _IMAGE_CONSTRAINTS_EN)
         if page_index:
-            parts.append("\n" + _PAGE_LAYOUTS_EN[(page_index - 1)
-                                                % len(_PAGE_LAYOUTS_EN)])
+            parts.append("\n" + _layout_for_page(page_index, _PAGE_LAYOUTS_EN))
         parts.append(_IMAGE_TEXT_HARD_RULE)
         return "\n".join(parts)
     # 中文回退模式
@@ -246,8 +261,8 @@ def get_image_prompt(mode: str, page_body: str, page_index: int = None,
         prompt += style_block
     prompt += _SHARED_IMAGE_STYLE
     if page_index:
-        # 追加本页专属排版指令，让 6 页构图错开（风格段不变，只变布局）
-        prompt += _PAGE_LAYOUTS[(page_index - 1) % len(_PAGE_LAYOUTS)]
+        # 追加本页专属排版指令，让各页构图错开（风格段不变，只变布局）
+        prompt += _layout_for_page(page_index, _PAGE_LAYOUTS)
     prompt += _IMAGE_TEXT_HARD_RULE
     prompt += _bg_lock_clause(mode, prompt)
     return _apply_page_subject(prompt, page_subject)
@@ -259,7 +274,10 @@ PAGES_PROMPT = _skills.skill_body("page-split")
 
 
 def get_pages_prompt(body: str) -> str:
-    return PAGES_PROMPT.replace("{body}", body)
+    from src.services.page_schema import fill_page_template
+    from src.config import settings
+    return fill_page_template(PAGES_PROMPT, settings.page_count)\
+        .replace("{body}", body)
 
 
 # 定点重生成：单页文案重写（驳回标记驱动，2026-08-21）

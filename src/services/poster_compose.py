@@ -294,9 +294,14 @@ def pick_img_count(task_id, page_index: int, multi_hint: bool = False) -> int:
     return rng.choices([o[0] for o in opts], weights=[o[1] for o in opts])[0]
 
 
-def sub_prompts(base: str, n: int, seed_key: str) -> list:
-    """一页 N 张时的子画面 prompt：同主题不同景别/构图，保证成组不重复。"""
+def sub_prompts(base: str, n: int, seed_key: str, subject: str = "") -> list:
+    """一页 N 张时的子画面 prompt：同主题不同景别/构图，保证成组不重复。
+    subject（v0.1.4 P2，结构化分页的 subject 字段）非空时做主体锚定——
+    主体从「提示词术语」升级为「数据字段」，禁止模型用象征隐喻替代主体。"""
     import random as _r
+    if subject:
+        base = (f"{base}（主体锚定：画面必须直接画出「{subject}」本身，"
+                f"禁止用符号、图腾或象征隐喻物替代）")
     rng = _r.Random(f"sub:{seed_key}")
     hints = rng.sample(_SUBVIEW_HINTS, min(n, len(_SUBVIEW_HINTS)))
     return [f"{base}（第{j + 1}/{n}张：{hints[j]}）" for j in range(n)]

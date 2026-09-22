@@ -473,8 +473,8 @@ def page_balance_issue(arr: list[str]) -> str:
     return "；".join(issues)
 
 
-def _parse_page_list(result_text: str) -> list[str] | None:
-    """解析 LLM 分页输出（JSON 数组，容错围栏）；不足 6 页返回 None。"""
+def _parse_page_list(result_text: str, n: int = 6) -> list[str] | None:
+    """解析 LLM 分页输出（旧版纯字符串 JSON 数组，容错围栏）；不足 n 页返回 None。"""
     import json as _json
     raw = result_text.strip()
     if raw.startswith("```"):
@@ -484,28 +484,54 @@ def _parse_page_list(result_text: str) -> list[str] | None:
     except Exception:
         return None
     arr = [str(p).strip() for p in arr if str(p).strip()]
-    return arr[:6] if len(arr) >= 6 else None
+    return arr[:n] if len(arr) >= n else None
+
+
+def _parse_pages_result(result_text: str, n: int) -> tuple[list[str] | None,
+                                                            list[dict] | None]:
+    """分页输出双格式解析（v0.1.4 P2）：
+
+    - 结构化对象数组（page_schema.parse_pages_json）：返回
+      (rendered 纯文本页, specs)——compose 直连消费 subject/标题/要点；
+    - 模型退化为旧版字符串数组：**原文照用**（pages 逐字保留，specs=None，
+      compose 阶段再走 spec_from_plain 兼容层）——旧格式行为零变化；
+    - 两者都失败：(None, None)。
+    """
+    from src.services.page_schema import parse_pages_json, specs_from_rendered
+    specs = parse_pages_json(result_text, n)
+    if specs is not None:
+        return specs_from_rendered(specs), specs
+    legacy = _parse_page_list(result_text, n)
+    if legacy:
+        return legacy, None
+    return None, None
 
 
 async def run_page_split_llm(text: str, template: str,
                              task_id=None, on_delta=None) -> dict:
     """LLM 分页核心（node_page_split 与 qvp_mcp page_split 工具共用同一实现）：
-    模板填正文 → failover → 解析 6 页 → 字数/均衡校验，不合格带意见重试一次；
-    仍不合格保留违规较轻的一版（下游审图人工关卡兜底，不因校验卡死流水线）。
+    模板填正文 → failover → 双格式解析（结构化对象优先，旧字符串数组兼容）
+    → 字数/均衡校验，不合格带意见重试一次；仍不合格保留违规较轻的一版
+    （下游审图人工关卡兜底，不因校验卡死流水线）。
     解析/调用失败返回 pages=None——调用方退回机械切割（保证不卡死）。
 
     task_id 仅用于节点进度事件（None=独立调用，不发 node_progress）。
-    返回 {"pages": [...] | None, "model_version", "cost_cny"}。
+    返回 {"pages": [rendered 纯文本页] | None, "specs": [PageSpec] | None,
+          "model_version", "cost_cny"}。
     """
-    pages, model_version, cost = None, "mechanical", 0.0
+    from src.services.page_schema import fill_page_template
+    n = settings.page_count
+    pages, specs = None, None
+    model_version, cost = "mechanical", 0.0
     try:
-        llm_prompt = (template.replace("{body}", text) if "{body}" in template
-                      else template + "\n\n" + text)
+        tpl = fill_page_template(template, n)
+        llm_prompt = (tpl.replace("{body}", text) if "{body}" in tpl
+                      else tpl + "\n\n" + text)
         if task_id is not None:
             _emit_progress(task_id, "page_split",
-                           msg=f"分页文案生成中（每页 {PAGE_MIN_CHARS}-{PAGE_MAX_CHARS} 字、六页均衡）")
+                           msg=f"分页文案生成中（每页 {PAGE_MIN_CHARS}-{PAGE_MAX_CHARS} 字、{n} 页均衡）")
         result = await call_with_failover(llm_prompt, on_delta=on_delta)
-        pages = _parse_page_list(result["text"])
+        pages, specs = _parse_pages_result(result["text"], n)
         model_version, cost = result["model_version"], result["cost_cny"]
         # 字数/均衡校验：不合格带意见重试一次；仍不合格保留违规较轻的一版
         # （下游审图人工关卡兜底，不因校验卡死流水线）
@@ -513,20 +539,21 @@ async def run_page_split_llm(text: str, template: str,
         if issue:
             retry = await call_with_failover(
                 llm_prompt + "\n\n【上次输出不合格，必须修正】" + issue
-                + f"。请重新输出全部 6 页：每页（含小标题与标点）"
+                + f"。请重新输出全部 {n} 页：每页（含小标题与标点）"
                   f"{PAGE_MIN_CHARS}-{PAGE_MAX_CHARS} 字，"
                   f"各页字数相差不超过 {PAGE_MAX_DIFF} 字。",
                 on_delta=(_stream_reporter(task_id, "page_split")
                           if task_id is not None else on_delta))
-            pages2 = _parse_page_list(retry["text"])
+            pages2, specs2 = _parse_pages_result(retry["text"], n)
             cost += retry["cost_cny"]
             issue2 = page_balance_issue(pages2) if pages2 else ""
             if pages2 and (not issue2 or len(issue2) < len(issue)):
-                pages = pages2
+                pages, specs = pages2, specs2
                 model_version = retry["model_version"]
     except Exception:
         traceback.print_exc()
-    return {"pages": pages, "model_version": model_version, "cost_cny": cost}
+    return {"pages": pages, "specs": specs,
+            "model_version": model_version, "cost_cny": cost}
 
 
 async def node_page_split(input_data: dict) -> dict:
@@ -547,14 +574,23 @@ async def node_page_split(input_data: dict) -> dict:
         pages, model_version, cost = r["pages"], r["model_version"], r["cost_cny"]
     except Exception:
         traceback.print_exc()
+    specs = None
     if pages is None:
-        pages = _split_pages(text, 6)
+        pages = _split_pages(text, settings.page_count)
+    else:
+        specs = r.get("specs")
     async with SessionLocal() as session:
         for i, body in enumerate(pages, start=1):
             session.add(PageCopy(task_id=input_data["task_id"], page_index=i, body=body, claim_ids=[]))
+        if specs:
+            # 结构化文案快照（v0.1.4 P2）：compose 直连消费 subject/标题/要点
+            from sqlalchemy import update as _update
+            await session.execute(_update(Task)
+                                  .where(Task.id == input_data["task_id"])
+                                  .values(page_specs=specs))
         await session.commit()
     return {"page_count": len(pages), "model_version": model_version,
-            "prompt_version": "page_split_llm_v2", "cost_cny": cost}
+            "prompt_version": "page_split_llm_v3", "cost_cny": cost}
 
 
 async def _generate_single_asset(task_id, page_index: int, prompt: str,
@@ -990,9 +1026,10 @@ async def node_publish_snapshot(input_data: dict) -> dict:
         asset_list = assets.scalars().all()
         delivery_errors = []
         page_indexes = [a.page_index for a in asset_list]
-        if len(asset_list) != 6:
-            delivery_errors.append(f"缺页或多余页：期望 6 页，实际 {len(asset_list)} 页")
-        if sorted(page_indexes) != [1, 2, 3, 4, 5, 6]:
+        expected_n = settings.page_count   # v0.1.4 P2：5|6 可配
+        if len(asset_list) != expected_n:
+            delivery_errors.append(f"缺页或多余页：期望 {expected_n} 页，实际 {len(asset_list)} 页")
+        if sorted(page_indexes) != list(range(1, expected_n + 1)):
             delivery_errors.append(f"页序错误：{page_indexes}")
         if len(page_indexes) != len(set(page_indexes)):
             delivery_errors.append(f"两图同页：{page_indexes}")

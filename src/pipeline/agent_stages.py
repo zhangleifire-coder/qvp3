@@ -55,9 +55,10 @@ _DRAFT_CONTRACT = """{
 }"""
 
 _PAGES_CONTRACT = """{
-  "pages":     ["第1页图上文案", "第2页图上文案", "第3页图上文案", "第4页图上文案", "第5页图上文案", "第6页图上文案"],
+  "pages":     [{"title": "≤18字页标题", "subtitle": "6-28字副题或空串", "points": ["≤18字要点", "...", "...", "..."], "subject": "≤20字本页画面主体（具体可画名词短语）", "info_task": "本页信息任务一句话"}],
   "notes":     "分页过程备注（字数自查情况）"
-}"""
+}
+（pages 为恰好 {page_count} 个上述结构页对象的数组）"""
 
 _ASSETS_CONTRACT = """{
   "references": [{"image_url": "image_search 返回的图 URL", "title": "...", "engine": "..."}],
@@ -118,7 +119,7 @@ _DRAFT_INSTRUCTIONS = """你是「图文生产平台」创作流水线的正文�
 {body_section}{feedback_section}【输出 JSON 契约（字段名与类型必须完全一致）】
 {output_contract}"""
 
-_PAGES_INSTRUCTIONS = """你是「图文生产平台」创作流水线的分页 Agent（第 3/4 阶段），只负责：把正文改写成恰好 6 页图上文案。配图由后续阶段完成，本阶段不要做。
+_PAGES_INSTRUCTIONS = """你是「图文生产平台」创作流水线的分页 Agent（第 3/4 阶段），只负责：把正文改写成恰好 {page_count} 页结构化图上文案。配图由后续阶段完成，本阶段不要做。
 
 【任务】
 - Query：{query}
@@ -128,7 +129,7 @@ _PAGES_INSTRUCTIONS = """你是「图文生产平台」创作流水线的分页 
 {draft}
 
 【工作流程（必须遵守）】
-1. 严格按【分页规范】把正文改写成恰好 6 页图上文案 pages（列表长度必须等于 6）。
+1. 严格按【分页规范】把正文改写成恰好 {page_count} 页结构化图上文案 pages（数组长度必须等于 {page_count}，每页为 title/subtitle/points/subject/info_task 五字段对象）。
 2. 只输出最终 JSON，不要输出 JSON 以外的任何解释文字。
 
 """ + _COMPLIANCE_RED_LINES + """
@@ -138,7 +139,7 @@ _PAGES_INSTRUCTIONS = """你是「图文生产平台」创作流水线的分页 
 {feedback_section}【输出 JSON 契约（字段名与类型必须完全一致）】
 {output_contract}"""
 
-_ASSETS_INSTRUCTIONS = """你是「图文生产平台」创作流水线的配图生成 Agent（第 4/4 阶段），只负责：为 6 页文案生成 6 张交付配图（single/compare 模式用参考图做图生图保持外观一致）。
+_ASSETS_INSTRUCTIONS = """你是「图文生产平台」创作流水线的配图生成 Agent（第 4/4 阶段），只负责：为 {page_count} 页文案生成 {page_count} 张交付配图（single/compare 模式用参考图做图生图保持外观一致）。
 
 【任务】
 - Query：{query}
@@ -146,16 +147,16 @@ _ASSETS_INSTRUCTIONS = """你是「图文生产平台」创作流水线的配图
 - task_id：{task_id}（每次调用工具时，task_id 参数必须原样传这个值，用于配额与成本记账）
 - 图片整体视觉风格：{image_style}（上一阶段已判定{image_style_desc}）
 
-【6 页图上文案（上一阶段产出；generate_images 的 pages 参数必须原样传这个列表）】
+【{page_count} 页图上文案（上一阶段产出；generate_images 的 pages 参数必须原样传这个列表）】
 {pages_section}
 
 【可用工具（按需调用，均有配额）】
 - image_search(query, task_id, count)：搜实景/实物参考图（仅 single/compare 模式需要）
-- generate_images(task_id, pages, mode, image_template, reference_urls)：批量生成 6 张交付配图。
+- generate_images(task_id, pages, mode, image_template, reference_urls)：批量生成 {page_count} 张交付配图。
   参考图按页分配（铁律）：reference_urls 不要整表传给每一页——第 i 页取列表中
   第 (i-1)%N、i%N 两张作为该页参考子集（N=参考图张数），保证相邻页参考图不同、
   单页不堆砌全部实景图。参考图仅 1-2 张时允许重复。
-  必须传：pages=6 页文案原样列表、mode、image_template=下方生图模板（按第 2 步替换风格句后的版本）；
+  必须传：pages={page_count} 页文案原样列表、mode、image_template=下方生图模板（按第 2 步替换风格句后的版本）；
   single/compare 再传 reference_urls=image_search 结果里挑出的图片 URL。
 - ocr_image(image_url, task_id)：OCR 识别配图文字。默认跳过——系统会自动做图文
   一致性校验；仅当某页文案含关键数字/型号必须重点核验时，对那一页调用
@@ -163,10 +164,10 @@ _ASSETS_INSTRUCTIONS = """你是「图文生产平台」创作流水线的配图
 【工作流程（必须遵守）】
 1. single/compare 模式：调 image_search 搜参考图，把可用结果放进 references
    （下方已给出【已确认实景参考图】时跳过搜图，直接使用已确认图）。
-2. 调 generate_images 生成 6 张图（生成结果里的 image_url 是本地路径，输出时必须原样照抄）。
+2. 调 generate_images 生成 {page_count} 张图（生成结果里的 image_url 是本地路径，输出时必须原样照抄）。
    传 image_template 时：把模板中的风格句「坚韧治愈风、高清、极简高级」替换为上方给定的
    图片整体视觉风格的描述词，其余约束原样保留——
-   这样 6 张配图统一为给定的整体视觉风格。
+   这样 {page_count} 张配图统一为给定的整体视觉风格。
 3. 默认不做 OCR（系统自动校验）。仅关键数字页需核验时，对该页调 ocr_image，结果写进 ocr_texts。
 4. 只输出最终 JSON，不要输出 JSON 以外的任何解释文字。
 
@@ -249,29 +250,48 @@ def _validate_draft(data: dict) -> tuple[dict | None, list[str]]:
 
 
 def _validate_pages(data: dict) -> tuple[dict | None, list[str]]:
+    """分页输出校验（v0.1.4 P2 双格式）：结构化页对象数组优先
+    （page_schema.PageSpec），旧版字符串数组走兼容层机械结构化；
+    页数 = settings.page_count。返回 pages 为 rendered 纯文本口径。"""
+    from src.config import settings
+    from src.services.page_schema import (
+        normalize_spec, spec_from_plain, specs_from_rendered)
     if not isinstance(data, dict):
         return None, ["输出不是 JSON 对象"]
     errors: list[str] = []
+    n = settings.page_count
     pages = data.get("pages")
-    if not isinstance(pages, list) or len(pages) != 6 \
-            or any(not isinstance(p, str) or not p.strip() for p in pages):
-        errors.append("pages 必须是恰好 6 条非空字符串（当前 %d 条）"
-                      % (len(pages) if isinstance(pages, list) else 0))
-        pages = [str(p).strip() for p in pages][:6] if isinstance(pages, list) else []
+    specs = None
+    if isinstance(pages, list) and len(pages) == n:
+        if all(isinstance(p, dict) for p in pages):
+            try:
+                specs = [normalize_spec(p) for p in pages]
+            except Exception as exc:
+                errors.append(f"pages 页对象非法：{exc}")
+                specs = None
+        elif all(isinstance(p, str) and p.strip() for p in pages):
+            specs = [spec_from_plain(p.strip()) for p in pages]
+        else:
+            errors.append(f"pages 必须是恰好 {n} 个页对象"
+                          f"（或旧版 {n} 条非空字符串；当前 {len(pages)} 项混型）")
     else:
-        pages = [p.strip() for p in pages]
-    if errors:
-        return None, errors
-    return {"pages": pages, "notes": str(data.get("notes", ""))[:1000]}, []
+        errors.append(f"pages 必须是恰好 {n} 个页对象"
+                      f"（当前 {len(pages) if isinstance(pages, list) else 0} 项）")
+    if errors or specs is None:
+        return None, errors or ["pages 解析失败"]
+    return {"pages": specs_from_rendered(specs), "specs": specs,
+            "notes": str(data.get("notes", ""))[:1000]}, []
 
 
 def _validate_assets(data: dict) -> tuple[dict | None, list[str]]:
+    from src.config import settings as _st
     if not isinstance(data, dict):
         return None, ["输出不是 JSON 对象"]
     errors: list[str] = []
+    n_pages = _st.page_count   # v0.1.4 P2：页数可配
     images_raw = data.get("images")
     images: list[dict] = []
-    if isinstance(images_raw, list) and len(images_raw) == 6:
+    if isinstance(images_raw, list) and len(images_raw) == n_pages:
         for i, item in enumerate(images_raw, start=1):
             url = item.get("image_url") if isinstance(item, dict) else item
             if not isinstance(url, str) or not url.strip():
@@ -283,7 +303,7 @@ def _validate_assets(data: dict) -> tuple[dict | None, list[str]]:
                            "prompt_used": (item.get("prompt_used") or "")
                            if isinstance(item, dict) else ""})
     else:
-        errors.append("images 必须是恰好 6 项（generate_images 的返回逐页照抄）")
+        errors.append(f"images 必须是恰好 {n_pages} 项（generate_images 的返回逐页照抄）")
     if errors:
         return None, errors
     return {"images": images, "references": _norm_references(data),
@@ -522,19 +542,29 @@ async def node_agent_pages(input_data: dict) -> dict:
             "请先完成 agent_draft 阶段")
 
     pages_tpl = await get_effective_prompt("page_split", None, owner_id)
+    from src.config import settings as _st
+    from src.services.page_schema import fill_page_template
+    n = _st.page_count
     feedback_section, regen_suffix = _feedback_section(input_data)
     user_msg = _PAGES_INSTRUCTIONS.format(
         query=query, task_id=str(task_id), draft=draft_body.strip()[:3000],
-        pages_template=pages_tpl, feedback_section=feedback_section,
-        output_contract=_PAGES_CONTRACT)
+        page_count=n,
+        pages_template=fill_page_template(pages_tpl, n),
+        feedback_section=feedback_section,
+        output_contract=fill_page_template(_PAGES_CONTRACT, n))
     r = await _run_stage(task_id, "pages", user_msg, _validate_pages,
                          "分页文案改写中…")
     r["task_id"] = task_id
     out = r["out"]
-    prompt_version = f"agent_pages_v1{regen_suffix}"
+    prompt_version = f"agent_pages_v2{regen_suffix}"
 
     async with SessionLocal() as session:
         await _persist_page_copies(session, task_id, out["pages"])
+        # 结构化文案快照（v0.1.4 P2）：compose 直连消费 subject/标题/要点
+        if out.get("specs"):
+            from sqlalchemy import update as _update
+            await session.execute(_update(Task).where(Task.id == task_id)
+                                  .values(page_specs=out["specs"]))
         await session.commit()
 
     total_cost, tool_cost, tool_calls = await _stage_cost(r)
@@ -609,7 +639,8 @@ async def node_agent_assets(input_data: dict) -> dict:
     bench_section = (bench_rule + "\n\n") if bench_rule else ""
     user_msg = _ASSETS_INSTRUCTIONS.format(
         query=query, mode=mode, mode_desc=_MODE_DESC.get(mode, mode),
-        task_id=str(task_id), image_style=image_style or "（未判定，按内容气质从风格库选一种）",
+        task_id=str(task_id), page_count=settings.page_count,
+        image_style=image_style or "（未判定，按内容气质从风格库选一种）",
         image_style_desc=(f"，描述词：{image_style_desc}" if image_style_desc else "")
                           + (f"，忌讳（原样保留进 image_template）：{style_pitfalls}"
                              if style_pitfalls else ""),
@@ -677,21 +708,30 @@ async def _compose_mode_assets(task_id, query, mode, pages, image_style,
     try:
         import asyncio as _asyncio
 
+        from src.services.page_schema import (
+            spec_from_plain, render_page_text)
         from src.services.poster_compose import (
-            compose_page, gen_textfree_illustration, split_title_points,
+            compose_page, gen_textfree_illustration,
             with_default_icons, visual_brief, pick_layout, pick_img_count,
             sub_prompts, ill_size_for)
         from src.services.visual_check import comprehensive_page_check
         from src.pipeline.nodes import _persist_image
         from src.services.style_select import page_refs as _pref
 
-        # 画面 prompt：text_check 的 image_prompt_draft（6 条）优先
+        # 画面 prompt：text_check 的 image_prompt_draft 优先；
+        # 结构化分页快照（v0.1.4 P2）：与页数匹配则直连消费（subject 做
+        # 插图主体锚定），否则 spec_from_plain 兼容层（旧任务/直连路径）
         ill_prompts: list[str] = []
+        specs_raw: list = []
         async with SessionLocal() as session:
             task_row = (await session.execute(
                 select(Task).where(Task.id == task_id))).scalar_one()
             tr = task_row.text_review or {}
-            ill_prompts = [str(x) for x in (tr.get("image_prompt_draft") or [])][:6]
+            ill_prompts = [str(x) for x in (tr.get("image_prompt_draft") or [])][:len(pages)]
+            ps = task_row.page_specs
+            if isinstance(ps, list) and len(ps) == len(pages) \
+                    and all(isinstance(x, dict) and x.get("title") for x in ps):
+                specs_raw = ps
         style_desc = (image_style_desc or "").strip()
         brief = visual_brief(style_desc, style_pitfalls or "",
                              bench_rule or "")
@@ -710,7 +750,10 @@ async def _compose_mode_assets(task_id, query, mode, pages, image_style,
         gen_stat: dict = {"gen_calls": 0}
 
         async def _build_page(i: int, body: str):
-            title, subtitle, raw_points = split_title_points(body)
+            spec = (specs_raw[i - 1] if i - 1 < len(specs_raw)
+                    else spec_from_plain(body))
+            title, subtitle = spec["title"], spec.get("subtitle", "")
+            raw_points = spec.get("points") or []
             points = with_default_icons(raw_points)
             ill_prompt = (ill_prompts[i - 1] if i - 1 < len(ill_prompts)
                           else f"{query} {title} 产品场景画面")
@@ -718,7 +761,8 @@ async def _compose_mode_assets(task_id, query, mode, pages, image_style,
                              for k in ("拼贴", "宫格", "多张", "错落"))
             n_img = pick_img_count(task_id, i, multi_hint)
             layout = pick_layout(task_id, i, n_img)
-            subs = sub_prompts(ill_prompt, n_img, f"{task_id}:{i}")
+            subs = sub_prompts(ill_prompt, n_img, f"{task_id}:{i}",
+                               subject=spec.get("subject") or "")
             size = ill_size_for(layout, n_img)
 
             async def _one(j: int, sub: str):
@@ -737,7 +781,8 @@ async def _compose_mode_assets(task_id, query, mode, pages, image_style,
             ctx[i] = {"title": title, "points": points,
                       "point_texts": raw_points, "ill_prompt": ill_prompt,
                       "layout": layout, "n_img": n_img, "subs": subs,
-                      "subtitle": subtitle}
+                      "subtitle": subtitle,
+                      "rendered": render_page_text(spec)}
             return i, out_path
 
         built = dict(await _asyncio.gather(
@@ -761,7 +806,8 @@ async def _compose_mode_assets(task_id, query, mode, pages, image_style,
         for img in localized:
             idx = img["page_index"]
             c = ctx[idx]
-            rendered = c["title"] + "\n" + "\n".join(c["point_texts"])
+            rendered = c.get("rendered") or (
+                c["title"] + "\n" + "\n".join(c["point_texts"]))
             chk = await comprehensive_page_check(
                 img["image_url"], rendered, ref_mode)
             if chk is None or chk["ok"]:
