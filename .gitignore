@@ -20,8 +20,6 @@ exports/
 # Nanobot 本地运行数据
 .nanobot/
 .vendor/
-# 提示词等价性守卫的本地基线工件（--baseline 时生成，重跑可复现）
-scripts/.skill_equiv_baseline.json
 # dsh 运行数据与本地备份
 .env.bak*
 dsh-home*/
