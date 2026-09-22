@@ -606,10 +606,11 @@ async def node_agent_assets(input_data: dict) -> dict:
             or _skill_fragment("bench-spec", f"default_{mode}", default="")
 
     pages = [p.body for p in page_rows]
-    if len(pages) != 6 or any(not (p or "").strip() for p in pages):
+    n_expect = settings.page_count   # v0.1.4：页数可配（0922 参考样式=5）
+    if len(pages) != n_expect or any(not (p or "").strip() for p in pages):
         raise RuntimeError(
             f"agent_assets 缺少上一阶段分页文案（page_copies 当前 "
-            f"{len(pages)} 条，须恰好 6 条非空），请先完成 agent_pages 阶段")
+            f"{len(pages)} 条，须恰好 {n_expect} 条非空），请先完成 agent_pages 阶段")
 
     if image_style and not image_style_desc:
         from src.services.style_select import style_desc_for

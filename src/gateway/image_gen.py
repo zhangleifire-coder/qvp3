@@ -25,15 +25,13 @@ def _channels() -> list[str]:
     cfg = [c.strip() for c in settings.image_gen_channels.split(",") if c.strip()]
     avail = []
     for c in cfg:
-        if c == "linkai" and settings.openai_image_api_key != "sk-xxx":
-            avail.append("linkai")
-        elif c == "moacode" and settings.moacode_api_key:
+        if c == "moacode" and settings.moacode_api_key:
             avail.append("moacode")
         elif c == "fusion" and settings.fusionai_api_key:
             avail.append("fusion")
         elif c == "openox" and settings.openox_api_key:
             avail.append("openox")
-    return avail or ["linkai"]  # 兜底防全不可用
+    return avail or ["moacode"]  # 兜底防全不可用（linkai 通道 2026-09-23 删除）
 
 
 def _next_channel() -> str:
@@ -42,10 +40,6 @@ def _next_channel() -> str:
     ch = avail[_channel_cursor % len(avail)]
     _channel_cursor += 1
     return ch
-
-
-def _headers() -> dict:
-    return {"Authorization": f"Bearer {settings.openai_image_api_key}"}
 
 
 async def _download_image_bytes(url: str) -> tuple:
@@ -80,7 +74,7 @@ async def generate_image(prompt: str, size: str = None,
                          channel: str | None = None) -> dict:
     """调用 gpt-image-2.5 生成一张图；reference_image_urls 非空则图生图。
 
-    多通道轮询负载均衡（_next_channel）：fusion / linkai / moacode / openox
+    多通道轮询负载均衡（_next_channel）：fusion / moacode / openox
     按配置交替使用，单通道失败自动降级其他通道；mock_image_gen 开启时返回占位图。
     返回 dict 含 channel 字段（实际出图通道），调用方按通道费率
     （model_rates 的 <image_model>@<channel> 行）计成本。
@@ -104,28 +98,25 @@ async def generate_image(prompt: str, size: str = None,
             if reference_image_urls:
                 # openox 备份通道只确认支持文生图（2026-09-08 接入时 edits 支持
                 # 情况不明）：图生图轮到 openox 时按"当前通道失败换通道"语义直接
-                # 转给支持 edits 的通道（fusion/linkai/moacode），openox 不参与图生图
+                # 转给支持 edits 的通道（fusion/moacode），openox 不参与图生图
                 if channel == "openox":
                     edit_channels = [c for c in _channels() if c != "openox"]
-                    channel = edit_channels[0] if edit_channels else "linkai"
+                    channel = edit_channels[0] if edit_channels else "moacode"
                 try:
                     # 图生图按通道路由：fusion=主(edits multipart b64) /
-                    # moacode=垫图(input_image) / linkai=images/edits
-                    if channel == "fusion":
-                        return await _edit_fusion(prompt, reference_image_urls, size, model=use_model)
+                    # moacode=垫图(input_image)
                     if channel == "moacode":
                         return await _edit_moacode(prompt, reference_image_urls, size, model=use_model)
-                    return await _edit_with_references(prompt, reference_image_urls, size, model=use_model)
+                    return await _edit_fusion(prompt, reference_image_urls, size, model=use_model)
                 except Exception as e:  # noqa: BLE001
                     # 当前通道图生图失败 → 先试另一通道的图生图（保住参考图语义），
                     # 两通道都败才降级文生图，且必须留痕（静默降级会让对比模式失效）
                     print(f"[image_gen] {channel} 图生图失败: {type(e).__name__}: {e}",
                           flush=True)
                     try:
-                        if channel == "moacode":
-                            return await _edit_with_references(prompt, reference_image_urls, size, model=use_model)
-                        if "moacode" in _channels():
+                        if channel != "moacode" and "moacode" in _channels():
                             return await _edit_moacode(prompt, reference_image_urls, size, model=use_model)
+                        return await _edit_fusion(prompt, reference_image_urls, size, model=use_model)
                     except Exception as e2:  # noqa: BLE001
                         print(f"[image_gen] 备用通道图生图也失败（{type(e2).__name__}），降级文生图",
                               flush=True)
@@ -146,16 +137,14 @@ async def generate_image(prompt: str, size: str = None,
 async def _generate_by_channel(prompt: str, size: str, channel: str,
                                 model: str = IMAGE_MODEL) -> dict:
     """按通道路由生图：fusion=主通道(Images API b64) / moacode=Responses API
-    SSE / openox=备份(Images API url，仅文生图) / linkai=Images API url。"""
-    if channel == "fusion":
-        return await _generate_fusion(prompt, size, model=model)
+    SSE / openox=备份(Images API url，仅文生图)。"""
     if channel == "moacode":
         return await _generate_moacode(prompt, size, model=model)
     if channel == "openox":
         return await _generate(prompt, size, api_key=settings.openox_api_key,
                                base_url=settings.openox_base_url, channel="openox",
                                model=model)
-    return await _generate(prompt, size, model=model)
+    return await _generate_fusion(prompt, size, model=model)
 
 
 def _fusion_headers() -> dict:
@@ -291,15 +280,12 @@ async def _edit_moacode(prompt: str, reference_image_urls: list[str],
 
 
 async def _generate(prompt: str, size: str, api_key: str = None,
-                    base_url: str = None, channel: str = "linkai",
+                    base_url: str = None, channel: str = "openox",
                     model: str = IMAGE_MODEL) -> dict:
-    """文生图：POST /v1/images/generations。
-
-    linkai 与 openox 备份通道共用此路径（同为 OpenAI 兼容 Images API），
-    仅 key/base_url 不同；缺省取 linkai 配置。
-    """
-    api_key = api_key or settings.openai_image_api_key
-    base_url = base_url or settings.openai_image_base_url
+    """文生图：POST /v1/images/generations（openox 备份通道用，
+    OpenAI 兼容 Images API url 模式；调用方必须显式传 key/base_url）。"""
+    if not api_key or not base_url:
+        raise RuntimeError("openai-compat generate 需要 api_key 与 base_url")
     url = f"{base_url}/images/generations"
     payload = {"model": model, "prompt": prompt, "size": size, "n": 1,
                "response_format": "url", "quality": settings.image_quality}
@@ -315,30 +301,7 @@ async def _generate(prompt: str, size: str, api_key: str = None,
     return _result(u, channel, model=model)
 
 
-async def _edit_with_references(prompt: str, reference_image_urls: list[str],
-                                size: str, model: str = IMAGE_MODEL) -> dict:
-    """图生图：POST /v1/images/edits，参考图 multipart 上传。"""
-    url = f"{settings.openai_image_base_url}/images/edits"
-    files = []
-    for i, ref_url in enumerate(reference_image_urls):
-        content, ctype = await _download_image_bytes(ref_url)
-        ext = {"image/png": "png", "image/jpeg": "jpg",
-               "image/webp": "webp"}.get(ctype, "png")
-        files.append(("image[]", (f"ref_{i}.{ext}", content, ctype)))
-    # gpt-image-2.5 编辑时自动高保真，传 input_fidelity 会返回 400，故不传
-    data = {"model": model, "prompt": prompt, "size": size,
-            "n": "1", "response_format": "url", "quality": settings.image_quality}
-    resp = await _client().post(url, data=data, files=files, headers=_headers(),
-                                timeout=240)
-    if resp.status_code >= 400:
-        raise RuntimeError(f"image edit failed ({resp.status_code}): {resp.text[:400]}")
-    j = resp.json()
-    u = j["data"][0].get("url")
-    if not u:
-        raise RuntimeError(f"image response missing url field: {str(j)[:200]}")
-    return _result(u, "linkai", model=model)
 
-
-def _result(image_url: str, channel: str = "linkai", model: str = IMAGE_MODEL) -> dict:
+def _result(image_url: str, channel: str = "fusion", model: str = IMAGE_MODEL) -> dict:
     return {"image_url": image_url, "hash": hashlib.md5(image_url.encode()).hexdigest(),
             "model_version": f"{model}@{channel}", "channel": channel}

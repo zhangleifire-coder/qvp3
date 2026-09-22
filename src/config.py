@@ -22,20 +22,18 @@ class Settings(BaseSettings):
     dashscope_base_url: str = "https://ws-7349xztoo3gwseol.cn-beijing.maas.aliyuncs.com/api/v1"
     # 图片生成（gpt-image-2.5-flare，OpenAI 兼容 Images API，经转发机；
     # 可选 gpt-image-2.5-sunburst，同 API 同参数）
-    openai_image_base_url: str = ""      # 通道1：LinkAI（OpenAI 兼容，含 /v1）
-    openai_image_api_key: str = "sk-xxx" # 通道1 key
     # 通道2：Moacode gpt-image-2.5（OpenAI Responses API，SSE 流式，返回 base64）
     moacode_api_key: str = ""            # cr_... ；空则该通道不可用
     moacode_base_url: str = "https://moacode.org/v1"
     # 通道3（主）：FusionAI gpt-image-2.5（Images API 生成+编辑，返回 b64_json，
     # 1K/2K/4K，支持 6 图并发；生图可能数分钟，读超时给足）
     fusionai_api_key: str = ""           # sk-fusion-... ；空则该通道不可用
-    fusionai_base_url: str = "https://api.fusionaix.cn/v1"
+    fusionai_base_url: str = "https://www.fusionaix.net/v1"   # 2026-09-22 域名迁移（旧 api.fusionaix.cn）
     # 通道4（备份，2026-09-08）：openox gpt-image-2.5（OpenAI 兼容 Images API，
     # 只确认支持文生图 /images/generations，不参与图生图）
     openox_api_key: str = ""             # sk-... ；空则该通道不可用
     openox_base_url: str = "https://api.openox.net/v1"
-    image_gen_channels: str = "fusion,linkai,moacode,openox"  # fusion 主通道轮询优先
+    image_gen_channels: str = "fusion,moacode,openox"  # fusion 主通道轮询优先（linkai 2026-09-23 删除）
     image_model: str = "gpt-image-2.5-flare"
     image_size: str = "1152x1536"        # 竖版（1152x1536，3:4）
     # 生图画质档（2026-09-01）：gpt-image-2.5 API 默认 auto≠high，网页端等效 high——

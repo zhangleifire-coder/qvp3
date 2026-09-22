@@ -17,14 +17,12 @@ from src.gateway.cost_tracker import (classify_category, per_call_cost,
 
 def test_per_call_channel_rates():
     assert per_call_cost("gpt-image-2@fusion") == 0.2   # 账单实证
-    assert per_call_cost("gpt-image-2@linkai") == 0.2   # 参照 fusion 待校准
     assert per_call_cost("gpt-image-2@moacode") == 0.2
     assert per_call_cost("gpt-image-2@openox") == 0.2
     # 无通道后缀 → 基准行；未识别模型 → fallback 全局兜底
     assert per_call_cost("gpt-image-2") == 0.2
     # 新默认模型 gpt-image-2.5-flare（025）
     assert per_call_cost("gpt-image-2.5-flare@fusion") == 0.2
-    assert per_call_cost("gpt-image-2.5-flare@linkai") == 0.2
     assert per_call_cost("gpt-image-2.5-flare") == 0.2
     assert per_call_cost("gpt-image-2.5-sunburst@moacode") == 0.2
     assert per_call_cost("totally-unknown", fallback=0.35) == 0.35
@@ -39,7 +37,7 @@ async def test_channel_rate_db_override():
     try:
         await refresh_rates(force=True)
         assert per_call_cost("gpt-image-2@fusion") == 0.15
-        assert per_call_cost("gpt-image-2@linkai") == 0.2  # 其他通道不受影响
+        assert per_call_cost("gpt-image-2@moacode") == 0.2  # 其他通道不受影响
     finally:
         async with SessionLocal() as session:
             await session.execute(text(

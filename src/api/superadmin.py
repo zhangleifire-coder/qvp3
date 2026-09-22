@@ -48,7 +48,6 @@ _SECRET_FIELDS = {
     "kimi_code_api_key": "Kimi Code Key（备2）",
     "dashscope_api_key": "DashScope Key（视觉审核/OCR）",
     "fusionai_api_key": "FusionAI Key（生图·fusion）",
-    "openai_image_api_key": "LinkAI Key（生图·linkai）",
     "moacode_api_key": "Moacode Key（生图·moacode）",
     "openox_api_key": "Openox Key（生图·openox）",
     "doubao_search_key": "豆包搜索 Key（证据包）",
@@ -71,7 +70,7 @@ _BOOL_FIELDS = {
 }
 _KNOWN_FIELDS = set(_SECRET_FIELDS) | set(_PLAIN_FIELDS) | set(_BOOL_FIELDS)
 
-CHANNELS = ("fusion", "linkai", "moacode", "openox")
+CHANNELS = ("fusion", "moacode", "openox")
 _GATEWAY_URLS = {"dsh": "http://127.0.0.1:8901/v1"}
 
 
