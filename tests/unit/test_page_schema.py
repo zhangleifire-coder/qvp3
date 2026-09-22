@@ -76,22 +76,25 @@ def test_fill_page_template_5_vs_6():
     assert "恰好 5 页" in out5 and "第 2-4 页" in out5 and "第 5 页结尾" in out5
 
 
-def test_layout_rotation_5_pages_skips_list_role():
-    """5 页布局轮换按模板 §3.2 去掉清单页（index 3）：第 4 页=场景页、第 5 页=总结页。"""
+def test_layout_rotation_page_variants():
+    """页型变体轮换（2026-09-23 案例风格库 11 页型）：
+    首页=封面，末页=总结结尾，中间页在变体间轮换且相邻不同。"""
     from src.config import settings
     from src.gateway import prompt_versions as pv
 
     layouts = pv._PAGE_LAYOUTS
-    assert len(layouts) == 6
+    assert len(layouts) == 11
     old = settings.page_count
     try:
-        settings.page_count = 6
-        assert pv._layout_for_page(4, layouts) is layouts[3]   # 清单页
-        assert pv._layout_for_page(6, layouts) is layouts[5]   # 总结页
         settings.page_count = 5
-        assert pv._layout_for_page(1, layouts) is layouts[0]   # 封面
-        assert pv._layout_for_page(4, layouts) is layouts[4]   # 场景页（跳过清单）
-        assert pv._layout_for_page(5, layouts) is layouts[5]   # 总结页
+        assert pv._layout_for_page(1, layouts) is layouts[0]    # 封面
+        assert pv._layout_for_page(2, layouts) is layouts[1]    # 场景
+        assert pv._layout_for_page(3, layouts) is layouts[4]    # 拼贴
+        assert pv._layout_for_page(4, layouts) is layouts[2]    # 特写
+        assert pv._layout_for_page(5, layouts) is layouts[10]   # 总结结尾
+        settings.page_count = 6
+        seq6 = [pv._layout_for_page(i, layouts) for i in range(1, 7)]
+        assert seq6 == [layouts[i] for i in (0, 1, 4, 2, 5, 10)]
     finally:
         settings.page_count = old
 
