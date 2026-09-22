@@ -110,13 +110,15 @@ class Settings(BaseSettings):
     anomaly_max_seconds: int = 3600
     # ── 创作 Agent 路径（2026-08-22 改造；网关 2026-09-18 起为 dsh_serve）──
     # 双路径总开关：true=创作段(evidence/正文/分页/生图/OCR)整体交给创作 Agent；
-    # false=原 13 节点直连路径（网关故障时秒级回退，软件工程层兜底）
-    agent_pipeline_enabled: bool = False
-    # Agent 路径变体（2026-09-09）：monolith（默认，agent_production 大节点，
-    # 发版安全默认）/ staged（创作段拆为 agent_evidence/draft/pages/assets
-    # 4 个独立 Agent 节点，阶段失败只重跑该阶段、成本按节点拆分）。
-    # 仅 .env 显式设 AGENT_PIPELINE_VARIANT=staged 才走新路径
-    agent_pipeline_variant: str = "monolith"
+    # false=原 13 节点直连路径（网关故障时秒级回退，软件工程层兜底）。
+    # v0.1.4（2026-09-22）默认翻转：staged+混合合成已是生产事实标准
+    # （.env 口径自 09-21 起即为 true），默认值与事实对齐，新人零配置跑对路径
+    agent_pipeline_enabled: bool = True
+    # Agent 路径变体：staged（创作段拆为 agent_evidence/draft/pages/assets
+    # 4 个独立 Agent 节点，阶段失败只重跑该阶段、成本按节点拆分；混合生图
+    # compose 模式仅挂在此变体）。monolith 已 deprecated（v0.1.4 起停止演进，
+    # 仅保留作一秒回退逃生通道，v0.1.4 发版后删除）
+    agent_pipeline_variant: str = "staged"
     # ── 创作网关：dsh_serve 薄层（内嵌 dsh harness，OpenAI 兼容 :8901）──
     dsh_serve_base_url: str = ""         # OpenAI 兼容地址（含 /v1），空=自动回退
     dsh_serve_api_key: str = ""          # 仅 bind 非 localhost 时需要（Bearer）

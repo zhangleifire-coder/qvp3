@@ -20,7 +20,6 @@ from src.api.meta import router as meta_router
 from src.api.internal import router as internal_router
 from src.api.styles import router as styles_router
 from src.api.system import router as system_router
-from src.api.posters_tmp import router as posters_tmp_router
 from src.api.superadmin import router as superadmin_router
 
 
@@ -65,7 +64,6 @@ app.include_router(internal_router)
 app.include_router(styles_router)
 app.include_router(system_router)
 app.include_router(superadmin_router)
-app.include_router(posters_tmp_router)  # 临时海报 API（验证用，可整文件删除）
 
 # 静态前端（审核工作台 + 看板）
 STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "static"

@@ -98,10 +98,13 @@ async def test_assets_stage_requires_pages():
 # ── 开关分发 ─────────────────────────────────────────────────
 
 
-def test_variant_default_is_monolith():
-    from src.config import settings
-    # 发版安全默认：不显式配置时不得走 staged
-    assert settings.agent_pipeline_variant == "monolith"
+def test_variant_default_is_staged():
+    from src.config import Settings
+    # v0.1.4 默认翻转：staged+混合合成是生产事实标准，不显式配置即走 staged。
+    # 断言字段级默认而非运行时 settings——conftest 给测试进程强制注入
+    # AGENT_PIPELINE_ENABLED=false（测试默认直连路径），运行值被 env 覆盖。
+    assert Settings.model_fields["agent_pipeline_variant"].default == "staged"
+    assert Settings.model_fields["agent_pipeline_enabled"].default is True
 
 
 def test_orchestrator_dispatch(monkeypatch):

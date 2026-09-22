@@ -10,8 +10,10 @@
    INFO_POINTS_MIN=1 / INFO_POINTS_MAX=2）与 baseline 记录一致。
 
 覆盖范围：prompt_versions 全常量与全 stage×mode 取词/渲染矩阵、
-text_check 起草三式、visual_writer、ai_review、page_subject、
+text_check 起草三式、visual_writer、page_subject、
 combo.analyze_prompt、agent_production 指令组装。
+（ai_review 快照块已随孤儿模块删除——v0.1.4 P0.3，其职责由
+visual_check.comprehensive_page_check 承接）
 """
 import argparse
 import difflib
@@ -109,13 +111,6 @@ def collect() -> dict:
         "_VISUAL_PROMPT": vw._VISUAL_PROMPT,
         "built_message": vw._build_message("风格名样例", "风格描述样例",
                                            ["页文"] * 6, ["笔记样例"]),
-    }
-
-    from src.pipeline import ai_review as ar
-    snap["ai_review"] = {
-        "_VL_REVIEW_PROMPT": ar._VL_REVIEW_PROMPT,
-        "filled": ar._VL_REVIEW_PROMPT.format(page=2, page_text="页文案样例",
-                                              ref_mode="是"),
     }
 
     from src.services import page_subject as ps

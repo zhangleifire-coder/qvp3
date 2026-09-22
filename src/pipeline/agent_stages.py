@@ -705,6 +705,9 @@ async def _compose_mode_assets(task_id, query, mode, pages, image_style,
         sem = _asyncio.Semaphore(
             max(2, min(6, int(getattr(settings, "image_gen_parallel", 2) or 2))))
         ctx: dict[int, dict] = {}
+        # 实际生图张数计数器（含文字-Free/质检重生）——成本按此记账，
+        # 不再按页数×单价（v0.1.4 P0.4 修复低估）
+        gen_stat: dict = {"gen_calls": 0}
 
         async def _build_page(i: int, body: str):
             title, subtitle, raw_points = split_title_points(body)
@@ -723,7 +726,8 @@ async def _compose_mode_assets(task_id, query, mode, pages, image_style,
                 refs = (_pref(ref_all, i) if ref_all else None) if j == 0 else None
                 async with sem:
                     return await gen_textfree_illustration(
-                        sub, style_desc, refs, brief=brief, size=size)
+                        sub, style_desc, refs, brief=brief, size=size,
+                        stat=gen_stat)
 
             ills = [p for p in await _asyncio.gather(
                 *[_one(j, s) for j, s in enumerate(subs)]) if p]
@@ -770,7 +774,8 @@ async def _compose_mode_assets(task_id, query, mode, pages, image_style,
                             style_desc,
                             (_pref(ref_all, idx) if ref_all else None) if j == 0 else None,
                             brief=brief,
-                            size=ill_size_for(c["layout"], c["n_img"]))
+                            size=ill_size_for(c["layout"], c["n_img"]),
+                            stat=gen_stat)
 
                 ills2 = [p for p in await _asyncio.gather(
                     *[_reone(j, s) for j, s in enumerate(c["subs"])]) if p]
@@ -800,7 +805,8 @@ async def _compose_mode_assets(task_id, query, mode, pages, image_style,
             await _persist_assets(session, task_id, query, localized,
                                   "compose:v1")
             await session.commit()
-        # 成本估算：每页一张画面（费率表基准价）
+        # 成本估算：按实际生图调用数计（宫格每页 1-6 张 + 重生张数，
+        # gen_stat 由 gen_textfree_illustration 内部累计）
         from src.gateway.cost_tracker import per_call_cost
         from src.config import settings as _st
         unit = per_call_cost(_st.image_model,
@@ -809,7 +815,7 @@ async def _compose_mode_assets(task_id, query, mode, pages, image_style,
                 "image_urls": [im["image_url"] for im in localized],
                 "model": "compose:v1", "model_version": "compose:v1",
                 "prompt_version": prompt_version + "_compose" + regen_suffix,
-                "cost_cny": round(unit * len(localized), 4),
+                "cost_cny": round(unit * gen_stat["gen_calls"], 4),
                 "tool_calls": 0, "tool_cost_cny": 0.0,
                 "correction_rounds": 0, "session_id": "compose-mode",
                 "degraded": False}

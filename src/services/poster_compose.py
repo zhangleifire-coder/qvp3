@@ -9,7 +9,8 @@
 - 画面生成：gen_textfree_illustration（文生图/图生图 + 宽松文字-Free 检查，
   VS/箭头/刻度豁免，失败重生一次）。
 
-临时 API（src/api/posters_tmp.py）与本模块共用同一内核。
+唯一调用方：staged assets 节点 _compose_mode_assets（src/pipeline/agent_stages.py）。
+原平行验证 API（src/api/posters_tmp.py，自带渲染副本）已于 v0.1.4 删除。
 """
 import hashlib
 import json
@@ -746,11 +747,15 @@ def _render_camps(dr, camps, margin, y, fg):
 async def gen_textfree_illustration(prompt: str, style_desc: str = "",
                                     ref_urls: list | None = None,
                                     size: str = "1536x1024",
-                                    brief: str = "") -> Path | None:
+                                    brief: str = "",
+                                    stat: dict | None = None) -> Path | None:
     """生成无文字 AI 画面：生图 → 宽松文字-Free 检查（VS/刻度豁免）
     → 不过则重生一次；仍不过返回 None（调用方决定占位或重试）。
     风格要求经 visual_brief 抽离层（风格描述/忌讳/标杆规范的纯画面句）
     以 brief 注入；no_text 兜底防出字。
+    stat：可选计数器 dict——每次成功生图（含文字检查重生）计
+    stat["gen_calls"] += 1，调用方据此按实际张数记账（v0.1.4 P0.4，
+    修复按页数记账导致的成本低估）。
     """
     from src.gateway.image_gen import generate_image
     from src.gateway.ocr import fetch_image_bytes
@@ -766,6 +771,8 @@ async def gen_textfree_illustration(prompt: str, style_desc: str = "",
             data, _ = await fetch_image_bytes(r["image_url"])
         except Exception:
             return None
+        if stat is not None:
+            stat["gen_calls"] = stat.get("gen_calls", 0) + 1
         fp = GENERATED / f"compose_ill_{uuid.uuid4().hex[:10]}.png"
         fp.write_bytes(data)
         return fp
