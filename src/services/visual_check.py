@@ -201,17 +201,23 @@ _COMPREHENSIVE_PROMPT = """你是配图综合质检员。图中是一张图文�
 2. subject_ok：图中主要主体是否与文案主题一致（文案说 A、图画 B 即 false）。
 3. harmony_ok：图文是否协调——文字量不过载、文字不被装饰/主体遮挡、
    实景元素与文案不冲突。
+4. watermark_ok：画面是否干净无水印——出现第三方平台水印、二维码、
+   账号/联系方式/购买链接等引流字样、其他平台 Logo 即 false
+   （制图标记不算，见下）。
 
 注意：VS 对比字样、箭头、刻度线、引线等制图标记不算文字问题。
 只输出严格 JSON，不要任何其他文字：
 {{"text_ok": true/false, "subject_ok": true/false, "harmony_ok": true/false,
-  "issues": ["问题简述，如：第3字错/主体不符/文字被遮挡"]}}"""
+  "watermark_ok": true/false,
+  "issues": ["问题简述，如：第3字错/主体不符/文字被遮挡/有水印或二维码"]}}"""
 
 
 async def comprehensive_page_check(image_url: str, page_text: str,
                                    ref_mode: bool = False) -> dict | None:
     """配图综合质检（2026-09-21）：一次 VL 调用覆盖 文字逐字+字形+渲染 /
-    主体一致性 / 图文协调 三链（原 garble/subject/ai_review 三链合并）。
+    主体一致性 / 图文协调 三链（原 garble/subject/ai_review 三链合并）；
+    2026-09-22 v0.1.4 P1.6 增第 4 维 watermark_ok（水印/二维码/引流红线，
+    对齐供应商手册 §7.5/7.6），模型未输出该维度时不误判（按无水印处理）。
 
     返回 {"ok": bool, "issues": [str]}；VL 不可用/解析失败返回 None
     （调用方按放行处理，人工审核兜底）。
@@ -244,7 +250,11 @@ async def comprehensive_page_check(image_url: str, page_text: str,
         if not all(isinstance(obj.get(k), bool) for k in keys):
             return None
         issues = [str(i)[:60] for i in (obj.get("issues") or [])][:5]
-        return {"ok": all(obj[k] for k in keys), "issues": issues}
+        watermark = obj.get("watermark_ok")   # 缺维不误判（None=按无水印）
+        ok = all(obj[k] for k in keys) and watermark is not False
+        if watermark is False and not any("水印" in i for i in issues):
+            issues.append("疑似水印/二维码/引流信息")
+        return {"ok": ok, "issues": issues}
     except Exception:
         import traceback
         traceback.print_exc()

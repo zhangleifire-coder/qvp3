@@ -21,6 +21,10 @@ os.environ["DATABASE_URL"] = TEST_DB_URL
 os.environ["IMAGE_GEN_DELAY_SECONDS"] = "0"  # 测试不 sleep，加速
 os.environ["MOCK_IMAGE_GEN"] = "false"       # 测试默认关 mock，路由逻辑走真函数
 os.environ["AGENT_PIPELINE_ENABLED"] = "false"  # 测试默认直连路径；Agent 路径有专测
+# v0.1.4 P0.1 起 config 默认 variant=staged（生产事实标准），但测试进程默认
+# 钉 monolith：test_agent_pipeline 专测 monolith 节点序列，staged 由
+# test_agent_stages_pipeline 专测（其用例内 monkeypatch 显式设 staged）
+os.environ["AGENT_PIPELINE_VARIANT"] = "monolith"
 # VL 主体审核默认关：fetch_image_bytes 被 mock 后 _dedupe_and_validate 会走到
 # check_subject_match，不能让它对 dashscope 发起真实 VL 调用（服务本身的解析
 # 逻辑由 test_visual_check 在启用开关后专测）。

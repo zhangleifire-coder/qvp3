@@ -385,11 +385,20 @@ async def node_draft_gen(input_data: dict) -> dict:
 
 
 async def node_rule_check(input_data: dict) -> dict:
-    from src.models.drafts import RuleResult
+    from src.models.drafts import PageCopy, RuleResult
+    from src.quality.rules import check_page_overlap
     async with SessionLocal() as session:
         text = await _latest_draft_body(session, input_data["task_id"])
     title = text.split("\n")[0][:25] if text else ""
     results = check_rules(text, title)
+    # 页间相似度机检（v0.1.4 P1.5）：分页已落库后比对最相似页对，告警不硬拦
+    async with SessionLocal() as session:
+        rows = (await session.execute(
+            select(PageCopy).where(PageCopy.task_id == input_data["task_id"])
+            .order_by(PageCopy.page_index))).scalars().all()
+    overlap = check_page_overlap([r.body for r in rows])
+    if overlap:
+        results.append(overlap)
     async with SessionLocal() as session:
         for r in results:
             session.add(RuleResult(
