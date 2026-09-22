@@ -846,6 +846,17 @@ async def _compose_mode_assets(task_id, query, mode, pages, image_style,
                 traceback.print_exc()
                 flags[idx] = chk["issues"] or ["综合质检未通过"]
 
+        # 跨页批量质检（v0.1.4 P3）：拼版一次 VL 查跨页信息/视觉重复、
+        # 风格一致性、深底页数——告警进 RejectMark 人工队列，不自动重生
+        if len(localized) >= 2:
+            from src.services.cross_page_check import (
+                cross_page_check, cross_flags)
+            cp = await cross_page_check(
+                task_id, [im["image_url"] for im in localized], pages)
+            if cp is not None and not cp["ok"]:
+                for idx, msgs in cross_flags(cp, len(localized)).items():
+                    flags.setdefault(idx, []).extend(msgs)
+
         async with SessionLocal() as session:
             await _persist_review_marks(session, task_id, localized, flags)
             await _persist_assets(session, task_id, query, localized,

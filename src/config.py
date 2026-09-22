@@ -73,6 +73,10 @@ class Settings(BaseSettings):
     # 版式轮换/交付契约/分页提示词全链跟随；其余值一律回落 6。
     # 注意：deprecated 的 monolith 路径仍固定 6 页（不再演进）。
     page_count: int = 6
+    # 跨页批量质检（v0.1.4 P3）：全套页图拼版一次 VL 查跨页信息/视觉重复、
+    # 风格一致性、深底页数（手册「图集一致性/多样性」维度）。
+    # 每任务 +1 次 VL（约 ¥0.1），结果告警进人工审核（RejectMark）。
+    cross_page_check_enabled: bool = True
     image_search_provider: str = "openserp"
     openserp_base_url: str = "http://127.0.0.1:7001"
     # 旧 ChatGPT 生图字段（保留占位）

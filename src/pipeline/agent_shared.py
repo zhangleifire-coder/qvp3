@@ -583,6 +583,20 @@ async def _image_quality_chain(task_id, pages: list[str], localized: list[dict],
             if chk2 is not None and not chk2["ok"]:
                 flags[idx] = (chk2["issues"] or chk["issues"]
                               or ["重生后仍未通过综合质检"])
+    # 跨页批量质检（v0.1.4 P3）：拼版一次 VL 查跨页信息/视觉重复、风格
+    # 一致性、深底页数——告警进 RejectMark 人工队列，不自动重生。
+    # 覆盖 staged 直出分支与 monolith（本函数为两路共享质检链）
+    if len(localized) >= 2:
+        try:
+            from src.services.cross_page_check import (
+                cross_page_check, cross_flags)
+            cp = await cross_page_check(
+                task_id, [im.get("image_url") for im in localized], pages)
+            if cp is not None and not cp["ok"]:
+                for idx, msgs in cross_flags(cp, len(localized)).items():
+                    flags.setdefault(idx, []).extend(msgs)
+        except Exception:  # noqa: BLE001
+            traceback.print_exc()
     return localized, flags
 
 

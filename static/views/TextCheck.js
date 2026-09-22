@@ -19,6 +19,7 @@ const TextCheckView = {
   computed: {
     awaitingCount() { return this.total; },
     pageCount() { return (this.form.pages && this.form.pages.length) || 6; },
+    queryRelevance() { return this.review.query_relevance || null; },
     review() { return (this.detail && this.detail.task.text_review) || {}; },
     issues() { return (this.review.query_clean || {}).issues || []; },
     bodyIssues() { return this.review.body_issues || []; },
@@ -316,6 +317,10 @@ const TextCheckView = {
           <button class="btn btn-sm" :class="marks['query'] ? 'btn-danger' : 'btn-outline'"
                   @click="toggleMark('query')">📌{{ marks['query'] ? '已标记' : '标记' }}</button></h3>
         <div :class="{ 'tc-marked': marks['query'] }">
+          <div v-if="queryRelevance && queryRelevance.level === 'warn'"
+               class="tc-field" style="padding:6px 10px;margin-bottom:6px;border:1px solid #e6a23c;background:#fdf6ec;color:#b88230;font-size:12.5px">
+            ⚠ 标题-Query 相关性预检：{{ queryRelevance.reason || '内容与 Query 匹配度存疑' }}（供参考，可标记驳回）
+          </div>
           <textarea v-model="form.query" rows="2" class="tc-field" @input="fitField"></textarea>
           <textarea v-if="marks['query']" v-model="marks['query'].note" rows="2"
                     class="tc-note-field" placeholder="修改意见：这条 Query 要怎么改（必填，驳回重写时 AI 按此执行）"></textarea>

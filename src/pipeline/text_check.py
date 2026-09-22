@@ -112,6 +112,39 @@ def body_rule_issues(body: str) -> list[str]:
     return body_issues
 
 
+# 标题-Query 相关性预检（v0.1.4 P3）：《供应商生产标准手册 V2.0》§6.1
+# （标题精准对应 query，3/2/1 分口径）简化为 pass/warn 两档——warn 非阻塞，
+# 进人工关卡展示由人定夺；调用/解析失败静默跳过（None 不入 review）。
+_QR_PROMPT = """你是小红书图文验收员。判断下面这套图文卡的内容是否精准回应 Query（验收口径：标题与内容精准对应 query、不跑题、不泛化、不是通用模板换皮；只覆盖一部分或内容空泛判 warn）。
+
+Query：{query}
+正文标题（首行）：{title}
+
+正文：
+{body}
+
+只输出严格 JSON，不要任何其他文字：
+{{"level": "pass" 或 "warn", "reason": "不超过40字的判定理由"}}"""
+
+
+async def _query_relevance_check(query: str, body: str) -> dict | None:
+    if not (query or "").strip() or not (body or "").strip():
+        return None
+    title = body.strip().split("\n")[0][:60]
+    try:
+        result = await call_with_failover(
+            _QR_PROMPT.format(query=query.strip()[:200], title=title,
+                              body=body.strip()[:1500]))
+        data = _parse_json(result["text"])
+        if not data or str(data.get("level", "")).strip() not in ("pass", "warn"):
+            return None
+        return {"level": str(data["level"]).strip(),
+                "reason": str(data.get("reason", ""))[:80],
+                "model": result.get("model_version")}
+    except Exception:
+        return None
+
+
 # 校稿长度护栏：校后正文不足校前 60% 视为截断/跑偏，弃用该轮结果保留前文
 # （与 nodes.run_draft_gen 的 DRAFT_POLISH 护栏同语义）；两轮各自独立判定
 _POLISH_MIN_RATIO = 0.6
@@ -265,6 +298,8 @@ async def run_text_check(task_id) -> dict:
     # 正文自动规则检查：禁词 + 字数（人工核查提示，不阻断）。
     # 校稿后再跑——校后文本才是人工看到的终稿，规则提示以终稿为准
     body_issues = body_rule_issues(body)
+    # 标题-Query 相关性预检（v0.1.4 P3）：warn 非阻塞，人工关卡展示
+    qr = await _query_relevance_check(query, body)
     review = {
         "query": query,
         "query_clean": {"issues": [str(i)[:120] for i in qc.get("issues", [])],
@@ -276,6 +311,7 @@ async def run_text_check(task_id) -> dict:
         "model": result.get("model_version"),
         "polish": polish_trace,
         "auto_ok": not qc.get("issues") and not body_issues,
+        **({"query_relevance": qr} if qr else {}),
     }
     if user_body:   # 手工导入：标记来源并保留原稿（核查页可对照）
         review["source"] = "manual"
