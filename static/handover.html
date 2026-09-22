@@ -33,7 +33,7 @@
 </head>
 <body>
 <div class="banner"><b>图文生产平台 · 技术交接文档</b>
-  <span>源文件 技术交接文档-20260907.md ｜ commit 1d48135 ｜ 生成于 2026-09-14 19:49（scripts/build_handover.py，随发版自动更新）</span>
+  <span>源文件 技术交接文档-20260907.md ｜ commit 53b108f ｜ 生成于 2026-09-22 17:19（scripts/build_handover.py，随发版自动更新）</span>
 </div>
 <main>
 <h1 id="_1">图文生产平台 · 技术交接文档</h1>
@@ -43,6 +43,10 @@
 上一版存档：<code>docs/技术交接文档-20260903.md</code>（保留不删，Nanobot 时代基线）
 读者：接手新改进开发的同事。读完本文应能：本地跑起全套环境、理解双路径流水线、
 安全地改提示词/节点/前端、按流程发版到测试与生产。</p>
+<p>⚠ <strong>v0.1.4 增量（2026-09-22，分支 release/v0.1.4）</strong>：本文为 09-07 基线档案，最新开发态以
+<code>docs/交接-v0.1.2-开发调试.md</code> §0 为准。要点：提示词底座以《生图通用Prompt模板-20260922-最终版.md》
+八铁律为唯一基准回写；流水线口径收敛为<strong>双路径（staged 主链 + 直连兜底，monolith deprecated）</strong>；
+分页结构化（page_schema + 迁移 027）；跨页批量质检与 watermark/页间相似度机检；PAGE_COUNT 5|6 可配。</p>
 <p>本版主线：<strong>创作网关 Nanobot(:8900) → dsh_serve(:8901)</strong>（DeepSeek Harness 薄层）、
 提示词库 skill 化（单一事实来源收敛到 <code>skills/</code>）、qvp3(:8005) 灰度新栈上线。
 迁移细节先读 §5.6「dsh 迁移要点」。</p>
@@ -83,7 +87,7 @@ FastAPI 后端（uvicorn，单进程 asyncio）         Docker Compose（每套�
 <p>一次 Agent 路径生产的数据流：
 导入 → 文字核查关卡（人工放行）→ 实景搜图关卡（人工筛选，compare/single 才有）→
 <code>agent_production</code> 一次调用创作 Agent（Nanobot 或 dsh_serve，协议一致；内部用
-MCP 工具：豆包搜索取证 → 生图 gpt-image-2.5-flare → 逐页 OCR 自检）→ 后端收契约 JSON
+MCP 工具：豆包搜索取证 → 生图 gpt-image-2 → 逐页 OCR 自检）→ 后端收契约 JSON
 做确定性收尾（图片本地化/去重/尺寸校验/落库 → 规则机 → 交叉核验 → 风险分级 →
 人工审图 → 会签 → 快照）。</p>
 <h2 id="3">3. 技术栈清单</h2>
@@ -104,12 +108,12 @@ MCP 工具：豆包搜索取证 → 生图 gpt-image-2.5-flare → 逐页 OCR �
 <tr>
 <td>ORM/DB</td>
 <td>SQLAlchemy 2 async + asyncpg + PostgreSQL 16</td>
-<td>迁移是编号 SQL（<code>migrations/001-025</code>），entrypoint 的 <code>init_db.py</code> 幂等应用</td>
+<td>迁移是编号 SQL（<code>migrations/001-021</code>），entrypoint 的 <code>init_db.py</code> 幂等应用</td>
 </tr>
 <tr>
 <td>费率核算</td>
 <td><code>model_rates</code> 表 + <code>src/gateway/cost_tracker.py</code>（020/021，2026-09-09）</td>
-<td>费率 DB 权威、改库/管理页保存即生效（进程内缓存 60s+代码兜底）；DeepSeek 按缓存命中/未命中分段计价，北京时间工作日 9-12/14-18 点高峰、空闲半价；生图分通道按次计费（<code>gpt-image-2.5-flare@&lt;channel&gt;</code> 行，fusion=0.2 元/张待校准，无通道行回退基准行→<code>IMAGE_COST_PER_IMAGE_CNY</code> 兜底）；费用四类拆分 text_llm/image_gen/search/ocr（节点名优先、模型名兜底）；管理页 <code>GET/PUT /api/admin/rates</code>、<code>GET /api/admin/balance</code>（DeepSeek 余额 API 实拉 + FusionAI/Kimi 基准录入扣减估算 + <code>PUT /api/admin/balance_baseline</code>）</td>
+<td>费率 DB 权威、改库/管理页保存即生效（进程内缓存 60s+代码兜底）；DeepSeek 按缓存命中/未命中分段计价，北京时间工作日 9-12/14-18 点高峰、空闲半价；生图分通道按次计费（<code>gpt-image-2@&lt;channel&gt;</code> 行，fusion=0.2 元/张账单实证，无通道行回退基准行→<code>IMAGE_COST_PER_IMAGE_CNY</code> 兜底）；费用四类拆分 text_llm/image_gen/search/ocr（节点名优先、模型名兜底）；管理页 <code>GET/PUT /api/admin/rates</code>、<code>GET /api/admin/balance</code>（DeepSeek 余额 API 实拉 + FusionAI/Kimi 基准录入扣减估算 + <code>PUT /api/admin/balance_baseline</code>）</td>
 </tr>
 <tr>
 <td>缓存/限流</td>
@@ -143,8 +147,8 @@ MCP 工具：豆包搜索取证 → 生图 gpt-image-2.5-flare → 逐页 OCR �
 </tr>
 <tr>
 <td>生图</td>
-<td>gpt-image-2.5-flare，四通道轮询</td>
-<td>FusionAI（主）/LinkAI/Moacode/Openox，<code>IMAGE_GEN_CHANNELS</code>；画质档 <code>high</code></td>
+<td>gpt-image-2，三通道轮询</td>
+<td>FusionAI（主）/LinkAI/Moacode，<code>IMAGE_GEN_CHANNELS</code>；画质档 <code>high</code></td>
 </tr>
 <tr>
 <td>实景搜图</td>
@@ -190,7 +194,7 @@ MCP 工具：豆包搜索取证 → 生图 gpt-image-2.5-flare → 逐页 OCR �
 │  │   │                     协议 1:1，NANOBOT_BASE_URL 可指 Nanobot 或 dsh_serve）
 │  │   ├─ skill_loader.py   ★skills/ 取词器（SKILL.md frontmatter/片段/列表片段/
 │  │   │                     字数契约常量；首读落缓存，测试可 reload()）
-│  │   ├─ image_gen.py      gpt-image-2.5-flare 四通道轮询（生成+编辑/图生图）
+│  │   ├─ image_gen.py      gpt-image-2 三通道轮询（生成+编辑/图生图）
 │  │   ├─ image_search.py / web_search.py / ocr.py
 │  │   ├─ prompt_versions.py 提示词库门面（常量名/三级覆盖语义不变，内部改从
 │  │   │                     skill_loader 读；演进注释仍在）
@@ -315,6 +319,12 @@ MCP 工具：豆包搜索取证 → 生图 gpt-image-2.5-flare → 逐页 OCR �
   退出码 0，另对撞 contract.txt 解析出的契约常量）。顺序不可颠倒。</li>
 <li>测试里有「守卫断言」锁定关键提示词片段（如 test_absorb_8002 锁「胶囊」
   「CAPSULE」、test_page_balance 锁字数）——改提示词先跑相关测试。</li>
+<li><strong>v0.1.4 口径更新</strong>：①生图底座三处（shared_style.txt / constraints_en.txt /
+  <code>_IMAGE_TEXT_HARD_RULE</code>）以《生图通用Prompt模板-20260922-最终版.md》八铁律为
+  唯一基准（优先级总纲/字号≥7%/跨页双维度去重/禁带文字物件黑名单），改底座先改
+  模板再回写三处；②注入路径口径为<strong>双路径</strong>（staged 主链 + 直连兜底；monolith
+  deprecated，2026-09-22 起）；③分页输出为结构化 PageSpec（<code>page_schema.py</code>，
+  旧字符串数组兼容），字数契约仍单点 contract.txt。</li>
 </ul>
 <h3 id="54">5.4 生图与视觉闭环</h3>
 <ul>
@@ -492,8 +502,8 @@ MCP 工具：豆包搜索取证 → 生图 gpt-image-2.5-flare → 逐页 OCR �
 <td>文本 LLM 主/备（dsh_serve 主备路由也用这两个）</td>
 </tr>
 <tr>
-<td><code>OPENAI_IMAGE_*</code> / <code>MOACODE_*</code> / <code>FUSIONAI_*</code> / <code>OPENOX_*</code></td>
-<td>gpt-image-2.5-flare 四通道</td>
+<td><code>OPENAI_IMAGE_*</code> / <code>MOACODE_*</code> / <code>FUSIONAI_*</code></td>
+<td>gpt-image-2 三通道</td>
 </tr>
 <tr>
 <td><code>IMAGE_GEN_CHANNELS</code></td>
@@ -593,7 +603,8 @@ ssh -i &lt;deploy密钥&gt; th@117.34.118.115 &quot;
 ssh -i &lt;deploy密钥&gt; th@117.34.118.115 &quot;cd /home/th/qvp3 &amp;&amp; \
   docker tag qvp3-app:v&lt;N&gt;-&lt;yyyymmdd&gt; qvp3-app:latest &amp;&amp; \
   echo v&lt;N&gt;-&lt;yyyymmdd&gt; &gt; .deployed_commit &amp;&amp; \
-  docker compose -f deploy/compose/qvp3.docker-compose.yml --project-directory . up -d&quot;
+  # 注意：project-directory 必须指向 compose 文件所在目录，否则 env_file 会解析到 /home/.env
+  docker compose -f deploy/compose/qvp3.docker-compose.yml --project-directory deploy/compose up -d&quot;
 # 健康检查：curl :8005/api/tasks?limit=1 与 :8005/handover
 # （qvp3-app 的 Status 应从「Up N 天」变为「Up About a minute」+ 库内数据校验）
 </code></pre>
@@ -660,7 +671,7 @@ ssh -i &lt;deploy密钥&gt; th@117.34.118.115 &quot;cd /home/th/qvp3 &amp;&amp; 
    2026-09-08 移交同事</strong>（本地 8003 原生栈同理，只读参考用）。</li>
 <li><strong>本项目开发只允许同步两个目标：本地 8005 与服务器 8005（qvp3）</strong>。
    发版门禁（2026-09-08 用户决策）：dsh 改动一律先更新本地 8005
-   （<code>docker compose -f deploy/compose/qvp3.docker-compose.yml --project-directory . up -d</code>
+   （<code>docker compose -f deploy/compose/qvp3.docker-compose.yml --project-directory deploy/compose up -d</code>
    或 docker cp 热更新 static/）→ 本地验证 → 用户确认 → 才走 §9 镜像本地化
    流程更新服务器 8005。</li>
 <li>服务器命令只作用于 <code>/home/th/qvp3</code> 一个目录。</li>
@@ -774,6 +785,12 @@ ssh -i &lt;deploy密钥&gt; th@117.34.118.115 &quot;cd /home/th/qvp3 &amp;&amp; 
   <strong>若回切 pro 须把 max_tokens 提至 49152+ 并重验</strong>；WS2 蒸馏物 C 用户决策
   不放行；WS4 真实批用户已批减半执行（10 题）</p>
 <p>Backlog（未做）：
+- ⚠ <strong>test_agent_pipeline 5 项集成红（2026-09-14 发现，staged 重构遗留）</strong>：
+  test_agent_pipeline_produces_full_artifacts / test_agent_output_correction_round /
+  test_agent_two_bad_rounds_fails_node / test_detail_node_timeline /
+  test_agent_prompt_appends_draft_persona——基线 v12（36d9d9f）即红，与 9-14
+  成本修复无关；P1 修复回归已验证零新增失败。修复时先对照 staged
+  （agent_stages）路径的节点事件/契约重试语义。
 - 两级风格库偏好闭环深化（个人库使用数据回流推荐）
 - partial_regen Agent 化（当前定点重生成仍走直连提示词）
 - ~~<code>IMAGE_GEN_CHANNELS</code> 加备胎~~（2026-09-10 已完成：fusion,linkai,moacode 轮询）
@@ -782,7 +799,37 @@ ssh -i &lt;deploy密钥&gt; th@117.34.118.115 &quot;cd /home/th/qvp3 &amp;&amp; 
 - WS4 真实批：~~用户已批减半执行~~（2026-09-14 已完成：MOCK 20/20 +
   真实 10/10 全到 review；<strong>成本 ¥46 超预算 1.5-1.8 倍</strong>——100% OCR 质检致
   单任务 12-46 张重生成 + 8 张配额在 Agent 路径失效，详见
-  <code>docs/qvp3-灰度数据对比-20260914.md</code> §7，待修）
+  <code>docs/qvp3-灰度数据对比-20260914.md</code> §7）
+- <strong>出图成本失控 P1 修复</strong>（2026-09-14，针对上条，本地已验证待发版）：
+  ① garble 重生提示词矛盾修正——原「文字只保留最核心一句 ≤20 字」提示词在
+  9-11 的 100% 逐字质检标准下数学上必败（≤20 字对 80-130 字整页文案永远
+  不可能全等），每次触发纯烧 2 张图零质量收益；改为「逐字复现原文案重排版」；
+  ② 新增 <code>image_total</code> 任务级出图总预算（默认 14 张 = 6 交付 + 8 余量，
+  <code>IMAGE_BUDGET_PER_TASK</code>）：MCP 首轮 / garble 重生 / 主体重画 / AI 审核重生
+  四条出图路径统一累计记账，到顶停止自动重生、保留当前最佳版打标记进人工；
+  ③ 配额累计语义——<code>task_quotas.reset</code> 不再返还 image_total，堵「节点重跑
+  全额返还预算」漏洞（实测该漏洞致单任务 46 张 ≈ ¥9.2）；
+  ④ <code>_GARBLE_MAX_REGEN</code> 2→1（与「自动重试一次」文档口径对齐）。
+  守卫：<code>tests/unit/test_image_budget.py</code>。
+- <strong>100% OCR 标准 VL 申诉通道 + 首过率治理</strong>（2026-09-14 P2，已完成本地验证）：
+  OCR 判不合格的页先经 qwen-vl-max 复核「图中文字是否与文案逐字一致」——
+  一致即放行（OCR 误判申诉成功，<code>prompt_used</code> 记 <code>vlappeal</code> 标记），不一致
+  才重生；garble 质检与 AI 审核两处 OCR 判定都已接申诉。放行口径仍是 100%，
+  只给 OCR 误判一个复核出口（VL 不可用维持原判定走重生，不误放）。
+  首过率治理：迁移 024 给 assets 加 <code>first_sim</code> 列记录首轮 sim；
+  <code>scripts/garble_stats.py</code> 按风格输出首轮 sim 分布/不合格率/重生率/申诉率
+  ——不合格率高且申诉率低 = 真渲染问题 → 该风格提示词加固；申诉率高 =
+  OCR 误读多 → 不必改提示词。守卫：<code>tests/unit/test_vl_appeal.py</code>。
+- <strong>双候选 OCR 选优（2026-09-14 A 方案，风险自适应版）</strong>：借鉴外部「多候选
+  排序选优」分析，但按风格风险门控而非每页固定双候选（P2 申诉通道上线后
+  重生率已低位，固定双候选会把成本从 ~7 张锁死到 12 张）。机制：
+  <code>src/services/style_risk.py</code> 按风格近 7 天 first_sim 统计判定（不合格率
+  ≥30% 且 ≥12 页 → 该风格任务每页生成 2 张候选）；MCP generate_images
+  经 <code>/api/internal/image_gen_plan</code> 取方案后生成候选，逐页 OCR 与分页文案
+  归一化比对选优（复用质检同口径 <code>_text_similarity</code>，100% 相等优先、其次
+  sim 高者，并列取先生成）；候选 OCR 成本如实记账，选优不重复扣 image_total；
+  后端不可达/无风格回退单候选，绝不阻断生图。守卫：
+  <code>tests/unit/test_dual_candidate.py</code>。
 - 前端无构建方案在视图变多后可考虑迁 Vite（可选）
 - qvp3 灰度观察：长会话 compaction 行为与 Nanobot 不同，长任务输出稳定性待观察；
   32768 对更长任务仍可能被推理吃光（见 5.6 第 2 条残留风险）

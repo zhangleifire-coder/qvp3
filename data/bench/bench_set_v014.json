@@ -1,0 +1,50 @@
+{
+ "version": 1,
+ "description": "v0.1.4 模板对齐升级验证批（用户上限 5 题，2026-09-22）：general×4 + compare×1，覆盖结构化分页/跨页质检/相关性预检",
+ "items": [
+  {
+   "id": "oss-01",
+   "source": "oss_distilled",
+   "category": "图表与信息可视化",
+   "ref_case": "#334 RAG 技术详解图",
+   "query": "洗衣机能效等级怎么看，一级和三级差多少电",
+   "mode": "general",
+   "note": "结构化图解/短标签"
+  },
+  {
+   "id": "oss-05",
+   "source": "oss_distilled",
+   "category": "海报与排版",
+   "ref_case": "#339 自然科普海报",
+   "query": "向日葵为什么总是朝着太阳转",
+   "mode": "general",
+   "note": "自然科普图鉴"
+  },
+  {
+   "id": "his-01",
+   "source": "local_db_5433",
+   "query": "德龙EC685和柏翠PE3690入门咖啡机对比",
+   "mode": "compare",
+   "gen_style": "测评实测",
+   "gen_image_style": "杂志风产品对比卡",
+   "note": "5433 库 2026-09-08 review"
+  },
+  {
+   "id": "his-02",
+   "source": "local_db_5433",
+   "query": "家用投影仪选购避坑",
+   "mode": "general",
+   "gen_style": "避坑指南",
+   "gen_image_style": "科技产品渲染卡",
+   "note": "5433 库 2026-09-07 review"
+  },
+  {
+   "id": "his-12",
+   "source": "qvp2_history_session",
+   "query": "手机碎屏险有必要买吗",
+   "mode": "general",
+   "note": "qvp2 服务器历史 Agent 会话"
+  }
+ ],
+ "note": "指标：伪汉字率（应≈0，compose 程序文字）/ 跨页告警命中 / 结构化分页生效（page_specs）/ 相关性预检"
+}
