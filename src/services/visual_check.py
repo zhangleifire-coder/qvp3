@@ -195,9 +195,17 @@ async def verify_page_glyphs(image_url: str, expected_text: str) -> dict | None:
 _COMPREHENSIVE_PROMPT = """你是配图综合质检员。图中是一张图文卡片，本页文案：「{text}」
 
 请逐项检查（每个汉字都要过目）：
-1. text_ok：文案是否逐字完整出现在图中——不得改写、增字、漏字、换字、
-   错别字、异体字；同时每个汉字须为规范简体字形、渲染清晰锐利
-   （笔画分明、无粘连、无糊团）。
+1. text_ok：先在心里把图中文字逐字转录出来，再与文案逐字比对——
+   不得改写、增字、漏字、换字、错别字、异体字；同时每个汉字须为
+   规范简体字形、渲染清晰锐利（笔画分明、无粘连、无糊团）。
+   【繁简混淆专项（最高频漏洞，必须逐字排查）】繁体字与其对应简体字
+   是不同的字，意义相同也算不合格：图中出现 釐（应为厘）、顆（应为颗）、
+   澤（应为泽）、環（应为环）、針（应为针）、絲（应为丝）、髮（应为发）、
+   門（应为门）、見（应为见）、長（应为长）、東（应为东）、時（应为时）、
+   們（应为们）、個（应为个）、這（应为这）、後（应为后）、裡（应为里）、
+   來（应为来）、說（应为说）、語（应为语）等任何繁体/异体字形，
+   text_ok 必须为 false，并在 issues 写明「繁体字X应为Y」。
+   排查方法：逐字看字形本身（笔画数、部件写法），不要按字义通读放过。
 2. subject_ok：图中主要主体是否与文案主题一致（文案说 A、图画 B 即 false）。
 3. harmony_ok：图文是否协调——文字量不过载、文字不被装饰/主体遮挡、
    实景元素与文案不冲突。
@@ -209,7 +217,7 @@ _COMPREHENSIVE_PROMPT = """你是配图综合质检员。图中是一张图文�
 只输出严格 JSON，不要任何其他文字：
 {{"text_ok": true/false, "subject_ok": true/false, "harmony_ok": true/false,
   "watermark_ok": true/false,
-  "issues": ["问题简述，如：第3字错/主体不符/文字被遮挡/有水印或二维码"]}}"""
+  "issues": ["问题简述，如：第3字错/繁体字釐应为厘/主体不符/文字被遮挡/有水印或二维码"]}}"""
 
 
 async def comprehensive_page_check(image_url: str, page_text: str,
@@ -234,7 +242,7 @@ async def comprehensive_page_check(image_url: str, page_text: str,
                 {"type": "image_url", "image_url": {"url": data_url}},
                 {"type": "text", "text": prompt},
             ]}],
-            "max_tokens": 600,
+            "max_tokens": 900,
         }
         resp = await get_client("visual_check", timeout=90).post(
             f"{settings.ocr_base_url}/chat/completions",
@@ -245,6 +253,9 @@ async def comprehensive_page_check(image_url: str, page_text: str,
         raw = (resp.json()["choices"][0]["message"]["content"] or "").strip()
         if raw.startswith("```"):
             raw = raw.strip("`").lstrip("json").strip()
+        # 截断防护：输出被 max_tokens 截断时 JSON 不完整，不硬解析（返 None 不误杀）
+        if not raw.rstrip().endswith("}"):
+            return None
         obj = json.loads(raw[raw.index("{"):raw.rindex("}") + 1])
         keys = ("text_ok", "subject_ok", "harmony_ok")
         if not all(isinstance(obj.get(k), bool) for k in keys):
