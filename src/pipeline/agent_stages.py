@@ -792,7 +792,21 @@ async def _compose_mode_assets(task_id, query, mode, pages, image_style,
                         else ill_size_for(layout, n_img))
             if n_img:
                 if tpl:
-                    ill_prompt += "，生活实拍感，自然光，真实生活场景，画面无文字"
+                    # 2026-09-24 丑图修复①：插画注入创意构图段（与直出链
+                    # shared_style 同源措辞）——此前只有通用实拍后缀，
+                    # 五页全平铺静物（84be7d19 教训）
+                    ill_prompt += (
+                        "，生活实拍感，自然光，真实生活场景，画面无文字，"
+                        "手机实拍质感、浅景深背景虚化、真实材质细节，"
+                        "构图要有造型感与创意，严禁纯色背景居中摆拍的电商产品图："
+                        "首饰/配饰/小物件优先佩戴或使用中的局部视角"
+                        "（戴在耳上、系在腕上、挂在包上，无脸局部）或造型陈列"
+                        "俯拍阵列配题材道具（丝巾、大理石托盘、首饰盒、干花、"
+                        "书本一角）；衣物鞋包用穿在身上的无脸街拍视角、"
+                        "搭在椅背、挂在衣架的生活状态；食物用摆盘、拿在手里、"
+                        "餐桌进食中的状态；光影参与造型（窗光斜投影、玻璃折射、"
+                        "水面倒影），同画面主体不超过3件、主次分明，"
+                        "无棚拍痕迹、无AI渲染插画感")
                 elif layout == "ref":
                     ill_prompt += "，生活实拍感，自然光，真实生活场景"
                 subs = sub_prompts(ill_prompt, n_img, f"{task_id}:{i}",
@@ -840,7 +854,7 @@ async def _compose_mode_assets(task_id, query, mode, pages, image_style,
                 "page_index": i, "image_url": local_url,
                 "hash": hashlib.md5(data).hexdigest(),
                 "origin_url": "", "size_ok": True,
-                "prompt_used": f"compose:{ctx[i]['ill_prompt'][:180]}",
+                "prompt_used": f"compose[{(ctx[i].get('tpl') or {}).get('template_id', 'legacy')}]:{ctx[i]['ill_prompt'][:180]}",
             })
 
         # 质检：只对「程序渲染的文字」（标题+要点）做 VL 综合校验；

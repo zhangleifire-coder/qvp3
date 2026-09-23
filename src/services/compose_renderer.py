@@ -371,52 +371,68 @@ def render_card(spec: dict, content: dict, illustrations: list,
     # banner 装饰（文字区顶部）
     y = text_y0 + 40
     max_w = W - _MARGIN * 2
-    if "banner" in (spec.get("decor") or []) and content.get("subtitle"):
-        y = _paint_banner(dr, str(content["subtitle"])[:14], y, accent)
 
-    # 元素流
-    for el in elements:
-        et, esty = el.get("type", ""), el.get("style", "")
-        if et == "title":
-            if overlay_first:
-                continue   # 已画在图上
-            if esty == "center":
-                y = _paint_title_center(dr, img, title, y, max_w, accent)
-            else:
-                y = _paint_title_accent_bar(dr, title, y, max_w, accent)
-        elif et == "section_title":
-            st = content.get("section_title") or ""
-            if not st:
-                continue
-            no = content.get("section_no") or 1
-            y = (_paint_section_badge(dr, st, no, y, max_w, accent)
-                 if esty == "number_badge" else
-                 _paint_section_plain(dr, st, y, max_w, accent))
-        elif et == "tip_box":
-            y = _paint_tip_box(dr, img, content.get("section_title") or "小贴士",
-                               content.get("paragraph", ""), y, H - 60, accent)
-            break   # 贴士框即正文终点
-        elif et == "paragraph":
-            y = _paint_paragraph(dr, content.get("paragraph", ""), y, max_w)
-        elif et == "points_col":
-            pts = content.get("points") or []
-            if pts:
-                y = _paint_points_col(dr, pts, y, max_w, accent,
-                                      highlight=False)
-            else:   # 段落式文案无条目 → 降级 paragraph（0922 文案契约）
+    def _paint_flow(dr, y, img2):
+        """元素流绘制（供 scratch 量高与正式绘制复用）。"""
+        if "banner" in (spec.get("decor") or []) and content.get("subtitle"):
+            y = _paint_banner(dr, str(content["subtitle"])[:14], y, accent)
+        for el in elements:
+            et, esty = el.get("type", ""), el.get("style", "")
+            if et == "title":
+                if overlay_first:
+                    continue   # 已画在图上
+                if esty == "center":
+                    y = _paint_title_center(dr, img2, title, y, max_w, accent)
+                else:
+                    y = _paint_title_accent_bar(dr, title, y, max_w, accent)
+            elif et == "section_title":
+                st = content.get("section_title") or ""
+                if not st:
+                    continue
+                no = content.get("section_no") or 1
+                y = (_paint_section_badge(dr, st, no, y, max_w, accent)
+                     if esty == "number_badge" else
+                     _paint_section_plain(dr, st, y, max_w, accent))
+            elif et == "tip_box":
+                y = _paint_tip_box(dr, img2,
+                                   content.get("section_title") or "小贴士",
+                                   content.get("paragraph", ""), y, H - 60, accent)
+                break   # 贴士框即正文终点
+            elif et == "paragraph":
                 y = _paint_paragraph(dr, content.get("paragraph", ""), y, max_w)
-        elif et == "points_highlight":
-            pts = content.get("points") or []
-            if pts:
-                y = _paint_points_col(dr, pts, y, max_w, accent,
-                                      highlight=True)
-            else:
-                y = _paint_paragraph(dr, content.get("paragraph", ""), y, max_w)
-        elif et == "capsule":
-            if content.get("subtitle"):
-                y = _paint_capsule(dr, str(content["subtitle"])[:12], y, accent)
-        elif et == "separator":
-            y = _paint_separator(dr, y, accent)
+            elif et == "points_col":
+                pts = content.get("points") or []
+                if pts:
+                    y = _paint_points_col(dr, pts, y, max_w, accent,
+                                          highlight=False)
+                else:   # 段落式文案无条目 → 降级 paragraph（0922 文案契约）
+                    y = _paint_paragraph(dr, content.get("paragraph", ""),
+                                         y, max_w)
+            elif et == "points_highlight":
+                pts = content.get("points") or []
+                if pts:
+                    y = _paint_points_col(dr, pts, y, max_w, accent,
+                                          highlight=True)
+                else:
+                    y = _paint_paragraph(dr, content.get("paragraph", ""),
+                                         y, max_w)
+            elif et == "capsule":
+                if content.get("subtitle"):
+                    y = _paint_capsule(dr, str(content["subtitle"])[:12],
+                                       y, accent)
+            elif et == "separator":
+                y = _paint_separator(dr, y, accent)
+        return y
+
+    # 垂直均衡（2026-09-24 丑图修复②）：先在草稿层量内容高度，
+    # 底部空隙过大时整段下移——避免短文案挤在上部、下方大片空白
+    from PIL import Image as _Img
+    scratch_img = _Img.new("RGB", (W, H))
+    y_end = _paint_flow(ImageDraw.Draw(scratch_img), y, scratch_img)
+    free = (H - 56) - y_end
+    if free > 110:
+        y += min(int(free * 0.42), 150)
+    y = _paint_flow(dr, y, img)
 
     # 角落装饰
     for d in spec.get("decor") or []:
