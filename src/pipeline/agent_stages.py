@@ -757,21 +757,48 @@ async def _compose_mode_assets(task_id, query, mode, pages, image_style,
             raw_points = spec.get("points") or []
             points = with_default_icons(raw_points)
             paragraph = spec.get("paragraph") or ""
-            # 0922 参考样式：段落式文案 → ref 版式（上图下文）+ 恒单张生活实拍图
-            is_ref = bool(paragraph)
             ill_prompt = (ill_prompts[i - 1] if i - 1 < len(ill_prompts)
                           else f"{query} {title} 产品场景画面")
-            if is_ref:
-                ill_prompt += "，生活实拍感，自然光，真实生活场景"
-            multi_hint = (not is_ref) and any(
-                k in style_desc for k in ("拼贴", "宫格", "多张", "错落"))
-            n_img = 1 if is_ref else pick_img_count(task_id, i, multi_hint)
-            layout = ("ref" if is_ref
-                      else pick_layout(task_id, i, n_img))
-            subs = sub_prompts(ill_prompt, n_img, f"{task_id}:{i}",
-                               subject=spec.get("subject") or "")
-            size = ("1536x1024" if is_ref
-                    else ill_size_for(layout, n_img))
+            # 页型模板链（2026-09-24）：template_select 选 spec →
+            # render_card 通用渲染；无可用模板回退 ref/pick_layout 旧路径
+            from src.services.compose_templates import template_select
+            from src.services.compose_renderer import render_card
+            tpl = await template_select(
+                task_id, i, len(pages),
+                topic_tags=(["对比"] if mode == "compare" else []))
+            content = {"title": title, "subtitle": subtitle,
+                       "section_title": spec.get("section_title") or "",
+                       "section_no": max(1, i - 1),
+                       "paragraph": paragraph, "points": raw_points,
+                       "sticker_text": (spec.get("section_title")
+                                        or title)[:4]}
+            if tpl:
+                arr = (tpl.get("photo") or {}).get("arrangement", "single")
+                n_img = {"single": 1, "side_by_side": 2, "grid_2x2": 4,
+                         "triple_row": 3, "one_big_two_small": 3,
+                         "none": 0}.get(arr, 1)
+                layout = f"tpl:{tpl.get('template_id', '?')}"
+                size = ("1536x1024" if arr in ("grid_2x2", "triple_row")
+                        else "1024x1536")
+            else:
+                # 0922 参考样式回退：段落式文案 → ref 版式（上图下文）
+                is_ref = bool(paragraph)
+                multi_hint = (not is_ref) and any(
+                    k in style_desc for k in ("拼贴", "宫格", "多张", "错落"))
+                n_img = 1 if is_ref else pick_img_count(task_id, i, multi_hint)
+                layout = ("ref" if is_ref
+                          else pick_layout(task_id, i, n_img))
+                size = ("1536x1024" if is_ref
+                        else ill_size_for(layout, n_img))
+            if n_img:
+                if tpl:
+                    ill_prompt += "，生活实拍感，自然光，真实生活场景，画面无文字"
+                elif layout == "ref":
+                    ill_prompt += "，生活实拍感，自然光，真实生活场景"
+                subs = sub_prompts(ill_prompt, n_img, f"{task_id}:{i}",
+                                   subject=spec.get("subject") or "")
+            else:
+                subs = []
 
             async def _one(j: int, sub: str):
                 # 参考图只给首张子画面，避免成组图片彼此雷同
@@ -783,16 +810,20 @@ async def _compose_mode_assets(task_id, query, mode, pages, image_style,
 
             ills = [p for p in await _asyncio.gather(
                 *[_one(j, s) for j, s in enumerate(subs)]) if p]
-            out_path = compose_page(
-                title, points, illustration=ills,
-                style_desc=style_desc, subtitle=subtitle, layout=layout,
-                section_title=spec.get("section_title") or "",
-                paragraph=paragraph,
-                section_no=max(1, i - 1))
+            if tpl:
+                out_path = render_card(tpl, content, ills,
+                                       style_desc=style_desc)
+            else:
+                out_path = compose_page(
+                    title, points, illustration=ills,
+                    style_desc=style_desc, subtitle=subtitle, layout=layout,
+                    section_title=spec.get("section_title") or "",
+                    paragraph=paragraph,
+                    section_no=max(1, i - 1))
             ctx[i] = {"title": title, "points": points,
                       "point_texts": raw_points, "ill_prompt": ill_prompt,
                       "layout": layout, "n_img": n_img, "subs": subs,
-                      "subtitle": subtitle,
+                      "subtitle": subtitle, "tpl": tpl, "content": content,
                       "section_title": spec.get("section_title") or "",
                       "paragraph": paragraph,
                       "rendered": render_page_text(spec)}
@@ -827,25 +858,35 @@ async def _compose_mode_assets(task_id, query, mode, pages, image_style,
                 continue
             try:
                 async def _reone(j: int, sub: str):
+                    _arr = ((c.get("tpl") or {}).get("photo") or {}).get(
+                        "arrangement", "")
+                    _size = ("1536x1024" if _arr in ("grid_2x2", "triple_row")
+                             else "1024x1536") if _arr else \
+                        ill_size_for(c["layout"], c["n_img"])
                     async with sem:
                         return await gen_textfree_illustration(
                             sub + "（换一个不同的构图角度）",
                             style_desc,
                             (_pref(ref_all, idx) if ref_all else None) if j == 0 else None,
                             brief=brief,
-                            size=ill_size_for(c["layout"], c["n_img"]),
+                            size=_size,
                             stat=gen_stat)
 
                 ills2 = [p for p in await _asyncio.gather(
                     *[_reone(j, s) for j, s in enumerate(c["subs"])]) if p]
-                out_path = compose_page(c["title"], c["points"],
-                                        illustration=ills2,
-                                        style_desc=style_desc,
-                                        subtitle=c.get("subtitle", ""),
-                                        layout=c["layout"],
-                                        section_title=c.get("section_title", ""),
-                                        paragraph=c.get("paragraph", ""),
-                                        section_no=max(1, idx - 1))
+                if c.get("tpl"):
+                    from src.services.compose_renderer import render_card
+                    out_path = render_card(c["tpl"], c.get("content") or {},
+                                            ills2, style_desc=style_desc)
+                else:
+                    out_path = compose_page(c["title"], c["points"],
+                                            illustration=ills2,
+                                            style_desc=style_desc,
+                                            subtitle=c.get("subtitle", ""),
+                                            layout=c["layout"],
+                                            section_title=c.get("section_title", ""),
+                                            paragraph=c.get("paragraph", ""),
+                                            section_no=max(1, idx - 1))
                 data = out_path.read_bytes()
                 img["image_url"] = _persist_image(task_id, idx, "p", data,
                                                   "image/png")

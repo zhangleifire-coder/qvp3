@@ -21,6 +21,7 @@ from src.api.internal import router as internal_router
 from src.api.styles import router as styles_router
 from src.api.system import router as system_router
 from src.api.superadmin import router as superadmin_router
+from src.api.compose_templates import router as compose_templates_router
 
 
 @asynccontextmanager
@@ -64,6 +65,7 @@ app.include_router(internal_router)
 app.include_router(styles_router)
 app.include_router(system_router)
 app.include_router(superadmin_router)
+app.include_router(compose_templates_router)
 
 # 静态前端（审核工作台 + 看板）
 STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "static"

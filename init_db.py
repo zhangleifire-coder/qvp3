@@ -54,6 +54,15 @@ async def main() -> None:
         from sync_styles import sync_public_styles
         n = await sync_public_styles(conn)
         print(f"[init] 公共风格库已同步 {n} 条（data/styles.json）")
+
+        # 页型模板库预置模板（2026-09-24）：data/compose_templates.json →
+        # compose_templates 表幂等同步；失败不阻塞（template_select 有种子文件回退）
+        try:
+            from src.services.compose_templates import sync_seeds
+            n2 = await sync_seeds()
+            print(f"[init] compose 模板种子已同步（{n2} 条）")
+        except Exception as exc:  # noqa: BLE001
+            print(f"[init] compose 模板种子同步失败（不阻塞）: {exc}")
     finally:
         await conn.close()
 

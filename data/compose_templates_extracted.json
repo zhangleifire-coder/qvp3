@@ -1,0 +1,7327 @@
+{
+ "version": 1,
+ "templates": [
+  {
+   "template_id": "ext_01",
+   "name": "提取·一大两小60%·cover·x1",
+   "page_role": "cover",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "sticker_br"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n00_p1.png｜标题转录：幼犬只打一针疫苗，先别去公共地面玩",
+   "popularity": 1,
+   "members": [
+    "n00_p1.png"
+   ]
+  },
+  {
+   "template_id": "ext_02",
+   "name": "提取·单图60%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "tip_box"
+     }
+    ]
+   },
+   "decor": [
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n00_p2.png｜标题转录：一针不等于完成免疫",
+   "popularity": 1,
+   "members": [
+    "n00_p2.png"
+   ]
+  },
+  {
+   "template_id": "ext_03",
+   "name": "提取·三联60%·content·x2",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "triple_row",
+    "top_fraction": 0.6,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n00_p3.png｜标题转录：可以做低风险的社会化",
+   "popularity": 2,
+   "members": [
+    "n00_p3.png",
+    "n11_p3.png"
+   ]
+  },
+  {
+   "template_id": "ext_04",
+   "name": "提取·四宫格60%·content·x3",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "grid_2x2",
+    "top_fraction": 0.6,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "sticker_br",
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n00_p4.png｜标题转录：三、这些地方先暂时避开",
+   "popularity": 3,
+   "members": [
+    "n00_p4.png",
+    "n02_p5.png",
+    "n10_p5.png"
+   ]
+  },
+  {
+   "template_id": "ext_05",
+   "name": "提取·一大两小60%·content·x7",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "sticker_br",
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n00_p5.png｜标题转录：四、按接种医生的时间表来",
+   "popularity": 7,
+   "members": [
+    "n00_p5.png",
+    "n04_p2.png",
+    "n09_p4.png",
+    "n09_p5.png",
+    "n13_p5.png",
+    "n22_p2.png",
+    "n22_p3.png"
+   ]
+  },
+  {
+   "template_id": "ext_06",
+   "name": "提取·单图60%·cover·x4",
+   "page_role": "cover",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "overlay_on_photo"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_col"
+     }
+    ]
+   },
+   "decor": [],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n01_p1.png｜标题转录：墨水沾衣服怎么洗，别先用热水揉",
+   "popularity": 4,
+   "members": [
+    "n01_p1.png",
+    "n15_p1.png",
+    "n16_p1.png",
+    "n21_p4.png"
+   ]
+  },
+  {
+   "template_id": "ext_07",
+   "name": "提取·单图60%·content·x6",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_col"
+     }
+    ]
+   },
+   "decor": [],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n01_p2.png｜标题转录：先垫布吸走浮墨",
+   "popularity": 6,
+   "members": [
+    "n01_p2.png",
+    "n01_p3.png",
+    "n01_p4.png",
+    "n16_p2.png",
+    "n16_p3.png",
+    "n25_p2.png"
+   ]
+  },
+  {
+   "template_id": "ext_08",
+   "name": "提取·单图60%·content·x2",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_col"
+     }
+    ]
+   },
+   "decor": [
+    "sticker_br"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n01_p5.png｜标题转录：四、干后再判断是否继续处理",
+   "popularity": 2,
+   "members": [
+    "n01_p5.png",
+    "n16_p5.png"
+   ]
+  },
+  {
+   "template_id": "ext_09",
+   "name": "提取·单图70%·cover·x1",
+   "page_role": "cover",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.7,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "overlay_on_photo"
+     },
+     {
+      "type": "paragraph"
+     }
+    ]
+   },
+   "decor": [
+    "sticker_br"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n02_p1.png｜标题转录：一个多月幼犬别喂猪肉萝卜饺子",
+   "popularity": 1,
+   "members": [
+    "n02_p1.png"
+   ]
+  },
+  {
+   "template_id": "ext_10",
+   "name": "提取·单图60%·cover·x2",
+   "page_role": "cover",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "paragraph"
+     }
+    ]
+   },
+   "decor": [
+    "sticker_br"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n02_p2.png｜标题转录：饺子皮和馅料都不适合幼犬",
+   "popularity": 2,
+   "members": [
+    "n02_p2.png",
+    "n12_p3.png"
+   ]
+  },
+  {
+   "template_id": "ext_11",
+   "name": "提取·单图70%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.7,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "overlay_on_photo"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "paragraph"
+     }
+    ]
+   },
+   "decor": [
+    "sticker_br",
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n02_p3.png｜标题转录：葱蒜和调味料要特别避开",
+   "popularity": 1,
+   "members": [
+    "n02_p3.png"
+   ]
+  },
+  {
+   "template_id": "ext_12",
+   "name": "提取·单图60%·content·x2",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n02_p4.png｜标题转录：幼犬更需要规律的主食",
+   "popularity": 2,
+   "members": [
+    "n02_p4.png",
+    "n06_p2.png"
+   ]
+  },
+  {
+   "template_id": "ext_13",
+   "name": "提取·双图对比60%·cover·x1",
+   "page_role": "cover",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "side_by_side",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "vs_badge"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n03_p1.png｜标题转录：冷淡风和法式风耳环，哪种更百搭",
+   "popularity": 1,
+   "members": [
+    "n03_p1.png"
+   ]
+  },
+  {
+   "template_id": "ext_14",
+   "name": "提取·一大两小60%·content·x2",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n03_p2.png｜标题转录：冷淡风更适合日常通勤",
+   "popularity": 2,
+   "members": [
+    "n03_p2.png",
+    "n09_p2.png"
+   ]
+  },
+  {
+   "template_id": "ext_15",
+   "name": "提取·单图70%·content·x2",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.7,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n03_p3.png｜标题转录：二、法式风更强调柔和细节",
+   "popularity": 2,
+   "members": [
+    "n03_p3.png",
+    "n22_p4.png"
+   ]
+  },
+  {
+   "template_id": "ext_16",
+   "name": "提取·三联60%·content·x4",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "triple_row",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_col"
+     }
+    ]
+   },
+   "decor": [],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n03_p4.png｜标题转录：三、看脸型和发型调整长度",
+   "popularity": 4,
+   "members": [
+    "n03_p4.png",
+    "n20_p2.png",
+    "n26_p3.png",
+    "n26_p5.png"
+   ]
+  },
+  {
+   "template_id": "ext_17",
+   "name": "提取·三联60%·content·x2",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "triple_row",
+    "top_fraction": 0.6,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n03_p5.png｜标题转录：四、最百搭的是低装饰款",
+   "popularity": 2,
+   "members": [
+    "n03_p5.png",
+    "n24_p5.png"
+   ]
+  },
+  {
+   "template_id": "ext_18",
+   "name": "提取·四宫格70%·cover·x1",
+   "page_role": "cover",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "grid_2x2",
+    "top_fraction": 0.7,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n04_p1.png｜标题转录：墨绿色秋冬鞋配什么衣服",
+   "popularity": 1,
+   "members": [
+    "n04_p1.png"
+   ]
+  },
+  {
+   "template_id": "ext_19",
+   "name": "提取·单图70%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.7,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n04_p3.png｜标题转录：棕色系适合秋冬氛围",
+   "popularity": 1,
+   "members": [
+    "n04_p3.png"
+   ]
+  },
+  {
+   "template_id": "ext_20",
+   "name": "提取·一大两小60%·content·x2",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_col"
+     }
+    ]
+   },
+   "decor": [],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n04_p4.png｜标题转录：三、黑灰配色更利落",
+   "popularity": 2,
+   "members": [
+    "n04_p4.png",
+    "n05_p3.png"
+   ]
+  },
+  {
+   "template_id": "ext_21",
+   "name": "提取·三联60%·content·x2",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "triple_row",
+    "top_fraction": 0.6,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "sticker_br",
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n04_p5.png｜标题转录：四、牛仔蓝也很好用",
+   "popularity": 2,
+   "members": [
+    "n04_p5.png",
+    "n22_p5.png"
+   ]
+  },
+  {
+   "template_id": "ext_22",
+   "name": "提取·双图对比60%·cover·x1",
+   "page_role": "cover",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "side_by_side",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "points_col"
+     }
+    ]
+   },
+   "decor": [],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n05_p1.png｜标题转录：吊带裙和旗袍哪个显瘦，先看版型",
+   "popularity": 1,
+   "members": [
+    "n05_p1.png"
+   ]
+  },
+  {
+   "template_id": "ext_23",
+   "name": "提取·一大两小70%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.7,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_col"
+     }
+    ]
+   },
+   "decor": [
+    "vs_badge"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n05_p2.png｜标题转录：吊带裙更依赖面料垂感",
+   "popularity": 1,
+   "members": [
+    "n05_p2.png"
+   ]
+  },
+  {
+   "template_id": "ext_24",
+   "name": "提取·双图对比70%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "side_by_side",
+    "top_fraction": 0.7,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_col"
+     }
+    ]
+   },
+   "decor": [],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n05_p4.png｜标题转录：三、长度决定视觉重心",
+   "popularity": 1,
+   "members": [
+    "n05_p4.png"
+   ]
+  },
+  {
+   "template_id": "ext_25",
+   "name": "提取·双图对比70%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "side_by_side",
+    "top_fraction": 0.7,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_col"
+     }
+    ]
+   },
+   "decor": [],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n05_p5.png｜标题转录：四、领口和内搭也会影响效果",
+   "popularity": 1,
+   "members": [
+    "n05_p5.png"
+   ]
+  },
+  {
+   "template_id": "ext_26",
+   "name": "提取·单图60%·cover·x2",
+   "page_role": "cover",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "overlay_on_photo"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n06_p1.png｜标题转录：盐水泡过的水果能放多久",
+   "popularity": 2,
+   "members": [
+    "n06_p1.png",
+    "n14_p1.png"
+   ]
+  },
+  {
+   "template_id": "ext_27",
+   "name": "提取·单图60%·content·x5",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "sticker_br",
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n06_p3.png｜标题转录：室温不适合久放",
+   "popularity": 5,
+   "members": [
+    "n06_p3.png",
+    "n10_p2.png",
+    "n11_p5.png",
+    "n23_p4.png",
+    "n28_p2.png"
+   ]
+  },
+  {
+   "template_id": "ext_28",
+   "name": "提取·三联60%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "triple_row",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "sticker_br",
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n06_p4.png｜标题转录：三、冷藏要沥水密封",
+   "popularity": 1,
+   "members": [
+    "n06_p4.png"
+   ]
+  },
+  {
+   "template_id": "ext_29",
+   "name": "提取·四宫格70%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "grid_2x2",
+    "top_fraction": 0.7,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n06_p5.png｜标题转录：这些变化说明不能吃",
+   "popularity": 1,
+   "members": [
+    "n06_p5.png"
+   ]
+  },
+  {
+   "template_id": "ext_30",
+   "name": "提取·双图对比70%·cover·x1",
+   "page_role": "cover",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "side_by_side",
+    "top_fraction": 0.7,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "sticker_br",
+    "banner",
+    "vs_badge"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n07_p1.png｜标题转录：假两件毛衣和纯色毛衣，显瘦重点不一样",
+   "popularity": 1,
+   "members": [
+    "n07_p1.png"
+   ]
+  },
+  {
+   "template_id": "ext_31",
+   "name": "提取·三联60%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "triple_row",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "vs_badge"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n07_p2.png｜标题转录：假两件要看拼接线位置",
+   "popularity": 1,
+   "members": [
+    "n07_p2.png"
+   ]
+  },
+  {
+   "template_id": "ext_32",
+   "name": "提取·三联60%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "triple_row",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "sticker_br"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n07_p3.png｜标题转录：纯色款更容易控制轮廓",
+   "popularity": 1,
+   "members": [
+    "n07_p3.png"
+   ]
+  },
+  {
+   "template_id": "ext_33",
+   "name": "提取·四宫格60%·content·x4",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "grid_2x2",
+    "top_fraction": 0.6,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n07_p4.png｜标题转录：厚度决定上半身体积",
+   "popularity": 4,
+   "members": [
+    "n07_p4.png",
+    "n09_p3.png",
+    "n10_p3.png",
+    "n23_p2.png"
+   ]
+  },
+  {
+   "template_id": "ext_34",
+   "name": "提取·三联70%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "triple_row",
+    "top_fraction": 0.7,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "sticker_br",
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n07_p5.png｜标题转录：四、根据场景选择更实用",
+   "popularity": 1,
+   "members": [
+    "n07_p5.png"
+   ]
+  },
+  {
+   "template_id": "ext_35",
+   "name": "提取·单图60%·cover·x1",
+   "page_role": "cover",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "points_col"
+     }
+    ]
+   },
+   "decor": [],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n08_p1.png｜标题转录：朝鲜泡椒家常做法",
+   "popularity": 1,
+   "members": [
+    "n08_p1.png"
+   ]
+  },
+  {
+   "template_id": "ext_36",
+   "name": "提取·单图60%·cover·x2",
+   "page_role": "cover",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_col"
+     }
+    ]
+   },
+   "decor": [],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n08_p2.png｜标题转录：材料和容器先准备好",
+   "popularity": 2,
+   "members": [
+    "n08_p2.png",
+    "n12_p5.png"
+   ]
+  },
+  {
+   "template_id": "ext_37",
+   "name": "提取·四宫格60%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "grid_2x2",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_col"
+     }
+    ]
+   },
+   "decor": [
+    "sticker_br"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n08_p3.png｜标题转录：辣椒要洗净并充分晾干",
+   "popularity": 1,
+   "members": [
+    "n08_p3.png"
+   ]
+  },
+  {
+   "template_id": "ext_38",
+   "name": "提取·一大两小60%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_col"
+     }
+    ]
+   },
+   "decor": [],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n08_p4.png｜标题转录：三、煮汁放凉后再装罐",
+   "popularity": 1,
+   "members": [
+    "n08_p4.png"
+   ]
+  },
+  {
+   "template_id": "ext_39",
+   "name": "提取·一大两小60%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_col"
+     }
+    ]
+   },
+   "decor": [],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n08_p5.png｜标题转录：四、冷藏观察状态再食用",
+   "popularity": 1,
+   "members": [
+    "n08_p5.png"
+   ]
+  },
+  {
+   "template_id": "ext_40",
+   "name": "提取·三联60%·cover·x1",
+   "page_role": "cover",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "triple_row",
+    "top_fraction": 0.6,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n09_p1.png｜标题转录：绿豆粥怎么煮更软，先泡再小火煮",
+   "popularity": 1,
+   "members": [
+    "n09_p1.png"
+   ]
+  },
+  {
+   "template_id": "ext_41",
+   "name": "提取·一大两小60%·cover·x1",
+   "page_role": "cover",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "banner",
+    "sticker_br"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n10_p1.png｜标题转录：快速解冻冻肉，冷水法要这样做",
+   "popularity": 1,
+   "members": [
+    "n10_p1.png"
+   ]
+  },
+  {
+   "template_id": "ext_42",
+   "name": "提取·单图60%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "sticker_br"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n10_p4.png｜标题转录：三、微波解冻后必须马上加热",
+   "popularity": 1,
+   "members": [
+    "n10_p4.png"
+   ]
+  },
+  {
+   "template_id": "ext_43",
+   "name": "提取·单图60%·cover·x1",
+   "page_role": "cover",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "overlay_on_photo"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n11_p1.png｜标题转录：圆珠笔芯液体沾衣服，先吸附再点擦",
+   "popularity": 1,
+   "members": [
+    "n11_p1.png"
+   ]
+  },
+  {
+   "template_id": "ext_44",
+   "name": "提取·一大两小60%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n11_p2.png｜标题转录：先把污渍隔离出来",
+   "popularity": 1,
+   "members": [
+    "n11_p2.png"
+   ]
+  },
+  {
+   "template_id": "ext_45",
+   "name": "提取·单图70%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.7,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n11_p4.png｜标题转录：再用洗衣液去油膜",
+   "popularity": 1,
+   "members": [
+    "n11_p4.png"
+   ]
+  },
+  {
+   "template_id": "ext_46",
+   "name": "提取·单图60%·cover·x1",
+   "page_role": "cover",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "points_col"
+     }
+    ]
+   },
+   "decor": [],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n12_p1.png｜标题转录：生蚝怎么保存，别泡自来水里",
+   "popularity": 1,
+   "members": [
+    "n12_p1.png"
+   ]
+  },
+  {
+   "template_id": "ext_47",
+   "name": "提取·双图对比60%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "side_by_side",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_col"
+     }
+    ]
+   },
+   "decor": [
+    "vs_badge"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n12_p2.png｜标题转录：先检查外壳和气味",
+   "popularity": 1,
+   "members": [
+    "n12_p2.png"
+   ]
+  },
+  {
+   "template_id": "ext_48",
+   "name": "提取·一大两小60%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "paragraph"
+     }
+    ]
+   },
+   "decor": [
+    "sticker_br"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n12_p4.png｜标题转录：去壳蚝肉要尽快处理",
+   "popularity": 1,
+   "members": [
+    "n12_p4.png"
+   ]
+  },
+  {
+   "template_id": "ext_49",
+   "name": "提取·单图60%·cover·x1",
+   "page_role": "cover",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "sticker_br"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n13_p1.png｜标题转录：沐浴露能洗衣服吗",
+   "popularity": 1,
+   "members": [
+    "n13_p1.png"
+   ]
+  },
+  {
+   "template_id": "ext_50",
+   "name": "提取·四宫格60%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "grid_2x2",
+    "top_fraction": 0.6,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_col"
+     }
+    ]
+   },
+   "decor": [
+    "sticker_br",
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n13_p2.png｜标题转录：轻微汗味衣物可以应急",
+   "popularity": 1,
+   "members": [
+    "n13_p2.png"
+   ]
+  },
+  {
+   "template_id": "ext_51",
+   "name": "提取·四宫格60%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "grid_2x2",
+    "top_fraction": 0.6,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "sticker_br"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n13_p3.png｜标题转录：重油污和贴身功能衣不适合",
+   "popularity": 1,
+   "members": [
+    "n13_p3.png"
+   ]
+  },
+  {
+   "template_id": "ext_52",
+   "name": "提取·一大两小60%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "vs_badge",
+    "sticker_br"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n13_p4.png｜标题转录：三、机洗不要随意倒很多",
+   "popularity": 1,
+   "members": [
+    "n13_p4.png"
+   ]
+  },
+  {
+   "template_id": "ext_53",
+   "name": "提取·一大两小60%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "overlay_on_photo"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "vs_badge"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n14_p2.png｜标题转录：煮好后不建议再用生水冲洗",
+   "popularity": 1,
+   "members": [
+    "n14_p2.png"
+   ]
+  },
+  {
+   "template_id": "ext_54",
+   "name": "提取·单图60%·content·x3",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_col"
+     }
+    ]
+   },
+   "decor": [
+    "sticker_br"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n14_p3.png｜标题转录：二、先彻底放凉再分装",
+   "popularity": 3,
+   "members": [
+    "n14_p3.png",
+    "n15_p4.png",
+    "n15_p5.png"
+   ]
+  },
+  {
+   "template_id": "ext_55",
+   "name": "提取·一大两小60%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "banner",
+    "vs_badge"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n14_p4.png｜标题转录：冷藏和冷冻时间不同",
+   "popularity": 1,
+   "members": [
+    "n14_p4.png"
+   ]
+  },
+  {
+   "template_id": "ext_56",
+   "name": "提取·四宫格60%·content·x2",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "grid_2x2",
+    "top_fraction": 0.6,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "banner",
+    "sticker_br"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n14_p5.png｜标题转录：出现这些情况就别再吃",
+   "popularity": 2,
+   "members": [
+    "n14_p5.png",
+    "n27_p5.png"
+   ]
+  },
+  {
+   "template_id": "ext_57",
+   "name": "提取·一大两小60%·cover·x1",
+   "page_role": "cover",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_col"
+     }
+    ]
+   },
+   "decor": [
+    "sticker_br"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n15_p2.png｜标题转录：先吸掉汁液别来回揉",
+   "popularity": 1,
+   "members": [
+    "n15_p2.png"
+   ]
+  },
+  {
+   "template_id": "ext_58",
+   "name": "提取·一大两小60%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_col"
+     }
+    ]
+   },
+   "decor": [
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n15_p3.png｜标题转录：冷水冲洗再用洗衣液预处理",
+   "popularity": 1,
+   "members": [
+    "n15_p3.png"
+   ]
+  },
+  {
+   "template_id": "ext_59",
+   "name": "提取·单图60%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_col"
+     }
+    ]
+   },
+   "decor": [
+    "vs_badge"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n16_p4.png｜标题转录：顽固印迹按面料做提亮",
+   "popularity": 1,
+   "members": [
+    "n16_p4.png"
+   ]
+  },
+  {
+   "template_id": "ext_60",
+   "name": "提取·单图60%·cover·x1",
+   "page_role": "cover",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n17_p1.png｜标题转录：排骨焯水后炒一下要不要放盐",
+   "popularity": 1,
+   "members": [
+    "n17_p1.png"
+   ]
+  },
+  {
+   "template_id": "ext_61",
+   "name": "提取·单图60%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "sticker_br"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n17_p2.png｜标题转录：煸炒阶段通常先不急着放盐",
+   "popularity": 1,
+   "members": [
+    "n17_p2.png"
+   ]
+  },
+  {
+   "template_id": "ext_62",
+   "name": "提取·四宫格60%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "grid_2x2",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n17_p3.png｜标题转录：焯水后这样处理更香",
+   "popularity": 1,
+   "members": [
+    "n17_p3.png"
+   ]
+  },
+  {
+   "template_id": "ext_63",
+   "name": "提取·单图60%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "sticker_br"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n17_p4.png｜标题转录：三、调味放在加水炖煮之后",
+   "popularity": 1,
+   "members": [
+    "n17_p4.png"
+   ]
+  },
+  {
+   "template_id": "ext_64",
+   "name": "提取·双图对比60%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "side_by_side",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n17_p5.png｜标题转录：不同做法盐的时间会不同",
+   "popularity": 1,
+   "members": [
+    "n17_p5.png"
+   ]
+  },
+  {
+   "template_id": "ext_65",
+   "name": "提取·单图70%·cover·x1",
+   "page_role": "cover",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.7,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "paragraph"
+     }
+    ]
+   },
+   "decor": [],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n18_p1.png｜标题转录：鲜切花用什么水养能放得更久",
+   "popularity": 1,
+   "members": [
+    "n18_p1.png"
+   ]
+  },
+  {
+   "template_id": "ext_66",
+   "name": "提取·单图60%·cover·x4",
+   "page_role": "cover",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "paragraph"
+     }
+    ]
+   },
+   "decor": [],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n18_p2.png｜标题转录：最稳妥的是清水加鲜花保鲜剂",
+   "popularity": 4,
+   "members": [
+    "n18_p2.png",
+    "n18_p3.png",
+    "n18_p4.png",
+    "n18_p5.png"
+   ]
+  },
+  {
+   "template_id": "ext_67",
+   "name": "提取·单图60%·cover·x1",
+   "page_role": "cover",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "tip_box"
+     }
+    ]
+   },
+   "decor": [
+    "sticker_br",
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n19_p1.png｜标题转录：小猫踩奶到底是在表达什么",
+   "popularity": 1,
+   "members": [
+    "n19_p1.png"
+   ]
+  },
+  {
+   "template_id": "ext_68",
+   "name": "提取·单图60%·cover·x2",
+   "page_role": "cover",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "tip_box"
+     }
+    ]
+   },
+   "decor": [
+    "sticker_br",
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n19_p2.png｜标题转录：踩奶来自幼猫时期的本能",
+   "popularity": 2,
+   "members": [
+    "n19_p2.png",
+    "n19_p3.png"
+   ]
+  },
+  {
+   "template_id": "ext_69",
+   "name": "提取·一大两小70%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.7,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "tip_box"
+     }
+    ]
+   },
+   "decor": [
+    "sticker_br",
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n19_p4.png｜标题转录：三、踩人踩被子都是常见表现",
+   "popularity": 1,
+   "members": [
+    "n19_p4.png"
+   ]
+  },
+  {
+   "template_id": "ext_70",
+   "name": "提取·一大两小60%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "tip_box"
+     }
+    ]
+   },
+   "decor": [
+    "sticker_br",
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n19_p5.png｜标题转录：出现这些变化需要多观察",
+   "popularity": 1,
+   "members": [
+    "n19_p5.png"
+   ]
+  },
+  {
+   "template_id": "ext_71",
+   "name": "提取·双图对比60%·cover·x1",
+   "page_role": "cover",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "side_by_side",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "points_col"
+     }
+    ]
+   },
+   "decor": [
+    "vs_badge"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n20_p1.png｜标题转录：波点和纯色衬衫哪个更显利落",
+   "popularity": 1,
+   "members": [
+    "n20_p1.png"
+   ]
+  },
+  {
+   "template_id": "ext_72",
+   "name": "提取·三联60%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "triple_row",
+    "top_fraction": 0.6,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "tip_box"
+     }
+    ]
+   },
+   "decor": [],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n20_p3.png｜标题转录：波点大小和密度决定显不显胖",
+   "popularity": 1,
+   "members": [
+    "n20_p3.png"
+   ]
+  },
+  {
+   "template_id": "ext_73",
+   "name": "提取·一大两小60%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_col"
+     }
+    ]
+   },
+   "decor": [
+    "vs_badge"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n20_p4.png｜标题转录：版型比花纹更影响视觉比例",
+   "popularity": 1,
+   "members": [
+    "n20_p4.png"
+   ]
+  },
+  {
+   "template_id": "ext_74",
+   "name": "提取·三联60%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "triple_row",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n20_p5.png｜标题转录：颜色和下装搭配也很关键",
+   "popularity": 1,
+   "members": [
+    "n20_p5.png"
+   ]
+  },
+  {
+   "template_id": "ext_75",
+   "name": "提取·单图60%·cover·x1",
+   "page_role": "cover",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "paragraph"
+     }
+    ]
+   },
+   "decor": [],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n21_p1.png｜标题转录：梭子蟹这样冷冻更能保住鲜味",
+   "popularity": 1,
+   "members": [
+    "n21_p1.png"
+   ]
+  },
+  {
+   "template_id": "ext_76",
+   "name": "提取·三联60%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "triple_row",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "overlay_on_photo"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "tip_box"
+     }
+    ]
+   },
+   "decor": [
+    "sticker_br"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n21_p2.png｜标题转录：鲜活状态处理决定冷冻后的口感",
+   "popularity": 1,
+   "members": [
+    "n21_p2.png"
+   ]
+  },
+  {
+   "template_id": "ext_77",
+   "name": "提取·双图对比60%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "side_by_side",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "tip_box"
+     }
+    ]
+   },
+   "decor": [],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n21_p3.png｜标题转录：生冻和熟冻怎么选",
+   "popularity": 1,
+   "members": [
+    "n21_p3.png"
+   ]
+  },
+  {
+   "template_id": "ext_78",
+   "name": "提取·四宫格60%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "grid_2x2",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "tip_box"
+     }
+    ]
+   },
+   "decor": [
+    "sticker_br",
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n21_p5.png｜标题转录：解冻方式决定鲜味能不能保住",
+   "popularity": 1,
+   "members": [
+    "n21_p5.png"
+   ]
+  },
+  {
+   "template_id": "ext_79",
+   "name": "提取·单图70%·cover·x1",
+   "page_role": "cover",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.7,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "overlay_on_photo"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n22_p1.png｜标题转录：草莓圣代绣球在东北怎么安全越冬",
+   "popularity": 1,
+   "members": [
+    "n22_p1.png"
+   ]
+  },
+  {
+   "template_id": "ext_80",
+   "name": "提取·单图60%·cover·x1",
+   "page_role": "cover",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "overlay_on_photo"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "sticker_br"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n23_p1.png｜标题转录：人造皮革沾到西瓜汁这样清理",
+   "popularity": 1,
+   "members": [
+    "n23_p1.png"
+   ]
+  },
+  {
+   "template_id": "ext_81",
+   "name": "提取·单图60%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n23_p3.png｜标题转录：先吸干果汁别大面积擦",
+   "popularity": 1,
+   "members": [
+    "n23_p3.png"
+   ]
+  },
+  {
+   "template_id": "ext_82",
+   "name": "提取·单图60%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_col"
+     }
+    ]
+   },
+   "decor": [],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n23_p5.png｜标题转录：清洁后阴干并做小范围检查",
+   "popularity": 1,
+   "members": [
+    "n23_p5.png"
+   ]
+  },
+  {
+   "template_id": "ext_83",
+   "name": "提取·单图60%·cover·x1",
+   "page_role": "cover",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "points_col"
+     }
+    ]
+   },
+   "decor": [
+    "sticker_br",
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n24_p1.png｜标题转录：普通不锈钢餐具别直接放进微波炉",
+   "popularity": 1,
+   "members": [
+    "n24_p1.png"
+   ]
+  },
+  {
+   "template_id": "ext_84",
+   "name": "提取·四宫格60%·cover·x1",
+   "page_role": "cover",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "grid_2x2",
+    "top_fraction": 0.6,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "banner",
+    "vs_badge"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n24_p2.png｜标题转录：普通不锈钢餐具不要直接进微波炉",
+   "popularity": 1,
+   "members": [
+    "n24_p2.png"
+   ]
+  },
+  {
+   "template_id": "ext_85",
+   "name": "提取·四宫格60%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "grid_2x2",
+    "top_fraction": 0.6,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_col"
+     }
+    ]
+   },
+   "decor": [
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n24_p3.png｜标题转录：金属为什么容易出问题",
+   "popularity": 1,
+   "members": [
+    "n24_p3.png"
+   ]
+  },
+  {
+   "template_id": "ext_86",
+   "name": "提取·单图60%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_col"
+     }
+    ]
+   },
+   "decor": [
+    "sticker_br",
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n24_p4.png｜标题转录：只有说明书允许的金属配件例外",
+   "popularity": 1,
+   "members": [
+    "n24_p4.png"
+   ]
+  },
+  {
+   "template_id": "ext_87",
+   "name": "提取·一大两小60%·cover·x1",
+   "page_role": "cover",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "overlay_on_photo"
+     },
+     {
+      "type": "tip_box"
+     }
+    ]
+   },
+   "decor": [
+    "sticker_br"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n25_p1.png｜标题转录：鱼缸玻璃胶上的绿苔这样清理",
+   "popularity": 1,
+   "members": [
+    "n25_p1.png"
+   ]
+  },
+  {
+   "template_id": "ext_88",
+   "name": "提取·一大两小70%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.7,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "overlay_on_photo"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_col"
+     }
+    ]
+   },
+   "decor": [
+    "sticker_br",
+    "vs_badge"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n25_p3.png｜标题转录：玻璃胶表面的绿苔先物理清理",
+   "popularity": 1,
+   "members": [
+    "n25_p3.png"
+   ]
+  },
+  {
+   "template_id": "ext_89",
+   "name": "提取·一大两小60%·content·x3",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_col"
+     }
+    ]
+   },
+   "decor": [
+    "sticker_br"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n25_p4.png｜标题转录：顽固位置别用家用清洁剂硬刷",
+   "popularity": 3,
+   "members": [
+    "n25_p4.png",
+    "n25_p5.png",
+    "n26_p4.png"
+   ]
+  },
+  {
+   "template_id": "ext_90",
+   "name": "提取·一大两小60%·cover·x1",
+   "page_role": "cover",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "vs_badge"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n26_p1.png｜标题转录：不锈钢壶煮茶为什么容易颜色发黑",
+   "popularity": 1,
+   "members": [
+    "n26_p1.png"
+   ]
+  },
+  {
+   "template_id": "ext_91",
+   "name": "提取·一大两小60%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n26_p2.png｜标题转录：茶汤发黑和氧化及杂质有关",
+   "popularity": 1,
+   "members": [
+    "n26_p2.png"
+   ]
+  },
+  {
+   "template_id": "ext_92",
+   "name": "提取·双图对比60%·cover·x1",
+   "page_role": "cover",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "side_by_side",
+    "top_fraction": 0.6,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "sticker_br",
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n27_p1.png｜标题转录：防晒披肩选纯色还是印花更好搭",
+   "popularity": 1,
+   "members": [
+    "n27_p1.png"
+   ]
+  },
+  {
+   "template_id": "ext_93",
+   "name": "提取·四宫格60%·cover·x1",
+   "page_role": "cover",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "grid_2x2",
+    "top_fraction": 0.6,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "banner",
+    "vs_badge"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n27_p2.png｜标题转录：纯色更适合日常长期穿",
+   "popularity": 1,
+   "members": [
+    "n27_p2.png"
+   ]
+  },
+  {
+   "template_id": "ext_94",
+   "name": "提取·三联60%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "triple_row",
+    "top_fraction": 0.6,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "vs_badge"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n27_p3.png｜标题转录：印花款更适合做造型重点",
+   "popularity": 1,
+   "members": [
+    "n27_p3.png"
+   ]
+  },
+  {
+   "template_id": "ext_95",
+   "name": "提取·一大两小60%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "banner",
+    "vs_badge"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n27_p4.png｜标题转录：颜色深浅别只看视觉感受",
+   "popularity": 1,
+   "members": [
+    "n27_p4.png"
+   ]
+  },
+  {
+   "template_id": "ext_96",
+   "name": "提取·单图60%·cover·x1",
+   "page_role": "cover",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "overlay_on_photo"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "sticker_br",
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n28_p1.png｜标题转录：猫咪可以吃西瓜但只适合尝一点",
+   "popularity": 1,
+   "members": [
+    "n28_p1.png"
+   ]
+  },
+  {
+   "template_id": "ext_97",
+   "name": "提取·单图60%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "accent_bar"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "banner",
+    "sticker_br",
+    "vs_badge"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n28_p3.png｜标题转录：籽和瓜皮都要去掉",
+   "popularity": 1,
+   "members": [
+    "n28_p3.png"
+   ]
+  },
+  {
+   "template_id": "ext_98",
+   "name": "提取·单图60%·content·x2",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "sticker_br",
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n28_p4.png｜标题转录：三、一次只给很小一块",
+   "popularity": 2,
+   "members": [
+    "n28_p4.png",
+    "n28_p5.png"
+   ]
+  },
+  {
+   "template_id": "ext_99",
+   "name": "提取·单图60%·cover·x1",
+   "page_role": "cover",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "paragraph"
+     }
+    ]
+   },
+   "decor": [],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n29_p1.png｜标题转录：鸡蛋糕蒸多久口感嫩还不出蜂窝",
+   "popularity": 1,
+   "members": [
+    "n29_p1.png"
+   ]
+  },
+  {
+   "template_id": "ext_100",
+   "name": "提取·单图70%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.7,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "overlay_on_photo"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_col"
+     }
+    ]
+   },
+   "decor": [],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n29_p2.png｜标题转录：时间要从上汽后开始算",
+   "popularity": 1,
+   "members": [
+    "n29_p2.png"
+   ]
+  },
+  {
+   "template_id": "ext_101",
+   "name": "提取·单图60%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "overlay_on_photo"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "sticker_br",
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n29_p3.png｜标题转录：蛋液和温水比例影响嫩度",
+   "popularity": 1,
+   "members": [
+    "n29_p3.png"
+   ]
+  },
+  {
+   "template_id": "ext_102",
+   "name": "提取·一大两小60%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_col"
+     }
+    ]
+   },
+   "decor": [
+    "vs_badge",
+    "sticker_br"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n29_p4.png｜标题转录：火力过大容易出现蜂窝",
+   "popularity": 1,
+   "members": [
+    "n29_p4.png"
+   ]
+  },
+  {
+   "template_id": "ext_103",
+   "name": "提取·四宫格70%·content·x1",
+   "page_role": "content",
+   "tags": [
+    "提取"
+   ],
+   "photo": {
+    "arrangement": "grid_2x2",
+    "top_fraction": 0.7,
+    "frame": "polaroid"
+   },
+   "text": {
+    "bg": "theme_light",
+    "elements": [
+     {
+      "type": "title",
+      "style": "center"
+     },
+     {
+      "type": "section_title",
+      "style": "number_badge"
+     },
+     {
+      "type": "points_highlight"
+     }
+    ]
+   },
+   "decor": [
+    "banner"
+   ],
+   "palette_rule": "theme_light",
+   "source": "vl_extracted",
+   "notes": "代表图：n29_p5.png｜标题转录：不同容器和份量要调整时间",
+   "popularity": 1,
+   "members": [
+    "n29_p5.png"
+   ]
+  }
+ ],
+ "corpus": [
+  {
+   "set": 0,
+   "page": 1,
+   "file": "n00_p1.png",
+   "query_idx": 0,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 4,
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "none",
+    "body": "points_highlight",
+    "decor": [
+     "sticker",
+     "dashes"
+    ],
+    "title_text": "幼犬只打一针疫苗，先别去公共地面玩",
+    "body_gist": "提示幼犬接种后注意事项及避免接触高风险区域"
+   }
+  },
+  {
+   "set": 0,
+   "page": 2,
+   "file": "n00_p2.png",
+   "query_idx": 0,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "tip_box",
+    "decor": [
+     "banner",
+     "dashes"
+    ],
+    "title_text": "一针不等于完成免疫",
+    "body_gist": "按兽医安排完成多针，保护更稳"
+   }
+  },
+  {
+   "set": 0,
+   "page": 3,
+   "file": "n00_p3.png",
+   "query_idx": 0,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 4,
+    "arrangement": "triple_row",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "banner",
+     "dashes"
+    ],
+    "title_text": "可以做低风险的社会化",
+    "body_gist": "通过家庭环境训练、短途出行和安全户外适应，帮助幼犬低风险社会化"
+   }
+  },
+  {
+   "set": 0,
+   "page": 4,
+   "file": "n00_p4.png",
+   "query_idx": 0,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 5,
+    "arrangement": "grid_2x2",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "sticker",
+     "banner"
+    ],
+    "title_text": "三、这些地方先暂时避开",
+    "body_gist": "提示避免带狗狗去宠物公园、聚集草地、宠物店地面、公厕周边及接触疫苗不明犬只"
+   }
+  },
+  {
+   "set": 0,
+   "page": 5,
+   "file": "n00_p5.png",
+   "query_idx": 0,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 5,
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "sticker",
+     "banner"
+    ],
+    "title_text": "四、按接种医生的时间表来",
+    "body_gist": "带疫苗本确认下针日期，按医生安排落地，出现异常立即就医"
+   }
+  },
+  {
+   "set": 1,
+   "page": 1,
+   "file": "n01_p1.png",
+   "query_idx": 1,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "overlay_on_photo",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [],
+    "title_text": "墨水沾衣服怎么洗，别先用热水揉",
+    "body_gist": "分步说明墨水污渍清洗方法，包括垫布吸墨、冷水加洗衣液、酒精擦拭及禁止烘烫"
+   }
+  },
+  {
+   "set": 1,
+   "page": 2,
+   "file": "n01_p2.png",
+   "query_idx": 1,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [],
+    "title_text": "先垫布吸走浮墨",
+    "body_gist": "分四步说明用白毛巾吸走衣物浮墨的方法"
+   }
+  },
+  {
+   "set": 1,
+   "page": 3,
+   "file": "n01_p3.png",
+   "query_idx": 1,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [],
+    "title_text": "普通水性墨水先用洗衣液",
+    "body_gist": "冷水冲洗后涂中性洗衣液静置再轻揉清洗"
+   }
+  },
+  {
+   "set": 1,
+   "page": 4,
+   "file": "n01_p4.png",
+   "query_idx": 1,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [
+     "dashes"
+    ],
+    "title_text": "三、油性笔迹要谨慎点擦",
+    "body_gist": "用棉签蘸酒精从外围向中心点擦，先做色牢度测试，不可大面积浇淋"
+   }
+  },
+  {
+   "set": 1,
+   "page": 5,
+   "file": "n01_p5.png",
+   "query_idx": 1,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [
+     "sticker"
+    ],
+    "title_text": "四、干后再判断是否继续处理",
+    "body_gist": "列出衣物干后检查与处理注意事项"
+   }
+  },
+  {
+   "set": 2,
+   "page": 1,
+   "file": "n02_p1.png",
+   "query_idx": 2,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.7,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "overlay_on_photo",
+    "section_style": "none",
+    "body": "paragraph",
+    "decor": [
+     "sticker",
+     "dashes"
+    ],
+    "title_text": "一个多月幼犬别喂猪肉萝卜饺子",
+    "body_gist": "人吃饺子含盐和调味，幼犬肠胃未稳，主食应选幼犬粮或代乳湿粮"
+   }
+  },
+  {
+   "set": 2,
+   "page": 2,
+   "file": "n02_p2.png",
+   "query_idx": 2,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "paragraph",
+    "decor": [
+     "sticker",
+     "dashes"
+    ],
+    "title_text": "饺子皮和馅料都不适合幼犬",
+    "body_gist": "面皮难消化，猪肉馅偏油，萝卜纤维多，易导致幼犬胀气、软便或呕吐"
+   }
+  },
+  {
+   "set": 2,
+   "page": 3,
+   "file": "n02_p3.png",
+   "query_idx": 2,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.7,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "overlay_on_photo",
+    "section_style": "number_badge",
+    "body": "paragraph",
+    "decor": [
+     "sticker",
+     "banner"
+    ],
+    "title_text": "葱蒜和调味料要特别避开",
+    "body_gist": "葱、蒜、盐、酱油和香辛料都不适合幼犬，需特别避开"
+   }
+  },
+  {
+   "set": 2,
+   "page": 4,
+   "file": "n02_p4.png",
+   "query_idx": 2,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "banner",
+     "dashes"
+    ],
+    "title_text": "幼犬更需要规律的主食",
+    "body_gist": "推荐少量多餐，逐步过渡到幼犬粮"
+   }
+  },
+  {
+   "set": 2,
+   "page": 5,
+   "file": "n02_p5.png",
+   "query_idx": 2,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 5,
+    "arrangement": "grid_2x2",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "sticker",
+     "banner"
+    ],
+    "title_text": "误食后先观察状态",
+    "body_gist": "出现呕吐腹泻腹胀精神差等异常需尽快联系兽医"
+   }
+  },
+  {
+   "set": 3,
+   "page": 1,
+   "file": "n03_p1.png",
+   "query_idx": 3,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 2,
+    "arrangement": "side_by_side",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "none",
+    "body": "points_highlight",
+    "decor": [
+     "dashes",
+     "vs_badge"
+    ],
+    "title_text": "冷淡风和法式风耳环，哪种更百搭",
+    "body_gist": "对比冷淡风与法式风耳环的风格特点及适用场景"
+   }
+  },
+  {
+   "set": 3,
+   "page": 2,
+   "file": "n03_p2.png",
+   "query_idx": 3,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 4,
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "banner",
+     "dashes"
+    ],
+    "title_text": "冷淡风更适合日常通勤",
+    "body_gist": "推荐银色枪灰细线条耳饰搭配黑白灰蓝衬衫"
+   }
+  },
+  {
+   "set": 3,
+   "page": 3,
+   "file": "n03_p3.png",
+   "query_idx": 3,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.7,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "dashes",
+     "banner"
+    ],
+    "title_text": "二、法式风更强调柔和细节",
+    "body_gist": "列举珍珠、浅金等元素与针织碎花搭配适合约会的温柔风格"
+   }
+  },
+  {
+   "set": 3,
+   "page": 4,
+   "file": "n03_p4.png",
+   "query_idx": 3,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 3,
+    "arrangement": "triple_row",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [
+     "dashes"
+    ],
+    "title_text": "三、看脸型和发型调整长度",
+    "body_gist": "根据短发、长发、圆脸三种情况推荐不同长度耳饰"
+   }
+  },
+  {
+   "set": 3,
+   "page": 5,
+   "file": "n03_p5.png",
+   "query_idx": 3,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 6,
+    "arrangement": "triple_row",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "dashes",
+     "banner"
+    ],
+    "title_text": "四、最百搭的是低装饰款",
+    "body_gist": "推荐小圈、珍珠、水滴耳饰，金属色呼应配饰，少装饰更耐看"
+   }
+  },
+  {
+   "set": 4,
+   "page": 1,
+   "file": "n04_p1.png",
+   "query_idx": 4,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 4,
+    "arrangement": "grid_2x2",
+    "top_fraction": 0.7,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "none",
+    "body": "points_highlight",
+    "decor": [
+     "banner",
+     "dashes"
+    ],
+    "title_text": "墨绿色秋冬鞋配什么衣服",
+    "body_gist": "推荐四组基础色搭配墨绿鞋，全身颜色控制在3种左右更稳妥"
+   }
+  },
+  {
+   "set": 4,
+   "page": 2,
+   "file": "n04_p2.png",
+   "query_idx": 4,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 4,
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "sticker",
+     "banner"
+    ],
+    "title_text": "米白和燕麦色最柔和",
+    "body_gist": "米白针织、燕麦大衣、浅卡其裤搭配深绿靴子，通勤周末皆温柔"
+   }
+  },
+  {
+   "set": 4,
+   "page": 3,
+   "file": "n04_p3.png",
+   "query_idx": 4,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.7,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [],
+    "title_text": "棕色系适合秋冬氛围",
+    "body_gist": "驼色、咖色等棕色调搭配灯芯绒、麂皮等材质更显季节感，包包与鞋子呼应提升整体感"
+   }
+  },
+  {
+   "set": 4,
+   "page": 4,
+   "file": "n04_p4.png",
+   "query_idx": 4,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 4,
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [],
+    "title_text": "三、黑灰配色更利落",
+    "body_gist": "黑灰搭配墨绿鞋，露白袜提亮"
+   }
+  },
+  {
+   "set": 4,
+   "page": 5,
+   "file": "n04_p5.png",
+   "query_idx": 4,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 7,
+    "arrangement": "triple_row",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "sticker",
+     "banner"
+    ],
+    "title_text": "四、牛仔蓝也很好用",
+    "body_gist": "推荐中深蓝牛仔裤搭配奶白、灰蓝上衣，九分裤显利落"
+   }
+  },
+  {
+   "set": 5,
+   "page": 1,
+   "file": "n05_p1.png",
+   "query_idx": 5,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 2,
+    "arrangement": "side_by_side",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "none",
+    "body": "points_col",
+    "decor": [
+     "dashes"
+    ],
+    "title_text": "吊带裙和旗袍哪个显瘦，先看版型",
+    "body_gist": "通过垂感、肩腰比、长度和领口内搭分析两款裙装显瘦效果"
+   }
+  },
+  {
+   "set": 5,
+   "page": 2,
+   "file": "n05_p2.png",
+   "query_idx": 5,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 6,
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.7,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [
+     "vs_badge"
+    ],
+    "title_text": "吊带裙更依赖面料垂感",
+    "body_gist": "推荐缎面醋酸重针织面料，直筒微A版型更利落，纵向分割拉长身形，避免太轻太贴显胀"
+   }
+  },
+  {
+   "set": 5,
+   "page": 3,
+   "file": "n05_p3.png",
+   "query_idx": 5,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 4,
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [
+     "dashes"
+    ],
+    "title_text": "旗袍显瘦靠肩腰比例",
+    "body_gist": "通过肩线、收腰和开衩设计展现修身效果"
+   }
+  },
+  {
+   "set": 5,
+   "page": 4,
+   "file": "n05_p4.png",
+   "query_idx": 5,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 5,
+    "arrangement": "side_by_side",
+    "top_fraction": 0.7,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [
+     "dashes"
+    ],
+    "title_text": "三、长度决定视觉重心",
+    "body_gist": "吊带裙和旗袍的合适长度建议与视觉效果分析"
+   }
+  },
+  {
+   "set": 5,
+   "page": 5,
+   "file": "n05_p5.png",
+   "query_idx": 5,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 6,
+    "arrangement": "side_by_side",
+    "top_fraction": 0.7,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [
+     "dashes"
+    ],
+    "title_text": "四、领口和内搭也会影响效果",
+    "body_gist": "吊带裙配薄针织或外套，旗袍高领宜简洁配饰"
+   }
+  },
+  {
+   "set": 6,
+   "page": 1,
+   "file": "n06_p1.png",
+   "query_idx": 6,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "scrim",
+    "title_style": "overlay_on_photo",
+    "section_style": "none",
+    "body": "points_highlight",
+    "decor": [
+     "banner",
+     "dashes"
+    ],
+    "title_text": "盐水泡过的水果能放多久",
+    "body_gist": "冷藏也别超过太久，尽快沥干密封冷藏，变质就丢"
+   }
+  },
+  {
+   "set": 6,
+   "page": 2,
+   "file": "n06_p2.png",
+   "query_idx": 6,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "banner",
+     "dashes"
+    ],
+    "title_text": "盐水浓度不要太高",
+    "body_gist": "用少量盐加清水短时浸泡水果，切好后放入干净容器"
+   }
+  },
+  {
+   "set": 6,
+   "page": 3,
+   "file": "n06_p3.png",
+   "query_idx": 6,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "sticker",
+     "banner"
+    ],
+    "title_text": "室温不适合久放",
+    "body_gist": "常温超2小时、炎热超1小时、熟透水果要快吃"
+   }
+  },
+  {
+   "set": 6,
+   "page": 4,
+   "file": "n06_p4.png",
+   "query_idx": 6,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 3,
+    "arrangement": "triple_row",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "sticker",
+     "banner"
+    ],
+    "title_text": "三、冷藏要沥水密封",
+    "body_gist": "水果切块后需沥干水分，装入密封盒冷藏，苹果梨24小时内食用，瓜果尽量当天吃完"
+   }
+  },
+  {
+   "set": 6,
+   "page": 5,
+   "file": "n06_p5.png",
+   "query_idx": 6,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 6,
+    "arrangement": "grid_2x2",
+    "top_fraction": 0.7,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "banner",
+     "dashes"
+    ],
+    "title_text": "这些变化说明不能吃",
+    "body_gist": "列举水果变质的六种表现，提示发黏、酸臭、霉点等不可食用"
+   }
+  },
+  {
+   "set": 7,
+   "page": 1,
+   "file": "n07_p1.png",
+   "query_idx": 7,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 2,
+    "arrangement": "side_by_side",
+    "top_fraction": 0.7,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "none",
+    "body": "points_highlight",
+    "decor": [
+     "sticker",
+     "banner",
+     "dashes",
+     "vs_badge"
+    ],
+    "title_text": "假两件毛衣和纯色毛衣，显瘦重点不一样",
+    "body_gist": "通勤选纯色，层次感选假两件"
+   }
+  },
+  {
+   "set": 7,
+   "page": 2,
+   "file": "n07_p2.png",
+   "query_idx": 7,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 3,
+    "arrangement": "triple_row",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "vs_badge",
+     "dashes"
+    ],
+    "title_text": "假两件要看拼接线位置",
+    "body_gist": "通过拼接线位置判断假两件穿搭的视觉效果"
+   }
+  },
+  {
+   "set": 7,
+   "page": 3,
+   "file": "n07_p3.png",
+   "query_idx": 7,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 3,
+    "arrangement": "triple_row",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "sticker",
+     "dashes",
+     "polaroid"
+    ],
+    "title_text": "纯色款更容易控制轮廓",
+    "body_gist": "推荐深灰、藏蓝、咖色纯色款，高腰直筒裤线条更利落"
+   }
+  },
+  {
+   "set": 7,
+   "page": 4,
+   "file": "n07_p4.png",
+   "query_idx": 7,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 8,
+    "arrangement": "grid_2x2",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "banner",
+     "dashes"
+    ],
+    "title_text": "厚度决定上半身体积",
+    "body_gist": "粗针更显厚，细针更贴身，上宽下窄更平衡"
+   }
+  },
+  {
+   "set": 7,
+   "page": 5,
+   "file": "n07_p5.png",
+   "query_idx": 7,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 3,
+    "arrangement": "triple_row",
+    "top_fraction": 0.7,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "sticker",
+     "banner"
+    ],
+    "title_text": "四、根据场景选择更实用",
+    "body_gist": "根据不同场景推荐三种穿搭风格：层次感假两件、通勤纯色、基础款耐穿"
+   }
+  },
+  {
+   "set": 8,
+   "page": 1,
+   "file": "n08_p1.png",
+   "query_idx": 8,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "none",
+    "body": "points_col",
+    "decor": [
+     "dashes"
+    ],
+    "title_text": "朝鲜泡椒家常做法",
+    "body_gist": "列出青红椒、盐糖、米醋清水等配料及冷藏时间"
+   }
+  },
+  {
+   "set": 8,
+   "page": 2,
+   "file": "n08_p2.png",
+   "query_idx": 8,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [
+     "dashes"
+    ],
+    "title_text": "材料和容器先准备好",
+    "body_gist": "列出制作泡椒所需的全部材料和容器"
+   }
+  },
+  {
+   "set": 8,
+   "page": 3,
+   "file": "n08_p3.png",
+   "query_idx": 8,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 4,
+    "arrangement": "grid_2x2",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [
+     "sticker"
+    ],
+    "title_text": "辣椒要洗净并充分晾干",
+    "body_gist": "四步处理辣椒：洗净、晾干、扎孔、挑出破损"
+   }
+  },
+  {
+   "set": 8,
+   "page": 4,
+   "file": "n08_p4.png",
+   "query_idx": 8,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 4,
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [
+     "dashes"
+    ],
+    "title_text": "三、煮汁放凉后再装罐",
+    "body_gist": "分步展示煮汁冷却后装罐的制作流程"
+   }
+  },
+  {
+   "set": 8,
+   "page": 5,
+   "file": "n08_p5.png",
+   "query_idx": 8,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 5,
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [
+     "dashes"
+    ],
+    "title_text": "四、冷藏观察状态再食用",
+    "body_gist": "冷藏2-3天可尝味，5-7天风味更浓，取用要干净无油，出现霉膜、黏液、胀气、异味整罐丢弃"
+   }
+  },
+  {
+   "set": 9,
+   "page": 1,
+   "file": "n09_p1.png",
+   "query_idx": 9,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 4,
+    "arrangement": "triple_row",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "none",
+    "body": "points_highlight",
+    "decor": [
+     "banner",
+     "dashes"
+    ],
+    "title_text": "绿豆粥怎么煮更软，先泡再小火煮",
+    "body_gist": "先泡2-4小时，小火煮30-40分钟，剩粥冷藏24小时内吃完"
+   }
+  },
+  {
+   "set": 9,
+   "page": 2,
+   "file": "n09_p2.png",
+   "query_idx": 9,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 3,
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "banner",
+     "dashes"
+    ],
+    "title_text": "绿豆先挑洗再浸泡",
+    "body_gist": "挑洗杂质后清水冲洗2-3遍，浸泡2-4小时"
+   }
+  },
+  {
+   "set": 9,
+   "page": 3,
+   "file": "n09_p3.png",
+   "query_idx": 9,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 4,
+    "arrangement": "grid_2x2",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "banner",
+     "dashes"
+    ],
+    "title_text": "水量按喜欢的稠度调整",
+    "body_gist": "展示绿豆汤不同水豆比例与煮制步骤"
+   }
+  },
+  {
+   "set": 9,
+   "page": 4,
+   "file": "n09_p4.png",
+   "query_idx": 9,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 3,
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "banner",
+     "sticker"
+    ],
+    "title_text": "煮到豆皮开裂再调味",
+    "body_gist": "小火煮30-40分钟，豆皮开裂后加冰糖"
+   }
+  },
+  {
+   "set": 9,
+   "page": 5,
+   "file": "n09_p5.png",
+   "query_idx": 9,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 4,
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "banner",
+     "sticker"
+    ],
+    "title_text": "四、剩粥要尽快降温冷藏",
+    "body_gist": "出锅分装散热，尽快冷藏，再吃前彻底加热，有酸味气泡拉丝别吃"
+   }
+  },
+  {
+   "set": 10,
+   "page": 1,
+   "file": "n10_p1.png",
+   "query_idx": 10,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 3,
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "none",
+    "body": "points_highlight",
+    "decor": [
+     "banner",
+     "sticker"
+    ],
+    "title_text": "快速解冻冻肉，冷水法要这样做",
+    "body_gist": "展示三种解冻方法并强调别用热水、别裸泡"
+   }
+  },
+  {
+   "set": 10,
+   "page": 2,
+   "file": "n10_p2.png",
+   "query_idx": 10,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "banner",
+     "sticker"
+    ],
+    "title_text": "最稳妥的是冷藏解冻",
+    "body_gist": "冷藏解冻方法及时间建议"
+   }
+  },
+  {
+   "set": 10,
+   "page": 3,
+   "file": "n10_p3.png",
+   "query_idx": 10,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 5,
+    "arrangement": "grid_2x2",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "banner"
+    ],
+    "title_text": "急用可用冷水浸泡",
+    "body_gist": "展示冷冻肉冷水解冻步骤"
+   }
+  },
+  {
+   "set": 10,
+   "page": 4,
+   "file": "n10_p4.png",
+   "query_idx": 10,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 5,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "sticker",
+     "dashes"
+    ],
+    "title_text": "三、微波解冻后必须马上加热",
+    "body_gist": "按重量分段解冻，每1-2分钟翻面或拆散，局部可能先升温，解冻结束后马上做熟"
+   }
+  },
+  {
+   "set": 10,
+   "page": 5,
+   "file": "n10_p5.png",
+   "query_idx": 10,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 4,
+    "arrangement": "grid_2x2",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "banner",
+     "sticker"
+    ],
+    "title_text": "四、这些做法不建议",
+    "body_gist": "列举了五种不建议的肉类处理方式，包括热水泡、久放台面、水池裸泡、工具不洁及变质肉继续使用"
+   }
+  },
+  {
+   "set": 11,
+   "page": 1,
+   "file": "n11_p1.png",
+   "query_idx": 11,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 5,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "overlay_on_photo",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "banner",
+     "dashes"
+    ],
+    "title_text": "圆珠笔芯液体沾衣服，先吸附再点擦",
+    "body_gist": "先吸附再点擦，用酒精测试后冷水冲洗，避免加热"
+   }
+  },
+  {
+   "set": 11,
+   "page": 2,
+   "file": "n11_p2.png",
+   "query_idx": 11,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 4,
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "banner"
+    ],
+    "title_text": "先把污渍隔离出来",
+    "body_gist": "用纸巾垫底、棉签轻点外围、吸走表面墨水"
+   }
+  },
+  {
+   "set": 11,
+   "page": 3,
+   "file": "n11_p3.png",
+   "query_idx": 11,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 3,
+    "arrangement": "triple_row",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "banner"
+    ],
+    "title_text": "酒精要先做色牢度测试",
+    "body_gist": "分三步演示用酒精测试衣物掉色：先试、确认、点擦"
+   }
+  },
+  {
+   "set": 11,
+   "page": 4,
+   "file": "n11_p4.png",
+   "query_idx": 11,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 4,
+    "arrangement": "single",
+    "top_fraction": 0.7,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "banner",
+     "dashes"
+    ],
+    "title_text": "再用洗衣液去油膜",
+    "body_gist": "分三步用冷水和中性洗衣液清洗油污"
+   }
+  },
+  {
+   "set": 11,
+   "page": 5,
+   "file": "n11_p5.png",
+   "query_idx": 11,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "banner",
+     "sticker"
+    ],
+    "title_text": "未去干净前不要加热",
+    "body_gist": "别烘干、别熨烫、别热水泡，自然晾干后再检查"
+   }
+  },
+  {
+   "set": 12,
+   "page": 1,
+   "file": "n12_p1.png",
+   "query_idx": 12,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "none",
+    "body": "points_col",
+    "decor": [
+     "dashes"
+    ],
+    "title_text": "生蚝怎么保存，别泡自来水里",
+    "body_gist": "活蚝冷藏0-4℃，平铺湿毛巾，开壳蚝肉当天吃，异味发黏勿食用"
+   }
+  },
+  {
+   "set": 12,
+   "page": 2,
+   "file": "n12_p2.png",
+   "query_idx": 12,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 2,
+    "arrangement": "side_by_side",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [
+     "vs_badge",
+     "dashes"
+    ],
+    "title_text": "先检查外壳和气味",
+    "body_gist": "通过外壳状态和气味判断生蚝新鲜度"
+   }
+  },
+  {
+   "set": 12,
+   "page": 3,
+   "file": "n12_p3.png",
+   "query_idx": 12,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "paragraph",
+    "decor": [
+     "dashes",
+     "sticker"
+    ],
+    "title_text": "短期冷藏不要泡淡水",
+    "body_gist": "一两天内吃，平铺放干净容器，盖湿毛巾或海水纱布，0—4℃冷藏。别泡自来水，也别完全密封闷住。"
+   }
+  },
+  {
+   "set": 12,
+   "page": 4,
+   "file": "n12_p4.png",
+   "query_idx": 12,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 3,
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "paragraph",
+    "decor": [
+     "sticker",
+     "dashes"
+    ],
+    "title_text": "去壳蚝肉要尽快处理",
+    "body_gist": "开壳蚝肉需冷藏密封保存，尽量当天吃完，避免室温久放变质"
+   }
+  },
+  {
+   "set": 12,
+   "page": 5,
+   "file": "n12_p5.png",
+   "query_idx": 12,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [
+     "dashes"
+    ],
+    "title_text": "冷冻会改变口感",
+    "body_gist": "介绍生蚝冷冻保存方法及注意事项"
+   }
+  },
+  {
+   "set": 13,
+   "page": 1,
+   "file": "n13_p1.png",
+   "query_idx": 13,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "none",
+    "body": "points_highlight",
+    "decor": [
+     "sticker",
+     "dashes"
+    ],
+    "title_text": "沐浴露能洗衣服吗",
+    "body_gist": "轻污可手洗，重油污与功能面料不建议"
+   }
+  },
+  {
+   "set": 13,
+   "page": 2,
+   "file": "n13_p2.png",
+   "query_idx": 13,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 5,
+    "arrangement": "grid_2x2",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [
+     "sticker",
+     "banner"
+    ],
+    "title_text": "轻微汗味衣物可以应急",
+    "body_gist": "棉质睡衣家居服可手洗去汗味"
+   }
+  },
+  {
+   "set": 13,
+   "page": 3,
+   "file": "n13_p3.png",
+   "query_idx": 13,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 5,
+    "arrangement": "grid_2x2",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "sticker",
+     "dashes"
+    ],
+    "title_text": "重油污和贴身功能衣不适合",
+    "body_gist": "油污衣物及速干、羊毛、真丝、羽绒类衣物不建议使用"
+   }
+  },
+  {
+   "set": 13,
+   "page": 4,
+   "file": "n13_p4.png",
+   "query_idx": 13,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 3,
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "vs_badge",
+     "sticker"
+    ],
+    "title_text": "三、机洗不要随意倒很多",
+    "body_gist": "对比展示泡沫过多与少量使用的效果差异"
+   }
+  },
+  {
+   "set": 13,
+   "page": 5,
+   "file": "n13_p5.png",
+   "query_idx": 13,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 3,
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "sticker",
+     "banner",
+     "dashes"
+    ],
+    "title_text": "洗后看残留和面料变化",
+    "body_gist": "展示衣物洗后残留问题及漂洗建议"
+   }
+  },
+  {
+   "set": 14,
+   "page": 1,
+   "file": "n14_p1.png",
+   "query_idx": 14,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "scrim",
+    "title_style": "overlay_on_photo",
+    "section_style": "none",
+    "body": "points_highlight",
+    "decor": [
+     "banner"
+    ],
+    "title_text": "竹笋煮好后怎么保存更合适",
+    "body_gist": "快速降温、沥干水分、及时密封，冷藏2到3天或冷冻约1个月"
+   }
+  },
+  {
+   "set": 14,
+   "page": 2,
+   "file": "n14_p2.png",
+   "query_idx": 14,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 3,
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "overlay_on_photo",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "vs_badge"
+    ],
+    "title_text": "煮好后不建议再用生水冲洗",
+    "body_gist": "煮好笋后用漏勺沥水，浮沫可用凉白开冲，避免长时间冲洗或浸泡"
+   }
+  },
+  {
+   "set": 14,
+   "page": 3,
+   "file": "n14_p3.png",
+   "query_idx": 14,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [
+     "sticker"
+    ],
+    "title_text": "二、先彻底放凉再分装",
+    "body_gist": "说明食物冷却后再分装的三个要点"
+   }
+  },
+  {
+   "set": 14,
+   "page": 4,
+   "file": "n14_p4.png",
+   "query_idx": 14,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 3,
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "banner",
+     "vs_badge"
+    ],
+    "title_text": "冷藏和冷冻时间不同",
+    "body_gist": "冷藏4℃存2-3天，冷冻-18℃存约1个月，按餐分装更方便"
+   }
+  },
+  {
+   "set": 14,
+   "page": 5,
+   "file": "n14_p5.png",
+   "query_idx": 14,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 5,
+    "arrangement": "grid_2x2",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "banner",
+     "sticker"
+    ],
+    "title_text": "出现这些情况就别再吃",
+    "body_gist": "展示四种不宜食用的竹笋状态及正确储存方法"
+   }
+  },
+  {
+   "set": 15,
+   "page": 1,
+   "file": "n15_p1.png",
+   "query_idx": 15,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "overlay_on_photo",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [],
+    "title_text": "白衬衣沾到黄桃汁这样洗更干净",
+    "body_gist": "四步清洁法：吸附、冷水冲、洗衣液预处理、温水提亮，避免热水烫"
+   }
+  },
+  {
+   "set": 15,
+   "page": 2,
+   "file": "n15_p2.png",
+   "query_idx": 15,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 2,
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [
+     "sticker"
+    ],
+    "title_text": "先吸掉汁液别来回揉",
+    "body_gist": "用纸巾轻压吸附，从外向内处理，避免摩擦，翻面冷水冲"
+   }
+  },
+  {
+   "set": 15,
+   "page": 3,
+   "file": "n15_p3.png",
+   "query_idx": 15,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 4,
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [
+     "banner",
+     "dashes"
+    ],
+    "title_text": "冷水冲洗再用洗衣液预处理",
+    "body_gist": "四步法处理衣物黄印：冷水冲洗、滴洗衣液、轻揉、静置清洗"
+   }
+  },
+  {
+   "set": 15,
+   "page": 4,
+   "file": "n15_p4.png",
+   "query_idx": 15,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [
+     "sticker"
+    ],
+    "title_text": "三、残留黄印再做温和提亮",
+    "body_gist": "白色棉质衣物用氧系漂白剂浸泡15-30分钟提亮"
+   }
+  },
+  {
+   "set": 15,
+   "page": 5,
+   "file": "n15_p5.png",
+   "query_idx": 15,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [
+     "sticker"
+    ],
+    "title_text": "这些清洁方法容易伤衣",
+    "body_gist": "列出四种易伤衣物的清洁误区及注意事项"
+   }
+  },
+  {
+   "set": 16,
+   "page": 1,
+   "file": "n16_p1.png",
+   "query_idx": 16,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "overlay_on_photo",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [],
+    "title_text": "青提汁滴到白衣服上这样处理",
+    "body_gist": "果汁越早处理越省事，先冲洗再提亮，干后显浅黄印也常见"
+   }
+  },
+  {
+   "set": 16,
+   "page": 2,
+   "file": "n16_p2.png",
+   "query_idx": 16,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [],
+    "title_text": "先用冷水从反面冲",
+    "body_gist": "用纸巾吸液后翻面冷水冲洗，避免热水和硬刷"
+   }
+  },
+  {
+   "set": 16,
+   "page": 3,
+   "file": "n16_p3.png",
+   "query_idx": 16,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [],
+    "title_text": "洗衣液停留十分钟再洗",
+    "body_gist": "滴洗衣液、轻揉静置10分钟、按洗标清洗、注意水温与专用剂"
+   }
+  },
+  {
+   "set": 16,
+   "page": 4,
+   "file": "n16_p4.png",
+   "query_idx": 16,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [
+     "vs_badge"
+    ],
+    "title_text": "顽固印迹按面料做提亮",
+    "body_gist": "白色棉质可用氧系漂白剂浸泡，先测试，真丝羊毛等勿漂"
+   }
+  },
+  {
+   "set": 16,
+   "page": 5,
+   "file": "n16_p5.png",
+   "query_idx": 16,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [
+     "sticker"
+    ],
+    "title_text": "四、晾干前先确认污渍消失",
+    "body_gist": "湿衣检查污渍，未净不烘不烫，洗净后再晾晒"
+   }
+  },
+  {
+   "set": 17,
+   "page": 1,
+   "file": "n17_p1.png",
+   "query_idx": 17,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "none",
+    "body": "points_highlight",
+    "decor": [
+     "banner"
+    ],
+    "title_text": "排骨焯水后炒一下要不要放盐",
+    "body_gist": "多数做法先不急放盐，先炒干水汽再按汤汁调味，酱油酱料咸味也要一起算"
+   }
+  },
+  {
+   "set": 17,
+   "page": 2,
+   "file": "n17_p2.png",
+   "query_idx": 17,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "sticker",
+     "dashes"
+    ],
+    "title_text": "煸炒阶段通常先不急着放盐",
+    "body_gist": "中火煸炒3-5分钟，炒干水汽边缘微黄，避免过早加盐"
+   }
+  },
+  {
+   "set": 17,
+   "page": 3,
+   "file": "n17_p3.png",
+   "query_idx": 17,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 4,
+    "arrangement": "grid_2x2",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "banner"
+    ],
+    "title_text": "焯水后这样处理更香",
+    "body_gist": "四步图解排骨焯水后的处理方法"
+   }
+  },
+  {
+   "set": 17,
+   "page": 4,
+   "file": "n17_p4.png",
+   "query_idx": 17,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "sticker"
+    ],
+    "title_text": "三、调味放在加水炖煮之后",
+    "body_gist": "四步图示说明排骨汤调味时机与步骤"
+   }
+  },
+  {
+   "set": 17,
+   "page": 5,
+   "file": "n17_p5.png",
+   "query_idx": 17,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 2,
+    "arrangement": "side_by_side",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "banner"
+    ],
+    "title_text": "不同做法盐的时间会不同",
+    "body_gist": "干锅爆炒提前调味，红烧炖汤后放盐，收汁后味更浓"
+   }
+  },
+  {
+   "set": 18,
+   "page": 1,
+   "file": "n18_p1.png",
+   "query_idx": 18,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.7,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "none",
+    "body": "paragraph",
+    "decor": [
+     "dashes"
+    ],
+    "title_text": "鲜切花用什么水养能放得更久",
+    "body_gist": "清水搭配正规鲜花保鲜剂，通常更省心"
+   }
+  },
+  {
+   "set": 18,
+   "page": 2,
+   "file": "n18_p2.png",
+   "query_idx": 18,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "paragraph",
+    "decor": [
+     "dashes"
+    ],
+    "title_text": "最稳妥的是清水加鲜花保鲜剂",
+    "body_gist": "花瓶洗净，常温或偏凉清水没过花杆底部约5到10厘米，保鲜剂按比例用，别加倍。"
+   }
+  },
+  {
+   "set": 18,
+   "page": 3,
+   "file": "n18_p3.png",
+   "query_idx": 18,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "paragraph",
+    "decor": [
+     "dashes"
+    ],
+    "title_text": "没有保鲜剂就把清洁做好",
+    "body_gist": "花杆斜剪、去叶、勤换水洗瓶"
+   }
+  },
+  {
+   "set": 18,
+   "page": 4,
+   "file": "n18_p4.png",
+   "query_idx": 18,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "paragraph",
+    "decor": [
+     "dashes"
+    ],
+    "title_text": "三、糖和漂白剂别随手乱加",
+    "body_gist": "糖水易滋生细菌，漂白剂计量不准也可能伤花，更不能和醋、柠檬酸混合。"
+   }
+  },
+  {
+   "set": 18,
+   "page": 5,
+   "file": "n18_p5.png",
+   "query_idx": 18,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "paragraph",
+    "decor": [
+     "dashes"
+    ],
+    "title_text": "每天这样维护更耐放",
+    "body_gist": "避开强光暖气空调直吹，远离水果，每日换水摘腐叶"
+   }
+  },
+  {
+   "set": 19,
+   "page": 1,
+   "file": "n19_p1.png",
+   "query_idx": 19,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "none",
+    "body": "tip_box",
+    "decor": [
+     "sticker",
+     "banner"
+    ],
+    "title_text": "小猫踩奶到底是在表达什么",
+    "body_gist": "解释小猫踩奶行为与安全感、放松和本能的关系"
+   }
+  },
+  {
+   "set": 19,
+   "page": 2,
+   "file": "n19_p2.png",
+   "query_idx": 19,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "tip_box",
+    "decor": [
+     "sticker",
+     "banner"
+    ],
+    "title_text": "踩奶来自幼猫时期的本能",
+    "body_gist": "解释踩奶行为源自幼猫时期按压乳房的本能，并保留至成年"
+   }
+  },
+  {
+   "set": 19,
+   "page": 3,
+   "file": "n19_p3.png",
+   "query_idx": 19,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "tip_box",
+    "decor": [
+     "sticker",
+     "banner"
+    ],
+    "title_text": "长大后踩奶多和放松有关",
+    "body_gist": "解释猫踩奶行为常见场景与含义"
+   }
+  },
+  {
+   "set": 19,
+   "page": 4,
+   "file": "n19_p4.png",
+   "query_idx": 19,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 3,
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.7,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "tip_box",
+    "decor": [
+     "sticker",
+     "banner"
+    ],
+    "title_text": "三、踩人踩被子都是常见表现",
+    "body_gist": "解释猫咪踩人踩被子行为并给出护理建议"
+   }
+  },
+  {
+   "set": 19,
+   "page": 5,
+   "file": "n19_p5.png",
+   "query_idx": 19,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 6,
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "tip_box",
+    "decor": [
+     "sticker",
+     "banner"
+    ],
+    "title_text": "出现这些变化需要多观察",
+    "body_gist": "若猫频繁踩奶并伴躲藏、食欲差、过度舔毛、乱尿或焦躁，需多观察，必要时联系兽医"
+   }
+  },
+  {
+   "set": 20,
+   "page": 1,
+   "file": "n20_p1.png",
+   "query_idx": 20,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 2,
+    "arrangement": "side_by_side",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "none",
+    "body": "points_col",
+    "decor": [
+     "dashes",
+     "vs_badge"
+    ],
+    "title_text": "波点和纯色衬衫哪个更显利落",
+    "body_gist": "对比纯色与波点衬衫的利落感，强调版型与配色的重要性"
+   }
+  },
+  {
+   "set": 20,
+   "page": 2,
+   "file": "n20_p2.png",
+   "query_idx": 20,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 3,
+    "arrangement": "triple_row",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [
+     "dashes"
+    ],
+    "title_text": "纯色通常更容易拉长线条",
+    "body_gist": "中深色更显连贯，领口留V形更轻盈，合身不紧绷更利落"
+   }
+  },
+  {
+   "set": 20,
+   "page": 3,
+   "file": "n20_p3.png",
+   "query_idx": 20,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 3,
+    "arrangement": "triple_row",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "tip_box",
+    "decor": [
+     "dashes"
+    ],
+    "title_text": "波点大小和密度决定显不显胖",
+    "body_gist": "小而稀疏的波点更显瘦，推荐0.5到1厘米大小"
+   }
+  },
+  {
+   "set": 20,
+   "page": 4,
+   "file": "n20_p4.png",
+   "query_idx": 20,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 7,
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [
+     "dashes",
+     "vs_badge"
+    ],
+    "title_text": "版型比花纹更影响视觉比例",
+    "body_gist": "通过肩线、胸腹活动量和衣长等细节讲解衬衫版型对身材比例的影响"
+   }
+  },
+  {
+   "set": 20,
+   "page": 5,
+   "file": "n20_p5.png",
+   "query_idx": 20,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 3,
+    "arrangement": "triple_row",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [],
+    "title_text": "颜色和下装搭配也很关键",
+    "body_gist": "上下颜色接近更显高，波点配纯色下装更稳，鞋裤颜色尽量连贯"
+   }
+  },
+  {
+   "set": 21,
+   "page": 1,
+   "file": "n21_p1.png",
+   "query_idx": 21,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "none",
+    "body": "paragraph",
+    "decor": [
+     "dashes"
+    ],
+    "title_text": "梭子蟹这样冷冻更能保住鲜味",
+    "body_gist": "推荐蒸熟后冷冻，密封到位、慢速解冻更稳妥"
+   }
+  },
+  {
+   "set": 21,
+   "page": 2,
+   "file": "n21_p2.png",
+   "query_idx": 21,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 3,
+    "arrangement": "triple_row",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "overlay_on_photo",
+    "section_style": "number_badge",
+    "body": "tip_box",
+    "decor": [
+     "sticker"
+    ],
+    "title_text": "鲜活状态处理决定冷冻后的口感",
+    "body_gist": "刷洗蒸熟后尽快冷冻，保持鲜味"
+   }
+  },
+  {
+   "set": 21,
+   "page": 3,
+   "file": "n21_p3.png",
+   "query_idx": 21,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 2,
+    "arrangement": "side_by_side",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "tip_box",
+    "decor": [
+     "dashes"
+    ],
+    "title_text": "生冻和熟冻怎么选",
+    "body_gist": "家庭更推荐熟冻，复热方便卫生稳妥"
+   }
+  },
+  {
+   "set": 21,
+   "page": 4,
+   "file": "n21_p4.png",
+   "query_idx": 21,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 5,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "overlay_on_photo",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [
+     "dashes"
+    ],
+    "title_text": "三、分装密封 减少串味和干耗",
+    "body_gist": "展示分装螃蟹的四个步骤：冷却、贴膜密封、一餐一份、冷冻保存"
+   }
+  },
+  {
+   "set": 21,
+   "page": 5,
+   "file": "n21_p5.png",
+   "query_idx": 21,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 4,
+    "arrangement": "grid_2x2",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "tip_box",
+    "decor": [
+     "sticker",
+     "banner"
+    ],
+    "title_text": "解冻方式决定鲜味能不能保住",
+    "body_gist": "展示四种解冻螃蟹方式，强调冷藏缓慢解冻和避免反复冻融"
+   }
+  },
+  {
+   "set": 22,
+   "page": 1,
+   "file": "n22_p1.png",
+   "query_idx": 22,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.7,
+    "frame": "none",
+    "text_bg": "scrim",
+    "title_style": "overlay_on_photo",
+    "section_style": "none",
+    "body": "points_highlight",
+    "decor": [
+     "banner"
+    ],
+    "title_text": "草莓圣代绣球在东北怎么安全越冬",
+    "body_gist": "分清地栽与盆栽，越冬重点不同"
+   }
+  },
+  {
+   "set": 22,
+   "page": 2,
+   "file": "n22_p2.png",
+   "query_idx": 22,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 5,
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "banner",
+     "sticker"
+    ],
+    "title_text": "先确认是圆锥绣球草莓圣代",
+    "body_gist": "介绍草莓圣代的特征与种植注意事项"
+   }
+  },
+  {
+   "set": 22,
+   "page": 3,
+   "file": "n22_p3.png",
+   "query_idx": 22,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 2,
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "banner",
+     "sticker"
+    ],
+    "title_text": "地栽越冬重点是护根不是保温枝条",
+    "body_gist": "通过覆盖松针或落叶保护根部，避免紧贴主干"
+   }
+  },
+  {
+   "set": 22,
+   "page": 4,
+   "file": "n22_p4.png",
+   "query_idx": 22,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.7,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "banner"
+    ],
+    "title_text": "入冬前停止追肥控制浇水",
+    "body_gist": "秋季停用高氮肥，落叶后减少浇水，干旱时封冻前浇透，重剪在晚冬或早春"
+   }
+  },
+  {
+   "set": 22,
+   "page": 5,
+   "file": "n22_p5.png",
+   "query_idx": 22,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 5,
+    "arrangement": "triple_row",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "banner",
+     "sticker"
+    ],
+    "title_text": "盆栽在东北要比地栽更谨慎",
+    "body_gist": "冬季防风防冻，春季适时撤盖"
+   }
+  },
+  {
+   "set": 23,
+   "page": 1,
+   "file": "n23_p1.png",
+   "query_idx": 23,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "scrim",
+    "title_style": "overlay_on_photo",
+    "section_style": "none",
+    "body": "points_highlight",
+    "decor": [
+     "sticker",
+     "dashes"
+    ],
+    "title_text": "人造皮革沾到西瓜汁这样清理",
+    "body_gist": "少水轻擦，先吸后洁，避开强溶剂"
+   }
+  },
+  {
+   "set": 23,
+   "page": 2,
+   "file": "n23_p2.png",
+   "query_idx": 23,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 4,
+    "arrangement": "grid_2x2",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "banner",
+     "dashes"
+    ],
+    "title_text": "中性清洁液少量处理",
+    "body_gist": "四步图文展示用中性清洁液擦拭沙发的步骤"
+   }
+  },
+  {
+   "set": 23,
+   "page": 3,
+   "file": "n23_p3.png",
+   "query_idx": 23,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "banner",
+     "dashes"
+    ],
+    "title_text": "先吸干果汁别大面积擦",
+    "body_gist": "用白色软布从外向内轻压吸干果汁，避免来回猛擦"
+   }
+  },
+  {
+   "set": 23,
+   "page": 4,
+   "file": "n23_p4.png",
+   "query_idx": 23,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "sticker",
+     "banner",
+     "dashes"
+    ],
+    "title_text": "颜色残留不要用强漂白剂",
+    "body_gist": "浅红印可用温和清洁，避免使用含氯漂白剂、卸甲水、汽油和高浓度酒精"
+   }
+  },
+  {
+   "set": 23,
+   "page": 5,
+   "file": "n23_p5.png",
+   "query_idx": 23,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 4,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [
+     "dashes"
+    ],
+    "title_text": "清洁后阴干并做小范围检查",
+    "body_gist": "清洁后阴干并检查染色、发黏、起皮问题"
+   }
+  },
+  {
+   "set": 24,
+   "page": 1,
+   "file": "n24_p1.png",
+   "query_idx": 24,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "none",
+    "body": "points_col",
+    "decor": [
+     "sticker",
+     "banner"
+    ],
+    "title_text": "普通不锈钢餐具别直接放进微波炉",
+    "body_gist": "金属会反射微波，易受热不均，边角可能打火"
+   }
+  },
+  {
+   "set": 24,
+   "page": 2,
+   "file": "n24_p2.png",
+   "query_idx": 24,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 2,
+    "arrangement": "grid_2x2",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "banner",
+     "vs_badge"
+    ],
+    "title_text": "普通不锈钢餐具不要直接进微波炉",
+    "body_gist": "不锈钢餐具不可微波，推荐使用耐热玻璃、陶瓷或微波专用盒"
+   }
+  },
+  {
+   "set": 24,
+   "page": 3,
+   "file": "n24_p3.png",
+   "query_idx": 24,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 5,
+    "arrangement": "grid_2x2",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [
+     "banner"
+    ],
+    "title_text": "金属为什么容易出问题",
+    "body_gist": "解释金属在微波炉中易引发问题的原因及禁忌物品"
+   }
+  },
+  {
+   "set": 24,
+   "page": 4,
+   "file": "n24_p4.png",
+   "query_idx": 24,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [
+     "sticker",
+     "banner"
+    ],
+    "title_text": "只有说明书允许的金属配件例外",
+    "body_gist": "说明原装金属烤架可用，普通不锈钢餐具禁止使用"
+   }
+  },
+  {
+   "set": 24,
+   "page": 5,
+   "file": "n24_p5.png",
+   "query_idx": 24,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 3,
+    "arrangement": "triple_row",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "banner",
+     "dashes"
+    ],
+    "title_text": "出现打火立即停止加热",
+    "body_gist": "分三步展示微波炉起火应急处理：停止加热、取出金属物、换合适容器"
+   }
+  },
+  {
+   "set": 25,
+   "page": 1,
+   "file": "n25_p1.png",
+   "query_idx": 25,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 2,
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "scrim",
+    "title_style": "overlay_on_photo",
+    "section_style": "none",
+    "body": "tip_box",
+    "decor": [
+     "sticker"
+    ],
+    "title_text": "鱼缸玻璃胶上的绿苔这样清理",
+    "body_gist": "推荐软质清洁工具：软毛刷、塑料刮板、软布抹拭"
+   }
+  },
+  {
+   "set": 25,
+   "page": 2,
+   "file": "n25_p2.png",
+   "query_idx": 25,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [],
+    "title_text": "先把鱼和设备安全隔离",
+    "body_gist": "关闭设备、降水位、暂养鱼的三步操作指南"
+   }
+  },
+  {
+   "set": 25,
+   "page": 3,
+   "file": "n25_p3.png",
+   "query_idx": 25,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 3,
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.7,
+    "frame": "polaroid",
+    "text_bg": "scrim",
+    "title_style": "overlay_on_photo",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [
+     "sticker",
+     "vs_badge"
+    ],
+    "title_text": "玻璃胶表面的绿苔先物理清理",
+    "body_gist": "使用软毛刷沿胶缝轻刷，避免金属刀片，及时吸走藻屑"
+   }
+  },
+  {
+   "set": 25,
+   "page": 4,
+   "file": "n25_p4.png",
+   "query_idx": 25,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 4,
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [
+     "sticker"
+    ],
+    "title_text": "顽固位置别用家用清洁剂硬刷",
+    "body_gist": "鱼缸清洁避免使用洗洁精、84、除霉剂，玻璃胶发黑开裂多为老化"
+   }
+  },
+  {
+   "set": 25,
+   "page": 5,
+   "file": "n25_p5.png",
+   "query_idx": 25,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 5,
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [
+     "sticker"
+    ],
+    "title_text": "减少复发要从光照和营养控制",
+    "body_gist": "通过控制光照时间、换水频率、喂食量和水流，预防鱼缸问题复发"
+   }
+  },
+  {
+   "set": 26,
+   "page": 1,
+   "file": "n26_p1.png",
+   "query_idx": 26,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 5,
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "none",
+    "body": "points_highlight",
+    "decor": [
+     "vs_badge",
+     "dashes"
+    ],
+    "title_text": "不锈钢壶煮茶为什么容易颜色发黑",
+    "body_gist": "常见原因包括氧化、水质、煮太久、水垢与腐蚀"
+   }
+  },
+  {
+   "set": 26,
+   "page": 2,
+   "file": "n26_p2.png",
+   "query_idx": 26,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 3,
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "banner"
+    ],
+    "title_text": "茶汤发黑和氧化及杂质有关",
+    "body_gist": "茶汤发黑与高温氧化和金属离子有关"
+   }
+  },
+  {
+   "set": 26,
+   "page": 3,
+   "file": "n26_p3.png",
+   "query_idx": 26,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 3,
+    "arrangement": "triple_row",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [
+     "dashes"
+    ],
+    "title_text": "水质和茶叶也会放大颜色变化",
+    "body_gist": "说明水质、茶水比例和煮茶时间对茶色的影响"
+   }
+  },
+  {
+   "set": 26,
+   "page": 4,
+   "file": "n26_p4.png",
+   "query_idx": 26,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 5,
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [
+     "sticker",
+     "dashes"
+    ],
+    "title_text": "先检查壶内是否有水垢或腐蚀",
+    "body_gist": "分三步检查电水壶内壁的水垢、锈斑和腐蚀情况"
+   }
+  },
+  {
+   "set": 26,
+   "page": 5,
+   "file": "n26_p5.png",
+   "query_idx": 26,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 3,
+    "arrangement": "triple_row",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [],
+    "title_text": "这样煮茶更不容易变黑",
+    "body_gist": "分三步说明煮茶不易变黑的方法"
+   }
+  },
+  {
+   "set": 27,
+   "page": 1,
+   "file": "n27_p1.png",
+   "query_idx": 27,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 4,
+    "arrangement": "side_by_side",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "sticker",
+     "banner"
+    ],
+    "title_text": "防晒披肩选纯色还是印花更好搭",
+    "body_gist": "对比纯色与印花防晒披肩的面料、覆盖和UPF性能"
+   }
+  },
+  {
+   "set": 27,
+   "page": 2,
+   "file": "n27_p2.png",
+   "query_idx": 27,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 8,
+    "arrangement": "grid_2x2",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "banner",
+     "dashes",
+     "vs_badge"
+    ],
+    "title_text": "纯色更适合日常长期穿",
+    "body_gist": "展示四种纯色披肩搭配方案及材质特点"
+   }
+  },
+  {
+   "set": 27,
+   "page": 3,
+   "file": "n27_p3.png",
+   "query_idx": 27,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 5,
+    "arrangement": "triple_row",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "vs_badge",
+     "polaroid"
+    ],
+    "title_text": "印花款更适合做造型重点",
+    "body_gist": "推荐小碎花、细条纹和小几何印花，搭配纯色内搭更稳妥"
+   }
+  },
+  {
+   "set": 27,
+   "page": 4,
+   "file": "n27_p4.png",
+   "query_idx": 27,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 6,
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "banner",
+     "vs_badge"
+    ],
+    "title_text": "颜色深浅别只看视觉感受",
+    "body_gist": "优先选UPF40+以上、面料紧密、覆盖完整的防晒衣"
+   }
+  },
+  {
+   "set": 27,
+   "page": 5,
+   "file": "n27_p5.png",
+   "query_idx": 27,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 5,
+    "arrangement": "grid_2x2",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "banner",
+     "sticker"
+    ],
+    "title_text": "四、版型和面料比花纹更重要",
+    "body_gist": "强调防晒衣的版型、面料和舒适性，突出透气快干、有袖口设计及合适尺寸的重要性"
+   }
+  },
+  {
+   "set": 28,
+   "page": 1,
+   "file": "n28_p1.png",
+   "query_idx": 28,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "overlay_on_photo",
+    "section_style": "none",
+    "body": "points_highlight",
+    "decor": [
+     "sticker",
+     "banner"
+    ],
+    "title_text": "猫咪可以吃西瓜但只适合尝一点",
+    "body_gist": "去皮去籽、少量尝鲜、主食仍是猫粮"
+   }
+  },
+  {
+   "set": 28,
+   "page": 2,
+   "file": "n28_p2.png",
+   "query_idx": 28,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "sticker",
+     "banner"
+    ],
+    "title_text": "健康猫可以少量吃果肉",
+    "body_gist": "分步指导猫咪少量食用果肉的安全方法"
+   }
+  },
+  {
+   "set": 28,
+   "page": 3,
+   "file": "n28_p3.png",
+   "query_idx": 28,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "accent_bar",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "banner",
+     "sticker",
+     "vs_badge"
+    ],
+    "title_text": "籽和瓜皮都要去掉",
+    "body_gist": "只留中间果肉，切成小丁更稳妥"
+   }
+  },
+  {
+   "set": 28,
+   "page": 4,
+   "file": "n28_p4.png",
+   "query_idx": 28,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "sticker",
+     "banner"
+    ],
+    "title_text": "三、一次只给很小一块",
+    "body_gist": "每周1-2次，每次一小块，不挤占主食，不能代替饮水和湿粮"
+   }
+  },
+  {
+   "set": 28,
+   "page": 5,
+   "file": "n28_p5.png",
+   "query_idx": 28,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "sticker",
+     "banner"
+    ],
+    "title_text": "四、这些猫更适合不喂",
+    "body_gist": "四种不适合喂食西瓜的猫咪情况及注意事项"
+   }
+  },
+  {
+   "set": 29,
+   "page": 1,
+   "file": "n29_p1.png",
+   "query_idx": 29,
+   "analysis": {
+    "page_role": "cover",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "none",
+    "body": "paragraph",
+    "decor": [],
+    "title_text": "鸡蛋糕蒸多久口感嫩还不出蜂窝",
+    "body_gist": "上汽后中小火蒸8到10分钟，关火焖2分钟更嫩，盖盘可减少蜂窝"
+   }
+  },
+  {
+   "set": 29,
+   "page": 2,
+   "file": "n29_p2.png",
+   "query_idx": 29,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.7,
+    "frame": "none",
+    "text_bg": "scrim",
+    "title_style": "overlay_on_photo",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [],
+    "title_text": "时间要从上汽后开始算",
+    "body_gist": "蒸蛋步骤说明：打蛋、加水、上锅蒸8-10分钟，中心凝固后焖2分钟"
+   }
+  },
+  {
+   "set": 29,
+   "page": 3,
+   "file": "n29_p3.png",
+   "query_idx": 29,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 1,
+    "arrangement": "single",
+    "top_fraction": 0.6,
+    "frame": "none",
+    "text_bg": "theme_light",
+    "title_style": "overlay_on_photo",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "sticker",
+     "banner"
+    ],
+    "title_text": "蛋液和温水比例影响嫩度",
+    "body_gist": "蛋液与温水比例1:1.5-1.8，30-40℃温水更稳，过筛更细嫩"
+   }
+  },
+  {
+   "set": 29,
+   "page": 4,
+   "file": "n29_p4.png",
+   "query_idx": 29,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 4,
+    "arrangement": "one_big_two_small",
+    "top_fraction": 0.6,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_col",
+    "decor": [
+     "vs_badge",
+     "sticker"
+    ],
+    "title_text": "火力过大容易出现蜂窝",
+    "body_gist": "蒸汽太猛蛋面起孔洞，建议水开后转中小火、盖盘防滴水、蒸好再调味"
+   }
+  },
+  {
+   "set": 29,
+   "page": 5,
+   "file": "n29_p5.png",
+   "query_idx": 29,
+   "analysis": {
+    "page_role": "content",
+    "photo_count": 4,
+    "arrangement": "grid_2x2",
+    "top_fraction": 0.7,
+    "frame": "polaroid",
+    "text_bg": "theme_light",
+    "title_style": "center",
+    "section_style": "number_badge",
+    "body": "points_highlight",
+    "decor": [
+     "banner"
+    ],
+    "title_text": "不同容器和份量要调整时间",
+    "body_gist": "根据容器深浅和蛋量调整蒸蛋时间，确保熟透"
+   }
+  }
+ ]
+}

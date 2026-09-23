@@ -4,7 +4,8 @@ const AdminView = {
     return { st: null, error: '', msg: '', timer: null, logs: [], showLogs: false,
              costs: null, costTask: null,
              rates: null, balance: null, balanceLoading: false, ratesSaving: false,
-             baselineForm: { deepseek: '', kimi: '', fusion: '' } };
+             baselineForm: { deepseek: '', kimi: '', fusion: '' },
+             ct: null, ctUrl: '', ctBusy: false, ctMsg: '', ctPreviews: {} };
   },
   computed: {
     isAdmin() { const u = getUser(); return u && u.role === 'admin'; },
@@ -56,6 +57,45 @@ const AdminView = {
       catch (e) { this.error = e.message; }
     },
     toggleCostTask(id) { this.costTask = this.costTask === id ? null : id; },
+    async loadCt() {
+      try {
+        const r = await api.get('/api/compose-templates');
+        this.ct = r.templates || [];
+        this.ct.forEach(t => this.previewCt(t.template_id));
+      } catch (e) { this.ctMsg = '加载失败：' + e.message; }
+    },
+    async previewCt(tid) {
+      try {
+        const r = await api.post('/api/compose-templates/preview', { template_id: tid });
+        this.ctPreviews = Object.assign({}, this.ctPreviews, { [tid]: r.preview_url + '?t=' + Date.now() });
+      } catch (e) { this.ctPreviews = Object.assign({}, this.ctPreviews, { [tid]: null }); }
+    },
+    async toggleCt(t) {
+      this.ctBusy = true; this.ctMsg = '';
+      try {
+        await api.patch('/api/compose-templates/' + t.template_id, { enabled: !t.enabled });
+        t.enabled = !t.enabled;
+      } catch (e) { this.ctMsg = '操作失败：' + e.message; }
+      this.ctBusy = false;
+    },
+    async extractCt() {
+      if (!this.ctUrl.trim()) return;
+      this.ctBusy = true; this.ctMsg = 'VL 提取中…';
+      try {
+        const r = await api.post('/api/compose-templates/extract', { image_url: this.ctUrl.trim() });
+        if (r.errors && r.errors.length) { this.ctMsg = 'spec 校验未过：' + r.errors.join('；'); }
+        else {
+          const tid = 'ext_' + Date.now().toString(36);
+          await api.post('/api/compose-templates', {
+            template_id: tid, name: '提取·' + (r.analysis.title_text || '').slice(0, 10),
+            spec: r.spec, notes: r.spec.notes || '' });
+          this.ctMsg = '已提取入库（默认停用），预览确认后启用';
+          this.ctUrl = '';
+          await this.loadCt();
+        }
+      } catch (e) { this.ctMsg = '提取失败：' + e.message; }
+      this.ctBusy = false;
+    },
     async loadRates() {
       try { this.rates = await api.get('/api/admin/rates'); }
       catch (e) { this.error = e.message; }
@@ -111,7 +151,7 @@ const AdminView = {
   },
   mounted() {
     if (!this.isAdmin) return;
-    this.load(); this.loadCosts(); this.loadRates(); this.loadBalance();
+    this.load(); this.loadCosts(); this.loadRates(); this.loadBalance(); this.loadCt();
     this.timer = setInterval(this.load, 3000);
   },
   beforeUnmount() { clearInterval(this.timer); },
@@ -154,6 +194,30 @@ const AdminView = {
           <button class="btn btn-danger" @click="clearAll">删除全部内容</button>
         </div>
         <pre v-if="showLogs" class="log-box">{{ logs.join('\\n') }}</pre>
+      </div>
+
+      <div class="card">
+        <h2>页型模板库 <span class="muted" style="font-weight:normal;font-size:13px">混合合成链的程序版式；提取的模板默认停用，预览确认后启用</span></h2>
+        <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center">
+          <button class="btn btn-outline btn-sm" @click="loadCt" :disabled="ctBusy">加载模板</button>
+          <input v-model="ctUrl" placeholder="粘贴参考图 URL，自动提取为模板" style="flex:1;min-width:260px;padding:6px 10px">
+          <button class="btn btn-primary btn-sm" @click="extractCt" :disabled="ctBusy || !ctUrl.trim()">从参考图提取</button>
+        </div>
+        <p v-if="ctMsg" class="muted" style="font-size:13px">{{ ctMsg }}</p>
+        <div v-if="ct && ct.length" style="display:flex;gap:12px;flex-wrap:wrap">
+          <div v-for="t in ct" :key="t.template_id" style="width:170px;border:1px solid #e5e5e5;border-radius:10px;padding:8px">
+            <img v-if="ctPreviews[t.template_id]" :src="ctPreviews[t.template_id]" style="width:100%;border-radius:6px" alt="预览">
+            <div v-else class="muted" style="height:200px;display:flex;align-items:center;justify-content:center;font-size:12px">预览生成中…</div>
+            <div style="font-size:13px;margin-top:6px;font-weight:600">{{ t.name }}</div>
+            <div class="muted" style="font-size:11px">{{ t.page_role }} · {{ t.source }}</div>
+            <div style="margin-top:6px;display:flex;gap:6px;align-items:center">
+              <button class="btn btn-sm" :class="t.enabled ? 'btn-outline' : 'btn-primary'" @click="toggleCt(t)" :disabled="ctBusy">
+                {{ t.enabled ? '停用' : '启用' }}
+              </button>
+            </div>
+          </div>
+        </div>
+        <p v-else class="muted">点击「加载模板」查看当前模板库（预置 12 个 seed 模板 + 提取模板）。</p>
       </div>
 
       <div class="card">
