@@ -738,9 +738,17 @@ async def _compose_mode_assets(task_id, query, mode, pages, image_style,
                              bench_rule or "")
 
         ref_all = [a.image_url for a in confirmed_refs]
+        # general 模式无人工参考图 → 自动搜实景参考走图生图（2026-09-24：
+        # 纯文生图 AI 感强；compare/single 已有人工确认参考）。
+        # 搜索失败/关闭开关 → ref_all 保持空，回退文生图
+        if not ref_all and getattr(settings, "compose_auto_refs", True):
+            from src.services.poster_compose import auto_refs
+            ref_all = await auto_refs(query)
         from src.stream.bus import bus
         await bus.publish("agent_progress",
-                          {"message": "配图生成中（程序文字 + AI 画面）…"},
+                          {"message": "配图生成中（程序文字 + AI 画面"
+                                     + ("，实景参考图生图" if ref_all else "")
+                                     + "）…"},
                           task_id=str(task_id))
 
         sem = _asyncio.Semaphore(

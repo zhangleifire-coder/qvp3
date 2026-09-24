@@ -77,3 +77,24 @@ async def test_gen_textfree_stat_counts_regen(monkeypatch, tmp_path):
         "画面描述", "风格描述", stat=stat)
     assert fp is not None
     assert stat["gen_calls"] >= 1
+
+
+async def test_auto_refs_filters_and_fallback(monkeypatch):
+    """general 模式自动搜参考（2026-09-24 图生图）：http 过滤 + 失败回退空。"""
+    from src.services import poster_compose as pc
+
+    async def fake_search(query, count=6):
+        return [{"image_url": "https://a/1.jpg", "title": "x"},
+                {"image_url": "/local/path.png", "title": "y"},
+                {"image_url": "https://a/2.jpg", "title": "z"}]
+
+    import src.gateway.image_search as ism
+    monkeypatch.setattr(ism, "search_image", fake_search)
+    urls = await pc.auto_refs("测试 query", count=8)
+    assert urls == ["https://a/1.jpg", "https://a/2.jpg"]   # 非 http 剔除
+
+    async def boom(query, count=6):
+        raise RuntimeError("search down")
+
+    monkeypatch.setattr(ism, "search_image", boom)
+    assert await pc.auto_refs("测试") == []   # 失败不抛，回退空

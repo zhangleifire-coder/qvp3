@@ -866,6 +866,22 @@ async def gen_textfree_illustration(prompt: str, style_desc: str = "",
     return fp2 or fp          # 两次都不过：返回最后产物由调用方决定
 
 
+async def auto_refs(query: str, count: int = 8) -> list[str]:
+    """general 模式自动搜实景参考（2026-09-24 图生图真实感）：
+    compose 插画带 refs 走 edits 图生图（fusion/moacode）借真实感；
+    纯文生图 AI 感强（84be7d19 教训）。搜索失败/无结果返回空列表
+    ——调用方回退文生图，不阻塞出图。"""
+    try:
+        import traceback
+        from src.gateway.image_search import search_image
+        hits = await search_image(query, count=count)
+        urls = [str(h.get("image_url", "")) for h in hits]
+        return [u for u in urls if u.startswith("http")][:count]
+    except Exception:  # noqa: BLE001
+        traceback.print_exc()
+        return []
+
+
 _SENT_RE = re.compile(r"[^。！？!?；;\n]+[。！？!?；;]?")
 _ILL_DROP = ("竖版", "横版", "留白", "主标题", "标题", "排版", "图文卡片",
              "卡片", "分栏")

@@ -74,6 +74,9 @@ class Settings(BaseSettings):
     # 风格一致性、深底页数（手册「图集一致性/多样性」维度）。
     # 每任务 +1 次 VL（约 ¥0.1），结果告警进人工审核（RejectMark）。
     cross_page_check_enabled: bool = True
+    # compose 链 general 模式自动搜实景参考 → 插画走 edits 图生图
+    # （2026-09-24 图生图真实感；compare/single 用人工确认参考不走此开关）
+    compose_auto_refs: bool = True
     image_search_provider: str = "openserp"
     openserp_base_url: str = "http://127.0.0.1:7001"
     # 旧 ChatGPT 生图字段（保留占位）

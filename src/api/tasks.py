@@ -892,7 +892,12 @@ async def upload_refs(task_id: str, files: list[UploadFile] = File(...),
         task = (await session.execute(select(Task).where(Task.id == tid))).scalars().first()
         if not task:
             raise HTTPException(status_code=404, detail="task not found")
-        if task.status != "awaiting_refs":
+        # 2026-09-24：general 模式开放人工参考图（compose 图生图真实感）——
+        # 未进生产（draft/awaiting_text）即可上传，直接落 confirmed（人工精选，
+        # 无候选筛选关卡）；compare/single 仍走 awaiting_refs 候选流
+        general_direct = ((task.mode or "general") == "general"
+                          and task.status in ("draft", "awaiting_text"))
+        if task.status != "awaiting_refs" and not general_direct:
             raise HTTPException(status_code=400,
                                 detail=f"仅待确认参考图状态可上传，当前: {task.status}")
         query, mode = task.query, (task.mode or "general")
@@ -936,7 +941,10 @@ async def upload_refs(task_id: str, files: list[UploadFile] = File(...),
                 source_type="official", copyright_status="unknown",
                 hash=hashlib.md5(data).hexdigest(), image_url=local_url,
                 origin_url="", model_version="manual", is_illustration=False,
-                selection_status="candidate", ocr_hit=ocr_hit or None))
+                # general 直传模式直接 confirmed（无候选关卡）
+                selection_status=("confirmed" if general_direct
+                                  else "candidate"),
+                ocr_hit=ocr_hit or None))
         await session.commit()
         total = (await session.execute(select(func.count(Asset.id)).where(
             Asset.task_id == tid, Asset.source_type == "official",
