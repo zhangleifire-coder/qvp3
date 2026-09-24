@@ -14,14 +14,15 @@ DATA_PATH = Path(__file__).resolve().parents[2] / "data" / "compose_templates.js
 _ARRANGEMENTS = ("single", "side_by_side", "grid_2x2", "triple_row",
                  "one_big_two_small", "none")
 _FRAMES = ("none", "polaroid", "tape")
-_TBG = ("theme_light", "theme_deep", "scrim")
+_TBG = ("theme_light", "theme_deep", "scrim", "warm_gray")
 _TITLE_STYLES = ("accent_bar", "center", "overlay_on_photo", "center_quote",
-                 "")
-_SECTION_STYLES = ("number_badge", "plain", "")
+                 "highlight_marker", "")
+_SECTION_STYLES = ("number_badge", "plain", "dot_brown", "")
 _EL_TYPES = ("title", "section_title", "paragraph", "points_col",
              "points_highlight", "capsule", "separator", "tip_box")
 _DECOR = ("sticker_tl", "sticker_tr", "sticker_bl", "sticker_br", "banner",
-          "vs_badge", "icon_row")
+          "vs_badge", "icon_row", "price_sticker_tl", "price_sticker_tr",
+          "price_sticker_bl", "price_sticker_br", "handwrite_tag")
 _ROLES = ("cover", "content", "ending")
 
 

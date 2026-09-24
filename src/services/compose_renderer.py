@@ -29,6 +29,12 @@ _MARGIN = 48
 _INK = (34, 31, 40)            # 浅底文字主色
 _INK_SOFT = (54, 50, 62)       # 段落正文
 _LIGHT_BG = (247, 243, 234)    # 0922 参考浅米底（theme_light 基色）
+# n03 杂志风色板（2026-09-24 对抗式尸检实测参考值）
+_WARM_GRAY_BG = (242, 237, 228)   # 米灰底 #F2EDE4
+_BROWN_INK = (61, 46, 32)         # 深棕标题 #3D2E20
+_BROWN_SOFT = (74, 65, 54)        # 深棕灰正文 #4A4136
+_BROWN_LINE = (200, 178, 154)     # 描边/细线 #C8B29A
+_MARKER = (212, 232, 130)         # 荧光黄绿高亮 #D4E882
 
 _FONT_CANDIDATES = [
     Path(os.environ.get("COMPOSE_FONT_DIR", "")) if os.environ.get(
@@ -244,6 +250,74 @@ def _paint_tip_box(dr, img, title, paragraph, y0, y1, accent):
     return ty
 
 
+# ── n03 杂志风 painter（2026-09-24 对抗式尸检：参考=荧光高亮+深棕+米灰+细线）──
+
+def _paint_title_marker(dr, title, y, max_w):
+    """深棕中等字重标题：末 2 字荧光高亮块 + 标题下细棕线（n03 语言）。"""
+    f = _font(52, True)
+    lines = _wrap_px(title, f, max_w, dr)[:2]
+    for li, ln in enumerate(lines):
+        # 高亮块打在最后一行的末 2 字（或单行时末 2 字）
+        hl = ln[-2:] if (li == len(lines) - 1 and len(ln) >= 3) else ""
+        base = ln[:-2] if hl else ln
+        x = _MARGIN
+        if base:
+            dr.text((x, y), base, font=f, fill=_BROWN_INK)
+            x += dr.textlength(base, font=f) + 2
+        if hl:
+            tw = dr.textlength(hl, font=f)
+            dr.rectangle([x - 4, y + 6, x + tw + 6, y + 50],
+                         fill=_MARKER)
+            dr.text((x, y), hl, font=f, fill=_BROWN_INK)
+        y += int(52 * 1.3)
+    dr.line([_MARGIN, y + 2, _MARGIN + 180, y + 2],
+            fill=_BROWN_LINE, width=3)
+    return y + 24
+
+
+def _paint_section_dot(dr, section_title, y, max_w):
+    """n03 小节标题：棕色小圆点 + 深棕粗体。"""
+    f = _font(34, True)
+    for ln in _wrap_px(section_title, f, max_w - 30, dr)[:1]:
+        dr.ellipse([_MARGIN, y + 8, _MARGIN + 17, y + 27],
+                   fill=_BROWN_LINE)
+        dr.text((_MARGIN + 30, y), ln, font=f, fill=_BROWN_INK)
+    return y + 52
+
+
+def _paint_price_sticker(dr, corner, text):
+    """双圆环价格贴纸（n03 照片角）：外环描边 + 内圆底 + 深棕字。"""
+    f = _font(28, True)
+    tw = dr.textlength(text, font=f)
+    r = max(52, int(tw / 2) + 26)
+    cx = (_MARGIN + r + 30) if "l" in corner else (W - _MARGIN - r - 30)
+    cy = H - r - 150 if "b" in corner else r + 30
+    dr.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(250, 246, 238))
+    dr.ellipse([cx - r + 6, cy - r + 6, cx + r - 6, cy + r - 6],
+               outline=_BROWN_LINE, width=3)
+    dr.text((cx - tw / 2, cy - 20), text, font=f, fill=_BROWN_INK)
+
+
+def _paint_handwrite_tag(text):
+    """手写风标签（n03 照片左上）：细描边圆角框 + 斜置深棕字 → 返回 RGBA 图。"""
+    from PIL import Image as _Img, ImageDraw as _ID
+    f = _font(30, False)
+    tw = _ID.Draw(_Img.new("RGB", (8, 8))).textlength(text, font=f)
+    bw, bh = int(tw) + 40, 56
+    tag = _Img.new("RGBA", (bw + 20, bh + 20), (0, 0, 0, 0))
+    tdr = _ID.Draw(tag)
+    tdr.rounded_rectangle([8, 8, bw + 8, bh + 8], radius=14,
+                          fill=(250, 246, 238, 235),
+                          outline=_BROWN_LINE + (255,), width=3)
+    tdr.text((28, 16), text, font=f, fill=_BROWN_INK + (255,))
+    return tag.rotate(-6, expand=True, resample=_Img.BICUBIC)
+
+
+def _paste_handwrite_tag(img, text):
+    tag = _paint_handwrite_tag(text)
+    img.paste(tag, (_MARGIN - 8, 70), tag)
+
+
 # ── 照片区排布 ───────────────────────────────────────────────────────────
 
 def _cell_rects(arrangement: str, box) -> list:
@@ -354,7 +428,12 @@ def render_card(spec: dict, content: dict, illustrations: list,
 
     # 文字区底色
     tbg = tspec.get("bg", "theme_light")
-    if tbg == "theme_light":
+    if tbg == "warm_gray":
+        dr.rectangle([0, text_y0, W, H], fill=_WARM_GRAY_BG)
+        # n03 杂志风：照片/文字交界细描边线
+        if ills:
+            dr.line([(0, text_y0), (W, text_y0)], fill=_BROWN_LINE, width=3)
+    elif tbg == "theme_light":
         dr.rectangle([0, text_y0, W, H], fill=_LIGHT_BG)
     elif tbg == "scrim":
         for yy in range(text_y0, H):
@@ -374,6 +453,8 @@ def render_card(spec: dict, content: dict, illustrations: list,
 
     def _paint_flow(dr, y, img2):
         """元素流绘制（供 scratch 量高与正式绘制复用）。"""
+        n03_mode = tspec.get("bg") == "warm_gray"
+        body_color = _BROWN_SOFT if n03_mode else None
         if "banner" in (spec.get("decor") or []) and content.get("subtitle"):
             y = _paint_banner(dr, str(content["subtitle"])[:14], y, accent)
         for el in elements:
@@ -381,7 +462,9 @@ def render_card(spec: dict, content: dict, illustrations: list,
             if et == "title":
                 if overlay_first:
                     continue   # 已画在图上
-                if esty == "center":
+                if esty == "highlight_marker":
+                    y = _paint_title_marker(dr, title, y, max_w)
+                elif esty == "center":
                     y = _paint_title_center(dr, img2, title, y, max_w, accent)
                 else:
                     y = _paint_title_accent_bar(dr, title, y, max_w, accent)
@@ -390,16 +473,20 @@ def render_card(spec: dict, content: dict, illustrations: list,
                 if not st:
                     continue
                 no = content.get("section_no") or 1
-                y = (_paint_section_badge(dr, st, no, y, max_w, accent)
-                     if esty == "number_badge" else
-                     _paint_section_plain(dr, st, y, max_w, accent))
+                if esty == "number_badge":
+                    y = _paint_section_badge(dr, st, no, y, max_w, accent)
+                elif esty == "dot_brown":
+                    y = _paint_section_dot(dr, st, y, max_w)
+                else:
+                    y = _paint_section_plain(dr, st, y, max_w, accent)
             elif et == "tip_box":
                 y = _paint_tip_box(dr, img2,
                                    content.get("section_title") or "小贴士",
                                    content.get("paragraph", ""), y, H - 60, accent)
                 break   # 贴士框即正文终点
             elif et == "paragraph":
-                y = _paint_paragraph(dr, content.get("paragraph", ""), y, max_w)
+                y = _paint_paragraph(dr, content.get("paragraph", ""), y,
+                                     max_w, color=body_color)
             elif et == "points_col":
                 pts = content.get("points") or []
                 if pts:
@@ -407,7 +494,7 @@ def render_card(spec: dict, content: dict, illustrations: list,
                                           highlight=False)
                 else:   # 段落式文案无条目 → 降级 paragraph（0922 文案契约）
                     y = _paint_paragraph(dr, content.get("paragraph", ""),
-                                         y, max_w)
+                                         y, max_w, color=body_color)
             elif et == "points_highlight":
                 pts = content.get("points") or []
                 if pts:
@@ -415,7 +502,7 @@ def render_card(spec: dict, content: dict, illustrations: list,
                                           highlight=True)
                 else:
                     y = _paint_paragraph(dr, content.get("paragraph", ""),
-                                         y, max_w)
+                                         y, max_w, color=body_color)
             elif et == "capsule":
                 if content.get("subtitle"):
                     y = _paint_capsule(dr, str(content["subtitle"])[:12],
@@ -440,6 +527,13 @@ def render_card(spec: dict, content: dict, illustrations: list,
             txt = (content.get("sticker_text")
                    or content.get("section_title") or title)[:4]
             _paint_sticker(dr, d[-2:], txt, accent)
+        elif d.startswith("price_sticker_"):
+            txt = (content.get("sticker_text") or "推荐")[:6]
+            _paint_price_sticker(dr, d[-2:], txt)
+        elif d == "handwrite_tag" and ills:
+            _paste_handwrite_tag(img, (content.get("subtitle")
+                                       or content.get("section_title")
+                                       or "先看这一页")[:8])
         elif d == "vs_badge" and arrangement == "side_by_side" and photo_rect:
             _paint_vs_badge(dr, photo_rect)
 
