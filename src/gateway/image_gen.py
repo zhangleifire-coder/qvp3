@@ -268,7 +268,7 @@ async def _generate_moacode(prompt: str, size: str,
 
 
 async def _edit_moacode(prompt: str, reference_image_urls: list[str],
-                        size: str) -> dict:
+                        size: str, model: str = IMAGE_MODEL) -> dict:
     """Moacode 图生图：参考图转 data URI 垫图（input_image），输出跟随其比例。"""
     import base64 as _b64
     data_uris = []
@@ -276,7 +276,8 @@ async def _edit_moacode(prompt: str, reference_image_urls: list[str],
         data, ctype = await _download_image_bytes(u)
         mime = ctype if ctype.startswith("image/") else "image/png"
         data_uris.append(f"data:{mime};base64," + _b64.b64encode(data).decode())
-    return await _generate_moacode(prompt, size, reference_data_uris=data_uris)
+    return await _generate_moacode(prompt, size,
+                                   reference_data_uris=data_uris, model=model)
 
 
 async def _generate(prompt: str, size: str, api_key: str = None,
