@@ -181,12 +181,15 @@ async def template_select(task_id: str, page_index: int, total_pages: int,
         return None
     for t in cands:
         t["_score"] = _score(t, topic_tags or [])
-    seed = int(hashlib.md5(
-        f"{task_id}:{page_index}".encode()).hexdigest()[:8], 16)
+    seed = int(hashlib.md5(task_id.encode()).hexdigest()[:8], 16)
     # 排序：题材分优先，同分按 hash 轮换打散
     cands.sort(key=lambda t: (-(t["_score"]), (seed + hash(t["template_id"]))
                               % 997))
-    return cands[0]["spec"]
+    # 页序走位取模（2026-09-24 仿制实测教训：题材分稳定时 cands[0] 会被
+    # 同题每页反复选中——compare 题 P2-P5 连续四页同版式）：同套各页
+    # 沿排序列表依次取不同模板，池小于页数时回绕
+    pick = cands[(page_index - 1) % len(cands)]
+    return pick["spec"]
 
 
 def spec_signature(spec: dict) -> str:
