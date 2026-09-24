@@ -181,7 +181,7 @@ async def template_select(task_id: str, page_index: int, total_pages: int,
         return None
     for t in cands:
         t["_score"] = _score(t, topic_tags or [])
-    seed = int(hashlib.md5(task_id.encode()).hexdigest()[:8], 16)
+    seed = int(hashlib.md5(str(task_id).encode()).hexdigest()[:8], 16)
     # 排序：题材分优先，同分按 hash 轮换打散
     cands.sort(key=lambda t: (-(t["_score"]), (seed + hash(t["template_id"]))
                               % 997))

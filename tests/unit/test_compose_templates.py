@@ -125,3 +125,21 @@ def test_render_all_seeds_smoke(tmp_path):
         im = Image.open(out)
         assert im.size == (W, H), t["template_id"]
         assert out.stat().st_size > 10000, t["template_id"]
+
+
+@pytest.mark.asyncio
+async def test_template_select_accepts_uuid_task_id(monkeypatch):
+    """compose 路径传 UUID 对象（c665acf3 教训：task_id.encode() 崩 AttributeError
+    → compose 整链异常回退直出）——str() 后必须正常出模板。"""
+    import uuid as _uuid
+    from src.services import compose_templates as ct
+
+    async def fake_list(enabled_only=False, source=None):
+        return [dict(t, enabled=True) for t in ct.load_seeds()]
+    monkeypatch.setattr(ct, "list_templates", fake_list)
+    tid = _uuid.uuid4()
+    picked = [await ct.template_select(tid, p, 5) for p in range(1, 6)]
+    assert all(p is not None for p in picked)
+    # 同套中间页走位取模：不同页尽量不同模板
+    tids = [p["template_id"] for p in picked]
+    assert len(set(tids[1:4])) >= 2, tids
